@@ -1,6 +1,6 @@
 # 1.3 — Check access from R2d2
 
-[Phase 1](README.md) · [Next: NICs and storage](04-nics-and-storage.md)
+[Phase 1](README.md) · [Next: USB NICs](04-nics-and-storage.md)
 
 **Status: complete.** Your report ends with **`NODE_IDENTITY_CHECKS_PASSED`**.
 
@@ -12,7 +12,7 @@
 
 All three use `enp0s31f6` for management, with configured gateway and DNS `192.168.0.1`. Their reports and R2d2's report show `NTPSynchronized=yes`.
 
-NIC identities and storage observations are reviewed in [Chapter 1.4](04-nics-and-storage.md). The full private report stays outside Git.
+NIC identities are recorded in [Chapter 1.4](04-nics-and-storage.md). Node3's storage candidate is recorded in [Chapter 1.5](05-cinder-storage.md). The full private report stays outside Git.
 
 ## Short lecture — what your result means
 
@@ -20,7 +20,7 @@ Ping showed that the addresses respond. SSH has now authenticated your account a
 
 The three nodes expose a CPU virtualization flag and `/dev/kvm`. That is useful evidence for the planned computes; running a VM is a later test. R2d2 is the administration VM and does not need to run the cloud's VMs.
 
-**Next:** [1.4 — Prepare the two NICs and Cinder storage](04-nics-and-storage.md).
+**Next:** [1.4 — Prepare the USB NICs](04-nics-and-storage.md).
 
 <details>
 <summary>Completed inspection — command reference</summary>

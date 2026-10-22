@@ -1,8 +1,29 @@
-# 1.4 — Prepare the two NICs and Cinder storage
+# 1.4 — Prepare the USB NICs
 
-[Phase 1](README.md) · [Previous: SSH result and lesson](03-access-check.md)
+[Phase 1](README.md) · [Next: Cinder disk](05-cinder-storage.md)
 
-**Current step:** configure the USB NICs. Cinder storage follows after we review this result.
+**Status: complete.** Your report ends with **`RESULT: USB_NETWORK_READY for all`**.
+
+| Node | USB link | Host addresses on USB | Management and fresh SSH |
+|---|---|---|---|
+| node1 | 1 Gb/s, full duplex | None | Passed |
+| node2 | 1 Gb/s, full duplex | None | Passed |
+| node3 | 1 Gb/s, full duplex | None | Passed |
+
+All three Netplan trials were accepted. Management IPs, routes and DNS stayed intact. The settings are saved on disk; a reboot check and VM traffic forwarding remain later checks.
+
+## Short lecture — what your result means
+
+A NIC can carry Ethernet frames without an IP assigned to the host. The built-in NIC is your host's management connection; the USB NIC will carry Neutron's external VM traffic.
+
+Both cables still use the same LAN and switch. Two NICs give the traffic separate interfaces; they do not create separate physical networks.
+
+Netplan stores the USB settings for future boots. Kolla later connects that NIC to OpenStack's external bridge. The reported 1 Gb/s is the physical link speed, not a measured VM throughput.
+
+**Next:** [1.5 — Inspect the Cinder disk](05-cinder-storage.md).
+
+<details>
+<summary>Confirmed NIC map and later address plan</summary>
 
 ## 1. The confirmed network
 
@@ -16,7 +37,7 @@ The built-in management NIC is `enp0s31f6` on all nodes, with `.200/24`, `.201/2
 | node2 | `enx00e04c2c1678` | `00:e0:4c:2c:16:78` |
 | node3 | `enx00e04c304688` | `00:e0:4c:30:46:88` |
 
-The inspection found all three USB NICs DOWN without host addresses.
+All three USB NICs are now UP with physical link and no host addresses. Their names stay unchanged.
 
 ### Address plan for the later cloud installation
 
@@ -30,7 +51,12 @@ Your offered `.151–.250` range includes the nodes. Use this smaller initial pl
 | Node management | `192.168.0.200–202` | Existing — excluded from cloud allocation |
 | `.203–.250` | Outside the initial cloud pool | No assignment made here |
 
-The API VIP is one shared API address for the controllers. These cloud addresses are planning values; this NIC step does not assign them.
+The API VIP is one shared API address for the controllers. These cloud addresses are planning values; this NIC step did not assign them.
+
+</details>
+
+<details>
+<summary>Completed procedure — script, commands and restoration</summary>
 
 ## 2. What the script does
 
@@ -78,18 +104,9 @@ Each node must show:
 - USB UP, physical link detected, no host addresses;
 - `SSH_RECONNECT_OK`.
 
-**Send back the one combined report.** The script prints its path and a `cat` command to read it. Reports stay out of Git. VM traffic forwarding is tested later with the first VM.
+The script prints the combined report path and a `cat` command to read it. Reports stay out of Git. VM traffic forwarding is tested later with the first VM.
 
-## 5. Short lecture — after the checkpoint
-
-A NIC can carry Ethernet frames without an IP assigned to the host. The built-in NIC is your host's management connection; the USB NIC will carry Neutron's external VM traffic.
-
-Both cables still use the same LAN and switch. Two NICs give the traffic separate interfaces; they do not create separate physical networks.
-
-Netplan stores the USB settings for future boots. Kolla later connects that NIC to OpenStack's external bridge.
-
-<details>
-<summary>Reference: preview, repeat runs and restoration</summary>
+### Preview, repeat runs and restoration
 
 Without `--apply`, the script shows the candidate without changing node configuration. `--node node2` selects one node. A matching, working configuration skips another Netplan trial.
 
@@ -101,17 +118,4 @@ Local fixture checks passed for configuration preservation, rejection, restorati
 
 </details>
 
-<details>
-<summary>Following step: Cinder storage — identified candidate</summary>
-
-Ubuntu's root volume is on NVMe on every node. Node3's SATA candidate is `/dev/sda`, model `KINGSTON SA400S3`, serial `50026B768317883A`, capacity `240057409536` bytes.
-
-Stable identifier: `/dev/disk/by-id/ata-KINGSTON_SA400S37240G_50026B768317883A`.
-
-The inventory shows no filesystem, mount or child partitions on that disk. Before creating `cinder-volumes`, the storage step verifies its current identity, mounts, swap, filesystem/LVM/RAID ownership, OS backing devices and health evidence with administrator access. The exact target and operation are reviewed first.
-
-The Cinder pool is local to node3; volumes are not replicated across controllers. Keep Kolla's prechecks enabled and test volume access from both computes before deploying application data.
-
-</details>
-
-References: [Netplan configuration](https://netplan.readthedocs.io/en/stable/netplan-yaml/) · [Netplan timed trial and caveats](https://netplan.readthedocs.io/en/stable/netplan-try/) · [Kolla external NICs](https://docs.openstack.org/kolla-ansible/2026.1/reference/networking/neutron.html#network-interfaces) · [Cinder LVM](https://docs.openstack.org/kolla-ansible/2026.1/reference/storage/cinder-guide.html#lvm).
+References: [Netplan configuration](https://netplan.readthedocs.io/en/stable/netplan-yaml/) · [Netplan timed trial and caveats](https://netplan.readthedocs.io/en/stable/netplan-try/) · [Kolla external NICs](https://docs.openstack.org/kolla-ansible/2026.1/reference/networking/neutron.html#network-interfaces).

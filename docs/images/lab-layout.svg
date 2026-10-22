@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="790" viewBox="0 0 1120 790" role="img" aria-labelledby="title description">
   <title id="title">OpenStack from zero: planned lab</title>
-  <desc id="description">R2d2 is installed on VMware with DHCP address 192.168.162.131/24. SSH inspection passed as joe on all three intended Ubuntu 24.04 nodes. The three nodes are controllers, and node2 and node3 are also computes. Built-in NICs carry host management; USB NICs will carry external VM traffic. Cinder LVM is planned on node3's SATA disk. USB identities and node3's SATA candidate are recorded. USB cabling is confirmed on the same untagged mini switch and TP-Link LAN. Permanent USB configuration and privileged storage ownership still need review.</desc>
+  <desc id="description">R2d2 is installed on VMware with DHCP address 192.168.162.131/24. SSH inspection passed as joe on all three intended Ubuntu 24.04 nodes. All three USB NICs now have saved Netplan settings, 1 Gb/s full-duplex links and no host addresses; fresh management SSH passed. All NICs share the same untagged switch and TP-Link LAN. Controller and compute services are planned, as is Cinder LVM on node3's SATA disk. Privileged storage inspection is the current step.</desc>
   <defs>
     <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9" fill="#3a678e"/></marker>
     <style>
@@ -10,7 +10,7 @@
       .blue{fill:#25658b}.green{fill:#18705a}.muted{fill:#536879}
       .card{fill:#fff;stroke:#cbd8e2;stroke-width:2}
       .management{stroke:#3a678e;stroke-width:3;fill:none;marker-end:url(#arrow)}
-      .pending{stroke:#bd8a38;stroke-width:3;stroke-dasharray:7 5;fill:none}
+      .provider{stroke:#bd8a38;stroke-width:3;fill:none}
     </style>
   </defs>
   <rect width="1120" height="790" rx="18" fill="#f5f8fb"/>
@@ -53,9 +53,9 @@
   <text x="779" y="564" class="small green">Planned: SATA disk → Cinder LVM</text>
   <text x="770" y="606" class="small">Ubuntu Server 24.04 LTS</text>
 
-  <path d="M206 631 V679 M560 631 V679 M914 631 V679" class="pending"/>
+  <path d="M206 631 V679 M560 631 V679 M914 631 V679" class="provider"/>
   <rect x="38" y="681" width="1044" height="62" rx="12" fill="#fff5e2" stroke="#d7b77a"/>
-  <text x="560" y="707" class="body" text-anchor="middle">USB NIC on each node → external VM traffic</text>
+  <text x="560" y="707" class="body" text-anchor="middle">USB NICs prepared: 1 Gb/s full duplex • external VM traffic tested later</text>
   <text x="560" y="730" class="small muted" text-anchor="middle">Same untagged 192.168.0.0/24 LAN → mini switch → TP-Link router</text>
-  <text x="40" y="774" class="small muted">Solid blue: SSH verified. Dashed amber: USB path on the same LAN, pending configuration.</text>
+  <text x="40" y="774" class="small muted">Blue: management access verified. Amber: USB links verified on the same LAN, no host IPs.</text>
 </svg>

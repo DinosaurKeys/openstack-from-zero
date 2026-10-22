@@ -38,6 +38,6 @@ The built-in NIC carries administration traffic. The USB NIC will carry external
 
 Ubuntu's LVM on the NVMe and the future Cinder LVM on node3's SATA disk serve different purposes. Cinder's separate volume group will be named `cinder-volumes`.
 
-**Current step:** [1.4 — Prepare the NICs and Cinder storage](04-nics-and-storage.md).
+**Continue:** [Phase 1 progress and current chapter](README.md).
 
 References: [Ubuntu installation](https://canonical-subiquity.readthedocs-hosted.com/en/latest/howto/basic-server-installation.html) · [Ubuntu OpenSSH](https://ubuntu.com/server/docs/how-to/security/openssh-server/).
