@@ -47,4 +47,4 @@ R2d2 is installed: Ubuntu 24.04.5 LTS on VMware, hostname `r2d2`, account `joe`,
 
 The combined SSH inspection passed on all three nodes: Ubuntu 24.04, correct hostnames, management IPs and login as `joe`. Their configured gateway and DNS are `192.168.0.1`; R2d2 uses `192.168.162.2`. The current NIC map and node3 disk candidate are recorded in [Chapter 1.4](phase-01/04-nics-and-storage.md).
 
-Next, confirm USB cabling and the LAN DHCP device/pool, then prepare the provider NICs and Cinder storage.
+The nodes share an untagged mini switch and TP-Link home router. Home DHCP allocates `.2–.150`. The initial cloud-address proposal is API VIP `.151` and external pool `.152–.199`, preserving nodes `.200–.202`. Current execution instructions stay in [Phase 1](phase-01/README.md).

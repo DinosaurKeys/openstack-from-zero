@@ -19,4 +19,4 @@ Build a cloud you understand. Deploy an application. Monitor it.
 
 Each step: **purpose → explain the script → run → review the result → short lecture**.
 
-**Current checkpoint:** Ubuntu, hostnames, management IPs and SSH login passed on all three nodes. Continue with [1.4 — Prepare the NICs and Cinder storage](docs/phase-01/04-nics-and-storage.md). The reviewed device map is there; USB cabling and the LAN DHCP device/pool are the next inputs.
+**Current checkpoint:** Ubuntu, management IPs and SSH login passed on all three nodes. The untagged LAN and DHCP range are confirmed. Continue with [1.4 — Configure the USB NICs](docs/phase-01/04-nics-and-storage.md): the explained script is ready for your run; live application is not yet verified.

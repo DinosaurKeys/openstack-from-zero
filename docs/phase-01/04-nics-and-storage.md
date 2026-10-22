@@ -2,60 +2,116 @@
 
 [Phase 1](README.md) · [Previous: SSH result and lesson](03-access-check.md)
 
-**Current step:** confirm the physical network plan, then configure the USB adapters. Cinder storage follows that network step.
+**Current step:** configure the USB NICs. Cinder storage follows after we review this result.
 
-## A. What the inspection established
+## 1. The confirmed network
 
-The built-in management NIC is `enp0s31f6` on all three nodes. It carries `.200/24`, `.201/24` and `.202/24` respectively. All three have configured gateway and DNS `192.168.0.1`.
+All six Ethernet connections share the ordinary mini switch and TP-Link home router. There is **no VLAN tagging**; the external provider network will use the **flat** type.
 
-| Node | USB NIC | Observed MAC |
+The built-in management NIC is `enp0s31f6` on all nodes, with `.200/24`, `.201/24` and `.202/24`. Their configured gateway and DNS are `192.168.0.1`.
+
+| Node | USB NIC — name stays unchanged | MAC used to identify it |
 |---|---|---|
 | node1 | `enx00e04c557e58` | `00:e0:4c:55:7e:58` |
 | node2 | `enx00e04c2c1678` | `00:e0:4c:2c:16:78` |
 | node3 | `enx00e04c304688` | `00:e0:4c:30:46:88` |
 
-All three USB adapters are detected, administratively **DOWN**, and have no host addresses.
+The inspection found all three USB NICs DOWN without host addresses.
 
-**Short lesson:** an administratively down adapter is disabled. This report does not establish its physical cable/link status. The built-in NIC already provides working SSH access; the USB adapter will provide the external VM connection.
+### Address plan for the later cloud installation
 
-## B. Two network details to confirm
+Your offered `.151–.250` range includes the nodes. Use this smaller initial plan:
 
-1. Are the three USB adapters plugged into the **same switch/LAN** as the built-in management NICs, or a different network?
-2. Which device runs DHCP on `192.168.0.0/24` — router/server brand or software — and what address range does it allocate?
+| Purpose | Address/range | Status |
+|---|---|---|
+| Home DHCP | `192.168.0.2–150` | Confirmed |
+| Shared OpenStack API address | `192.168.0.151` | Proposed |
+| External router gateways and VM floating IPs | `192.168.0.152–199` | Proposed |
+| Node management | `192.168.0.200–202` | Existing — excluded from cloud allocation |
+| `.203–.250` | Outside the initial cloud pool | No assignment made here |
 
-Cabling determines where VM traffic will go. The DHCP range is needed to choose later cloud addresses without conflicting leases. A configured gateway/DNS address does not identify the DHCP service or its pool.
+The API VIP is one shared API address for the controllers. These cloud addresses are planning values; this NIC step does not assign them.
 
-**Next deliverable:** one explained network script using the observed MACs, preserving management access and leaving the USB adapters without host addresses. Persistent settings must be checked against the actual existing network configuration before activation.
+## 2. What the script does
 
-## C. Cinder storage — identified for the following step
+Run the [wrapper](../../scripts/phase1-network.sh) on R2d2. It sends the [node helper](../../scripts/phase1-network-node.py) through SSH and works on one node at a time.
 
-The report shows Ubuntu's root volume on **NVMe** on every node. Node3 also has this SATA candidate:
-
-| Item | Observed value |
+| Action | Effect |
 |---|---|
-| Current Linux path | `/dev/sda` |
-| Model | `KINGSTON SA400S3` |
-| Serial | `50026B768317883A` |
-| Capacity | `240057409536` bytes — approximately 240 GB |
-| Filesystem / mount / child partitions | None shown by `lsblk` |
+| Check node, NIC/MAC and management settings | Refuse an unexpected target or conflicting configuration |
+| Back up existing Netplan files | Private copy under `/var/lib/openstack-from-zero/netplan/` on that node |
+| Add `/etc/netplan/90-openstack-provider.yaml` | USB-only settings: MAC match, DHCP off, IPv6 autoconfiguration/link-local off, no host addresses |
+| Validate, then run `netplan try --timeout 120` | Trial the settings with a timed confirmation |
+| Verify the result | USB UP with physical link; management IP/routes/DNS preserved; a fresh SSH connection works |
+| Save the combined report | `reports/` on R2d2 |
+
+The USB name stays unchanged. Later Kolla inventory selects that actual name on each node. This step creates no bridge or VLAN.
+
+The wrapper uses tools already on R2d2: Bash, Python 3 and OpenSSH. The helper uses the node's Netplan and its YAML library. It installs no packages.
+
+## 3. Run on R2d2
+
+Have node console access available during network changes.
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+bash scripts/phase1-network.sh --user joe --apply
+```
+
+Expect these prompts:
+
+1. SSH may request the node login password.
+2. Sudo may request that node account's password.
+3. **When Netplan asks whether to keep the settings, press Enter while the SSH session is responsive.** If it becomes unresponsive, let the trial expire.
+4. A fresh SSH check may request the login password again. This proves access through a new connection.
+
+The script stops on the first failed node. Completed nodes retain their settings.
+
+## 4. Success check
+
+The final line must say **`RESULT: USB_NETWORK_READY for all`**.
+
+Each node must show:
+
+- management IP, routes and DNS preserved;
+- USB UP, physical link detected, no host addresses;
+- `SSH_RECONNECT_OK`.
+
+**Send back the one combined report.** The script prints its path and a `cat` command to read it. Reports stay out of Git. VM traffic forwarding is tested later with the first VM.
+
+## 5. Short lecture — after the checkpoint
+
+A NIC can carry Ethernet frames without an IP assigned to the host. The built-in NIC is your host's management connection; the USB NIC will carry Neutron's external VM traffic.
+
+Both cables still use the same LAN and switch. Two NICs give the traffic separate interfaces; they do not create separate physical networks.
+
+Netplan stores the USB settings for future boots. Kolla later connects that NIC to OpenStack's external bridge.
+
+<details>
+<summary>Reference: preview, repeat runs and restoration</summary>
+
+Without `--apply`, the script shows the candidate without changing node configuration. `--node node2` selects one node. A matching, working configuration skips another Netplan trial.
+
+If generation fails, the script restores its fragment without activating the network. If the trial or post-check fails, it restores the prior fragment and attempts to restore runtime settings. The backup path is printed.
+
+Netplan documents rollback caveats. If SSH is lost or restoration needs review, inspect the actual state from the node console and use its printed backup path before retrying.
+
+Local fixture checks passed for configuration preservation, rejection, restoration, repeat runs and wrapper behavior. They do not substitute for the real Netplan and hardware checks in your run.
+
+</details>
+
+<details>
+<summary>Following step: Cinder storage — identified candidate</summary>
+
+Ubuntu's root volume is on NVMe on every node. Node3's SATA candidate is `/dev/sda`, model `KINGSTON SA400S3`, serial `50026B768317883A`, capacity `240057409536` bytes.
 
 Stable identifier: `/dev/disk/by-id/ata-KINGSTON_SA400S37240G_50026B768317883A`.
 
-```mermaid
-flowchart TD
-    NV["node3: NVMe OS disk"] --> OS["Observed: Ubuntu root volume"]
-    SATA["node3: separate SATA disk"] --> VG["Planned: cinder-volumes group"]
-    VG --> VOL["Future VM volumes"]
-```
+The inventory shows no filesystem, mount or child partitions on that disk. Before creating `cinder-volumes`, the storage step verifies its current identity, mounts, swap, filesystem/LVM/RAID ownership, OS backing devices and health evidence with administrator access. The exact target and operation are reviewed first.
 
-The inventory identifies the candidate; it does not establish full ownership or disk health. Before provisioning, the storage step will verify the current device, mounts, swap, filesystem/LVM/RAID ownership, OS backing devices and health evidence with administrator access.
+The Cinder pool is local to node3; volumes are not replicated across controllers. Keep Kolla's prechecks enabled and test volume access from both computes before deploying application data.
 
-The exact target and operation are reviewed before creating `cinder-volumes`.
+</details>
 
-**Short lesson:** Ubuntu's LVM holds the operating system. The planned Cinder LVM pool holds VM volumes on the separate SATA disk. Those local volumes are not replicated across controllers.
-
-Kolla documents LVM limitations with multiple controllers. Keep its prechecks enabled and verify volume access from both computes before deploying application data.
-
-**Current action:** answer the two network details in section B. Network configuration comes next, then the Cinder preparation step.
-
-Reference: [Kolla Cinder LVM guide](https://docs.openstack.org/kolla-ansible/2026.1/reference/storage/cinder-guide.html#lvm).
+References: [Netplan configuration](https://netplan.readthedocs.io/en/stable/netplan-yaml/) · [Netplan timed trial and caveats](https://netplan.readthedocs.io/en/stable/netplan-try/) · [Kolla external NICs](https://docs.openstack.org/kolla-ansible/2026.1/reference/networking/neutron.html#network-interfaces) · [Cinder LVM](https://docs.openstack.org/kolla-ansible/2026.1/reference/storage/cinder-guide.html#lvm).
