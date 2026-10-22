@@ -1,55 +1,61 @@
 # 1.4 — Prepare the two NICs and Cinder storage
 
-[Phase 1](README.md) · [Previous: access check](03-access-check.md)
+[Phase 1](README.md) · [Previous: SSH result and lesson](03-access-check.md)
 
-**Purpose:** use the inspection report to configure the intended adapters and prepare the intended storage disk.
+**Current step:** confirm the physical network plan, then configure the USB adapters. Cinder storage follows that network step.
 
-## A. Review the two NICs
+## A. What the inspection established
 
-| Adapter | Intended job | Host address |
+The built-in management NIC is `enp0s31f6` on all three nodes. It carries `.200/24`, `.201/24` and `.202/24` respectively. All three have configured gateway and DNS `192.168.0.1`.
+
+| Node | USB NIC | Observed MAC |
 |---|---|---|
-| Built-in NIC | Management and internal cloud communication | Node's .200, .201 or .202 address |
-| USB NIC | Neutron's external VM connection | No host IPv4/IPv6 address |
+| node1 | `enx00e04c557e58` | `00:e0:4c:55:7e:58` |
+| node2 | `enx00e04c2c1678` | `00:e0:4c:2c:16:78` |
+| node3 | `enx00e04c304688` | `00:e0:4c:30:46:88` |
 
-Review the actual interface names, MACs and links from all three nodes. The report identifies USB-backed interfaces from Linux's device paths. It does not assume old adapter assignments or rename them.
+All three USB adapters are detected, administratively **DOWN**, and have no host addresses.
 
-Before the persistent NIC configuration, establish:
+**Short lesson:** an administratively down adapter is disabled. This report does not establish its physical cable/link status. The built-in NIC already provides working SSH access; the USB adapter will provide the external VM connection.
 
-- Review the observed R2d2 routes; VMware and its current NAT address are already recorded. Exact VMware product/settings are only needed if a VMware-specific change is proposed.
-- Which router/server supplies the **node LAN's** DHCP service, plus its range, gateway and DNS.
-- Where the USB NICs are cabled and which external network they will serve.
+## B. Two network details to confirm
 
-**Checkpoint:** after that review, the next update supplies the exact network script and explains its effects before you run it. Final configuration must preserve SSH access and leave the provider NIC without a host address.
+1. Are the three USB adapters plugged into the **same switch/LAN** as the built-in management NICs, or a different network?
+2. Which device runs DHCP on `192.168.0.0/24` — router/server brand or software — and what address range does it allocate?
 
-## B. Review node3's Cinder disk
+Cabling determines where VM traffic will go. The DHCP range is needed to choose later cloud addresses without conflicting leases. A configured gateway/DNS address does not identify the DHCP service or its pool.
+
+**Next deliverable:** one explained network script using the observed MACs, preserving management access and leaving the USB adapters without host addresses. Persistent settings must be checked against the actual existing network configuration before activation.
+
+## C. Cinder storage — identified for the following step
+
+The report shows Ubuntu's root volume on **NVMe** on every node. Node3 also has this SATA candidate:
+
+| Item | Observed value |
+|---|---|
+| Current Linux path | `/dev/sda` |
+| Model | `KINGSTON SA400S3` |
+| Serial | `50026B768317883A` |
+| Capacity | `240057409536` bytes — approximately 240 GB |
+| Filesystem / mount / child partitions | None shown by `lsblk` |
+
+Stable identifier: `/dev/disk/by-id/ata-KINGSTON_SA400S37240G_50026B768317883A`.
 
 ```mermaid
 flowchart TD
-    NV["node3: NVMe OS disk"] --> OS["Ubuntu files and OS volumes"]
-    SATA["node3: dedicated SATA disk"] --> VG["Planned: cinder-volumes group"]
+    NV["node3: NVMe OS disk"] --> OS["Observed: Ubuntu root volume"]
+    SATA["node3: separate SATA disk"] --> VG["Planned: cinder-volumes group"]
     VG --> VOL["Future VM volumes"]
 ```
 
-Review the report's disk model, serial, capacity, stable `/dev/disk/by-id/` path and current partition/mount information. We must identify the current disk before prescribing an LVM operation.
+The inventory identifies the candidate; it does not establish full ownership or disk health. Before provisioning, the storage step will verify the current device, mounts, swap, filesystem/LVM/RAID ownership, OS backing devices and health evidence with administrator access.
 
-A rootless inventory may not show every storage signature or owner. The storage preparation will also check current mounts, swap, existing filesystem/LVM/RAID ownership and the OS backing devices with appropriate administrator access.
+The exact target and operation are reviewed before creating `cinder-volumes`.
 
-**Checkpoint:** the exact disk operation and target are reviewed before creation of `cinder-volumes`. No erase or LVM creation command is supplied at this inspection step.
+**Short lesson:** Ubuntu's LVM holds the operating system. The planned Cinder LVM pool holds VM volumes on the separate SATA disk. Those local volumes are not replicated across controllers.
 
-## Success check for the completed host preparation
+Kolla documents LVM limitations with multiple controllers. Keep its prechecks enabled and verify volume access from both computes before deploying application data.
 
-Management access still works after permanent NIC configuration. The USB adapters match the intended identities and have no host addresses. Node3's verified SATA disk backs `cinder-volumes`, separately from Ubuntu.
-
-Those are future execution checks. The access report alone does not mark them complete.
-
-## Short lecture — after the completed preparation
-
-**LVM** manages disk capacity as a pool. **Cinder** asks that pool to create VM volumes.
-
-The planned pool is local to node3. A volume on it is not automatically copied to the other controllers.
-
-Kolla's Cinder documentation notes limitations with LVM in a multi-controller setup. We keep its prechecks enabled and require a working volume test from both computes before placing application data on this backend.
-
-**Next:** finish Phase 1's checks, then prepare the management environment in Phase 2.
+**Current action:** answer the two network details in section B. Network configuration comes next, then the Cinder preparation step.
 
 Reference: [Kolla Cinder LVM guide](https://docs.openstack.org/kolla-ansible/2026.1/reference/storage/cinder-guide.html#lvm).

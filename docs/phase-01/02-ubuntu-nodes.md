@@ -4,7 +4,7 @@
 
 **Purpose:** give each node a clean operating system and a known management connection.
 
-If Ubuntu is already installed, use [Chapter 1.3's inspection](03-access-check.md) to verify its version, hostname and management address first. A reachable IP alone does not establish those facts.
+**Checkpoint complete:** the reviewed SSH inspection confirms Ubuntu 24.04, the intended hostnames and management addresses on all three nodes. Their Ubuntu root volumes are on NVMe. The steps below are installation reference.
 
 ## Steps
 
@@ -38,6 +38,6 @@ The built-in NIC carries administration traffic. The USB NIC will carry external
 
 Ubuntu's LVM on the NVMe and the future Cinder LVM on node3's SATA disk serve different purposes. Cinder's separate volume group will be named `cinder-volumes`.
 
-**Next:** [1.3 — Check access from R2d2](03-access-check.md).
+**Current step:** [1.4 — Prepare the NICs and Cinder storage](04-nics-and-storage.md).
 
 References: [Ubuntu installation](https://canonical-subiquity.readthedocs-hosted.com/en/latest/howto/basic-server-installation.html) · [Ubuntu OpenSSH](https://ubuntu.com/server/docs/how-to/security/openssh-server/).

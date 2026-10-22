@@ -19,4 +19,4 @@ Build a cloud you understand. Deploy an application. Monitor it.
 
 Each step: **purpose → explain the script → run → review the result → short lecture**.
 
-**Current checkpoint:** R2d2 installation and ping replies from all three node addresses are confirmed. Continue with [1.3 — Check access from R2d2](docs/phase-01/03-access-check.md) to verify SSH and node identities. Node installation, NIC and storage checks remain open until their evidence is reviewed.
+**Current checkpoint:** Ubuntu, hostnames, management IPs and SSH login passed on all three nodes. Continue with [1.4 — Prepare the NICs and Cinder storage](docs/phase-01/04-nics-and-storage.md). The reviewed device map is there; USB cabling and the LAN DHCP device/pool are the next inputs.

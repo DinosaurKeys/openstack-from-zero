@@ -1,12 +1,29 @@
 # 1.3 — Check access from R2d2
 
-[Phase 1](README.md) · [R2d2 result and lesson](01-r2d2.md)
+[Phase 1](README.md) · [Next: NICs and storage](04-nics-and-storage.md)
 
-**Purpose:** verify SSH login and identify the actual nodes before writing NIC or disk configuration.
+**Status: complete.** Your report ends with **`NODE_IDENTITY_CHECKS_PASSED`**.
 
-**Already confirmed:** R2d2 is installed, and all three node addresses answered ping.
+| Node | SSH account | Ubuntu | Verified management address |
+|---|---|---|---|
+| node1 | `joe` | 24.04 | `192.168.0.200/24` |
+| node2 | `joe` | 24.04 | `192.168.0.201/24` |
+| node3 | `joe` | 24.04 | `192.168.0.202/24` |
 
-Run the following **on R2d2**, as `joe`.
+All three use `enp0s31f6` for management, with configured gateway and DNS `192.168.0.1`. Their reports and R2d2's report show `NTPSynchronized=yes`.
+
+NIC identities and storage observations are reviewed in [Chapter 1.4](04-nics-and-storage.md). The full private report stays outside Git.
+
+## Short lecture — what your result means
+
+Ping showed that the addresses respond. SSH has now authenticated your account and read the actual operating systems, hostnames and addresses. That establishes which machines R2d2 is administering.
+
+The three nodes expose a CPU virtualization flag and `/dev/kvm`. That is useful evidence for the planned computes; running a VM is a later test. R2d2 is the administration VM and does not need to run the cloud's VMs.
+
+**Next:** [1.4 — Prepare the two NICs and Cinder storage](04-nics-and-storage.md).
+
+<details>
+<summary>Completed inspection — command reference</summary>
 
 ## A. Download the course once
 
@@ -62,14 +79,8 @@ That means R2d2 passed its checks and all three node logins matched Ubuntu 24.04
 | `FAIL` | That check needs review |
 | `REVIEW` | A device/network decision or preparation step remains |
 
-The script prints the report path and a `cat` command to read it. **Send back that one combined report.** Reports stay out of Git.
+The script prints the report path and a `cat` command to read it. Reports stay out of Git.
 
 Sudo, disk health, permission to erase a disk and full OpenStack readiness are separate checks.
 
-## Short lecture — after the checkpoint
-
-**Ping** establishes ICMP reachability. **TCP port 22** tests an SSH listener. **SSH login** authenticates your account and lets us read the node's identity.
-
-The script combines the latter checks, so you do not need a separate preliminary run.
-
-**Next:** [1.4 — Prepare the two NICs and Cinder storage](04-nics-and-storage.md), after the report is reviewed.
+</details>

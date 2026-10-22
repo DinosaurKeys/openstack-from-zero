@@ -45,4 +45,6 @@ Each phase has its own guide. Work through one chapter at a time.
 
 R2d2 is installed: Ubuntu 24.04.5 LTS on VMware, hostname `r2d2`, account `joe`, interface `ens33`. Its observed DHCP address is `192.168.162.131/24`. All three node addresses replied to its pings.
 
-Next, the combined SSH inspection verifies the nodes' actual Ubuntu versions, names, addresses, NICs and disks. The LAN DHCP server, gateway/DNS and exact VMware product remain unconfirmed. No node completion status is inferred from ping.
+The combined SSH inspection passed on all three nodes: Ubuntu 24.04, correct hostnames, management IPs and login as `joe`. Their configured gateway and DNS are `192.168.0.1`; R2d2 uses `192.168.162.2`. The current NIC map and node3 disk candidate are recorded in [Chapter 1.4](phase-01/04-nics-and-storage.md).
+
+Next, confirm USB cabling and the LAN DHCP device/pool, then prepare the provider NICs and Cinder storage.

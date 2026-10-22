@@ -3,9 +3,11 @@
 Build this fresh course in DinosaurKeys/openstack-from-zero. Read the relevant phase before editing.
 
 ## Confirmed design
-- R2d2 installation confirmed from Joe's 2026-10-22 terminal output: hostname r2d2, account joe, Ubuntu 24.04.5 LTS x86-64, VMware VM; ens33 has DHCP address 192.168.162.131/24. NAT mode was stated by Joe. Exact VMware product and gateway/DNS remain unknown.
-- ICMP replies received at .200, .201 and .202 from R2d2. This confirms address reachability, not node OS/identity, SSH, sudo or storage readiness. Next: one combined SSH inspection using the existing Phase 1 script. Do not repeat the completed R2d2 installation or pings.
-- Intended nodes: Ubuntu Server 24.04 LTS; node1 192.168.0.200, node2 192.168.0.201, node3 192.168.0.202. Actual OS and hostnames await SSH inspection in this course.
+- R2d2: r2d2/joe, Ubuntu 24.04.5 LTS x86-64 on VMware; ens33 has observed DHCP address 192.168.162.131/24. Its configured gateway and DNS are 192.168.162.2. NAT mode stated by Joe; exact VMware product remains unknown and does not block the working outbound SSH path.
+- Joe's full inspection report starting 2026-10-22T20:30:06Z ends NODE_IDENTITY_CHECKS_PASSED. All three authenticated as joe and matched Ubuntu 24.04, hostnames node1/node2/node3 and .200/.201/.202 with /24 prefixes. Management is enp0s31f6 on all three; configured default gateway and DNS are 192.168.0.1. R2d2 and all nodes report NTPSynchronized=yes; no accuracy bound was measured.
+- USB NICs from that report: node1 enx00e04c557e58 / 00:e0:4c:55:7e:58; node2 enx00e04c2c1678 / 00:e0:4c:2c:16:78; node3 enx00e04c304688 / 00:e0:4c:30:46:88. All are administratively DOWN, without addresses. Carrier was unavailable; do not infer unplugged cables or link speed.
+- Ubuntu root volumes are backed by NVMe on all nodes. Node3's SATA candidate is /dev/disk/by-id/ata-KINGSTON_SA400S37240G_50026B768317883A, serial 50026B768317883A, 240057409536 bytes, currently /dev/sda. lsblk shows no filesystem, child partitions or mount on it. Rootless inventory does not establish complete disk ownership, erasure safety or SMART health.
+- Current step: Chapter 1.4 network plan. Ask whether USB NICs connect to the management switch/LAN, plus the LAN DHCP device and pool. Do not ask again for observed IPs, gateway, DNS, OS, NIC identities or disk serial. Sudo, permanent provider configuration, privileged disk ownership/health and Cinder VG creation remain unverified. No repeat of the completed installation/access inspection is needed.
 - Controllers: all three. Computes: node2 and node3.
 - Built-in NIC: management. USB NIC: external VM traffic.
 - Cinder LVM is the intended storage approach; review actual node3 disk identity before provisioning.
