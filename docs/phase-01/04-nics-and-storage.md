@@ -15,7 +15,7 @@ Review the actual interface names, MACs and links from all three nodes. The repo
 
 Before the persistent NIC configuration, establish:
 
-- Which hypervisor supplies R2d2's NAT network.
+- Review the observed R2d2 routes; VMware and its current NAT address are already recorded. Exact VMware product/settings are only needed if a VMware-specific change is proposed.
 - Which router/server supplies the **node LAN's** DHCP service, plus its range, gateway and DNS.
 - Where the USB NICs are cabled and which external network they will serve.
 

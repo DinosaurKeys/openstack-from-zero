@@ -3,8 +3,9 @@
 Build this fresh course in DinosaurKeys/openstack-from-zero. Read the relevant phase before editing.
 
 ## Confirmed design
-- Management server: R2d2, being reinstalled, using a NAT address. Hypervisor, final OS and address are not yet observed.
-- Nodes: Ubuntu Server 24.04 LTS; node1 192.168.0.200, node2 192.168.0.201, node3 192.168.0.202.
+- R2d2 installation confirmed from Joe's 2026-10-22 terminal output: hostname r2d2, account joe, Ubuntu 24.04.5 LTS x86-64, VMware VM; ens33 has DHCP address 192.168.162.131/24. NAT mode was stated by Joe. Exact VMware product and gateway/DNS remain unknown.
+- ICMP replies received at .200, .201 and .202 from R2d2. This confirms address reachability, not node OS/identity, SSH, sudo or storage readiness. Next: one combined SSH inspection using the existing Phase 1 script. Do not repeat the completed R2d2 installation or pings.
+- Intended nodes: Ubuntu Server 24.04 LTS; node1 192.168.0.200, node2 192.168.0.201, node3 192.168.0.202. Actual OS and hostnames await SSH inspection in this course.
 - Controllers: all three. Computes: node2 and node3.
 - Built-in NIC: management. USB NIC: external VM traffic.
 - Cinder LVM is the intended storage approach; review actual node3 disk identity before provisioning.

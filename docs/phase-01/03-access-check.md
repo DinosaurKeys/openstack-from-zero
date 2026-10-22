@@ -1,14 +1,18 @@
 # 1.3 — Check access from R2d2
 
-[Phase 1](README.md) · [Previous: Ubuntu nodes](02-ubuntu-nodes.md)
+[Phase 1](README.md) · [R2d2 result and lesson](01-r2d2.md)
 
-**Purpose:** test the real NAT-to-node path and collect facts before writing network or disk configuration.
+**Purpose:** verify SSH login and identify the actual nodes before writing NIC or disk configuration.
 
-Run these commands **on R2d2**, using its console.
+**Already confirmed:** R2d2 is installed, and all three node addresses answered ping.
+
+Run the following **on R2d2**, as `joe`.
 
 ## A. Download the course once
 
-Git downloads and updates this repository. These package commands install Git and the SSH client as Ubuntu system packages on R2d2, together with their required dependencies.
+Git downloads and updates this repository; the SSH client connects to the nodes. Both are Ubuntu system packages on R2d2, installed with their required dependencies.
+
+The commands below refresh the package list, install those two tools, download the course, then enter its folder.
 
 ```bash
 sudo apt update
@@ -17,63 +21,55 @@ git clone https://github.com/DinosaurKeys/openstack-from-zero.git "$HOME/opensta
 cd "$HOME/openstack-from-zero"
 ```
 
-If you already cloned this repository at that path, enter it and run `git pull --ff-only` instead of cloning it again. The course directory stays at `~/openstack-from-zero`.
+If this checkout already exists, use the following instead of cloning again:
 
-## B. Check the management connection
+```bash
+cd "$HOME/openstack-from-zero"
+git pull --ff-only
+```
 
-The [inspection script](../../scripts/phase1-check.py) uses Python's standard library; it needs no pip packages or virtual environment.
+## B. Run one combined inspection
+
+The [script](../../scripts/phase1-check.py) uses Python's standard library. It needs no pip packages or virtual environment.
 
 | What it does | Where |
 |---|---|
-| Read hostname, Ubuntu version, addresses, routes and interface/disk facts | R2d2 |
-| Try a TCP connection to port 22 on .200, .201 and .202 | From R2d2 |
-| Save one combined private report | `reports/` inside this checkout |
+| Read Ubuntu, hostname, addresses and network/storage facts | R2d2 |
+| Check port 22, then log in once to each node | R2d2 → .200, .201 and .202 |
+| Verify each node's Ubuntu version, hostname and intended /24 address | Through SSH |
+| Record NIC names/MACs, routes, DNS, disks and stable disk paths | Through SSH |
+| Write one combined private report | `reports/` inside this checkout |
 
-It makes no node configuration changes. It does not install packages, change NICs or create LVM volumes.
-
-```bash
-python3 scripts/phase1-check.py
-```
-
-**Success check:** `LOCAL_AND_TCP_CHECKS_PASSED`. Each node accepted a TCP connection to its SSH port. This has not tested node login yet.
-
-If a connection fails, keep its result for review. Do not change NAT settings based only on an assumption.
-
-## C. Read the nodes through SSH
-
-This is the same inspection script with node login enabled. Replace `joe` only if your node account has a different name.
+It reads the nodes without changing their configuration. SSH may save a host key in R2d2's normal known-hosts file when you accept it.
 
 ```bash
 python3 scripts/phase1-check.py --ssh --user joe
 ```
 
-It connects once to each node. Password login is supported. On a first connection, compare the displayed SSH fingerprint with the node's console before accepting it. To display that fingerprint at the node console, use `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`.
+Here, `--ssh` enables node inspection and `--user joe` selects the node login account. Replace `joe` only if the nodes use a different account. Password login is supported.
 
-The script uses normal SSH host-key checking. A changed-key warning is a checkpoint to review, rather than something the script removes.
+On a first connection, verify the displayed host fingerprint against the node console before accepting it. For an ED25519 host key, display it at that node's console with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. A changed-key warning remains visible for review.
 
-**Success check:** `NODE_IDENTITY_CHECKS_PASSED`. It means SSH login worked and all three nodes matched Ubuntu 24.04, their intended names and management addresses with a /24 prefix.
+## Success check
 
-## Read the result
+The final marker is **`NODE_IDENTITY_CHECKS_PASSED`**.
+
+That means R2d2 passed its checks and all three node logins matched Ubuntu 24.04, their intended names and management addresses with a /24 prefix.
 
 | Output | Meaning |
 |---|---|
 | `PASS` | The named check passed |
-| `FAIL` | That check did not pass; review it before continuing |
-| `REVIEW` | Evidence was collected; a decision or configuration step remains |
+| `FAIL` | That check needs review |
+| `REVIEW` | A device/network decision or preparation step remains |
 
-The script prints a short summary, the exact report path and a command to read it. The `cat` command prints the report's contents. The report includes observed NIC names/MACs, disk models/serials, stable disk paths, routes, DNS and time-sync information.
+The script prints the report path and a `cat` command to read it. **Send back that one combined report.** Reports stay out of Git.
 
-**Send back that single report for review.** It stays out of Git.
-
-The script does not test sudo, certify disk health or prove that a disk is safe to erase. Its success is an access/identity checkpoint, not full OpenStack readiness.
+Sudo, disk health, permission to erase a disk and full OpenStack readiness are separate checks.
 
 ## Short lecture — after the checkpoint
 
-There are two different tests:
+**Ping** establishes ICMP reachability. **TCP port 22** tests an SSH listener. **SSH login** authenticates your account and lets us read the node's identity.
 
-1. **TCP port 22:** can R2d2 reach an SSH listener?
-2. **SSH inspection:** can your account log in, and is this the intended node?
+The script combines the latter checks, so you do not need a separate preliminary run.
 
-This is why a reachable port alone does not prove that a node is ready.
-
-**Next:** [1.4 — Prepare the two NICs and Cinder storage](04-nics-and-storage.md).
+**Next:** [1.4 — Prepare the two NICs and Cinder storage](04-nics-and-storage.md), after the report is reviewed.

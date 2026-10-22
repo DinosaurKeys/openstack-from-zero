@@ -4,6 +4,8 @@
 
 **Purpose:** give each node a clean operating system and a known management connection.
 
+If Ubuntu is already installed, use [Chapter 1.3's inspection](03-access-check.md) to verify its version, hostname and management address first. A reachable IP alone does not establish those facts.
+
 ## Steps
 
 1. Boot each node from the **Ubuntu Server 24.04 LTS amd64** installer.

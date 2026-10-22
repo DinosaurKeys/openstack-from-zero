@@ -10,7 +10,7 @@ Build and understand your OpenStack lab, deploy an application, and monitor it. 
 
 | Machine | Address | Planned job |
 |---|---|---|
-| R2d2 | NAT address — to observe | Management: Git, Ansible, Kolla-Ansible and later Terraform |
+| R2d2 | 192.168.162.131/24 — DHCP on the NAT network | Management: Git, Ansible, Kolla-Ansible and later Terraform |
 | node1 | 192.168.0.200 | Controller |
 | node2 | 192.168.0.201 | Controller and compute |
 | node3 | 192.168.0.202 | Controller, compute and planned Cinder LVM storage |
@@ -43,6 +43,6 @@ Each phase has its own guide. Work through one chapter at a time.
 
 ## Starting point
 
-You are rebuilding from zero and reinstalling R2d2. This course carries no completed checkpoints from the previous repository.
+R2d2 is installed: Ubuntu 24.04.5 LTS on VMware, hostname `r2d2`, account `joe`, interface `ens33`. Its observed DHCP address is `192.168.162.131/24`. All three node addresses replied to its pings.
 
-The new NAT address, hypervisor, LAN DHCP server, gateway/DNS, current NIC identities and current disk state still need observation. Phase 1 gathers that information before exact network or storage changes are prescribed.
+Next, the combined SSH inspection verifies the nodes' actual Ubuntu versions, names, addresses, NICs and disks. The LAN DHCP server, gateway/DNS and exact VMware product remain unconfirmed. No node completion status is inferred from ping.

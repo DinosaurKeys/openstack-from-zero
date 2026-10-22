@@ -19,4 +19,4 @@ Build a cloud you understand. Deploy an application. Monitor it.
 
 Each step: **purpose → explain the script → run → review the result → short lecture**.
 
-This is a fresh course. R2d2 replaces Hermes as the management server. Phase 1 is written; execution on the new installations has not been verified.
+**Current checkpoint:** R2d2 installation and ping replies from all three node addresses are confirmed. Continue with [1.3 — Check access from R2d2](docs/phase-01/03-access-check.md) to verify SSH and node identities. Node installation, NIC and storage checks remain open until their evidence is reviewed.
