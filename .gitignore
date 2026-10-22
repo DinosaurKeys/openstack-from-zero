@@ -1,0 +1,31 @@
+# Private lab evidence and configuration
+reports/
+private/
+build/
+*.log
+*.retry
+.env
+.env.*
+!.env.example
+*openrc*
+clouds.yaml
+passwords.yml
+
+# SSH and Terraform secrets/state
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+
+# Local Python/editor files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
