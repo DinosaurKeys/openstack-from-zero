@@ -2,6 +2,8 @@
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -71,6 +73,7 @@ class InstallTests(unittest.TestCase):
             self.assertTrue((step.ENV/'installed-python-packages.txt').is_file())
             self.assertTrue((step.ENV/'installed-ansible-collections.json').is_file())
             self.assertIn('ANSIBLE_COLLECTIONS_PATH=',(step.ENV/'activate-lab.sh').read_text())
+            self.assertIn('export LC_ALL=C.UTF-8 LANG=C.UTF-8', (step.ENV/'activate-lab.sh').read_text())
             for args,_ in runner.calls:
                 self.assertNotIn('ssh',args); self.assertNotIn('bootstrap-servers',args); self.assertNotIn('deploy',args)
             # Rerun preserves unrelated files and reuses only our marked environment.
@@ -85,6 +88,18 @@ class InstallTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError): step.install(runner,lines.append)
                 self.assertNotIn('RESULT: R2D2_TOOLS_READY',lines)
                 self.assertTrue(step.ENV.exists())
+
+    def test_ansible_child_receives_real_utf8_locale_even_from_ascii_terminal(self):
+        with patch.dict(os.environ, {'LC_ALL': 'C', 'LANG': 'C', 'PYTHONUTF8': '0'}):
+            env = step.tool_environment()
+        self.assertEqual(env['LC_ALL'], 'C.UTF-8')
+        self.assertEqual(env['LANG'], 'C.UTF-8')
+        # Disable Python's coercion/UTF-8 mode so it cannot mask an ASCII locale.
+        env.update(PYTHONUTF8='0', PYTHONCOERCECLOCALE='0')
+        result = subprocess.run([sys.executable, '-c',
+            'import locale; print(locale.getlocale()[1])'],
+            env=env, text=True, capture_output=True, check=True)
+        self.assertEqual(result.stdout.strip().lower().replace('-', ''), 'utf8')
 
     def test_wrong_versions_source_or_environment_are_rejected(self):
         observed={'kolla':'23.0.0','ansible':'2.21.5','commit':step.COMMIT,'prefix':str(step.ENV)}

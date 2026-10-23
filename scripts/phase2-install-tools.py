@@ -49,6 +49,19 @@ def guard():
     check_paths(ENV)
 
 
+def tool_environment():
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(('ANSIBLE_', 'PIP_', 'PYTHON', 'VIRTUAL_ENV'))}
+    # Ansible requires a UTF-8 locale; plain C is ASCII.
+    # These variables affect this process's children, not Ubuntu's saved locale.
+    env.update(LC_ALL='C.UTF-8', LANG='C.UTF-8',
+               PATH=str(ENV / 'bin') + ':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+               ANSIBLE_CONFIG='/dev/null', ANSIBLE_HOME=str(ENV / 'ansible-home'),
+               ANSIBLE_COLLECTIONS_PATH=str(ENV / 'collections'),
+               PYTHONDONTWRITEBYTECODE='1')
+    return env
+
+
 class Runner:
     def __init__(self, log, env):
         self.log, self.env = log, env
@@ -123,6 +136,7 @@ print(json.dumps({'kolla':k.version,'ansible':m.version('ansible-core'),'prefix'
     (ENV / 'installed-ansible-collections.json').write_text(json.dumps(collections, indent=2) + '\n')
     helper = ('# Source this file in Bash; it activates the lab tools and collection path.\n'
               'source /home/joe/venvs/kolla/bin/activate\n'
+              'export LC_ALL=C.UTF-8 LANG=C.UTF-8\n'
               'export ANSIBLE_COLLECTIONS_PATH=/home/joe/venvs/kolla/collections\n'
               'export ANSIBLE_HOME=/home/joe/venvs/kolla/ansible-home\n'
               'export ANSIBLE_CONFIG=/dev/null\n')
@@ -162,10 +176,7 @@ def main(argv=None):
             log('Phase 2 — Chapter C: management tools on R2d2 only — APPLY + VERIFY')
             log('Sudo/APT output stays on the terminal; command/status and tool outputs are recorded.')
             # Avoid unrelated Ansible config/plugins and inherited pip/venv selection.
-            env = {k: v for k, v in os.environ.items() if not k.startswith(('ANSIBLE_', 'PIP_', 'PYTHON', 'VIRTUAL_ENV'))}
-            env.update(LC_ALL='C', PATH=str(ENV / 'bin') + ':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-                       ANSIBLE_CONFIG='/dev/null', ANSIBLE_HOME=str(ENV / 'ansible-home'),
-                       ANSIBLE_COLLECTIONS_PATH=str(ENV / 'collections'), PYTHONDONTWRITEBYTECODE='1')
+            env = tool_environment()
             try:
                 install(Runner(log, env), log)
                 status = 0

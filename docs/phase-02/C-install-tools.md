@@ -50,6 +50,8 @@ No SSH connection, node package installation, Docker setup or deployment is part
 - **APT `Do you want to continue? [Y/n]`:** review the packages, then enter **Y** to install. If everything is already present, APT may not ask.
 - **SSH-key passphrase and node passwords:** this step does not use SSH and will not request them.
 
+The script uses the UTF-8 locale `C.UTF-8` for its commands, as required by Ansible. This sets process variables; it does not edit Ubuntu's saved language or locale configuration.
+
 Internet access is needed for Ubuntu, Python package, Git and Ansible Galaxy downloads. Download output may appear after a command finishes; let that command complete.
 
 ### Download and run
@@ -74,7 +76,9 @@ After the installation succeeds, this single command activates the tools **in th
 source /home/joe/venvs/kolla/activate-lab.sh
 ```
 
-The helper activates the Python environment, selects its collection folder and Ansible working folder, and uses an empty Ansible configuration (`/dev/null`) so an unrelated existing `ansible.cfg` is not picked up. Later inventory commands will supply their settings explicitly. A new terminal needs this activation again. The installation script uses absolute tool paths and does not need prior activation.
+The helper is created at the final successful installation step. Wait for `R2D2_TOOLS_READY` before using it. The standard Python activation file is under `bin/activate`; the `activate-lab.sh` command above also selects our lab settings.
+
+The helper activates the Python environment, selects a UTF-8 locale, its collection folder and Ansible working folder, and uses an empty Ansible configuration (`/dev/null`) so an unrelated existing `ansible.cfg` is not picked up. Later inventory commands will supply their settings explicitly. A new terminal needs this activation again. The installation script uses absolute tool paths and does not need prior activation.
 
 To leave the tools in that terminal:
 
@@ -83,7 +87,7 @@ deactivate
 unset ANSIBLE_COLLECTIONS_PATH ANSIBLE_HOME ANSIBLE_CONFIG
 ```
 
-These commands change terminal variables; they do not uninstall anything.
+These commands change terminal variables; they do not uninstall anything. The helper's UTF-8 locale variables remain in that terminal until it is closed.
 
 ## 4. Finish check
 
