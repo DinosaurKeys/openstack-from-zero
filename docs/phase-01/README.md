@@ -20,9 +20,9 @@ Each chapter includes its purpose, script link, commands to run, expected result
 | [1.3c — Resolve node names on R2d2](03c-r2d2-hosts.md) | Complete — all three node names resolve correctly | [Explain and run hosts script](03c-r2d2-hosts.md) |
 | [1.3d — Install Chrony on R2d2](03d-r2d2-chrony.md) | Complete — active, enabled and initially synchronized | [Explain and run Chrony script](03d-r2d2-chrony.md) |
 | [1.4 — Prepare the USB NICs](04-nics-and-storage.md) | Complete — all three links and fresh SSH passed | [Run NIC script](04-nics-and-storage.md#3-run-on-r2d2) |
-| [1.5 — Prepare Cinder storage](05-cinder-storage.md) | Pending — return after reviewing keys, time and names | [Run storage inspection](05-cinder-storage.md#3-run-on-r2d2) |
+| [1.5 — Prepare Cinder storage](05-cinder-storage.md) | **Current — read-only inspection authorized; report pending** | [Run storage inspection](05-cinder-storage.md#3-run-on-r2d2) |
 
-Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint remains complete. The SSH/time/name inspection is also reviewed. SSH-key setup now ends with **`SSH_KEYS_READY for all`**. Its reviewed result and short lesson remain available. **Node-name setup is also complete:** [1.3c — reviewed result and lesson](03c-r2d2-hosts.md#5-reviewed-result). **Chrony on R2d2 is also complete:** [1.3d — reviewed result and lesson](03d-r2d2-chrony.md#6-reviewed-result). The next step awaits agreement.
+Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint remains complete. The SSH/time/name inspection is also reviewed. SSH-key setup now ends with **`SSH_KEYS_READY for all`**. Its reviewed result and short lesson remain available. **Node-name setup is also complete:** [1.3c — reviewed result and lesson](03c-r2d2-hosts.md#5-reviewed-result). **Chrony on R2d2 is also complete:** [1.3d — reviewed result and lesson](03d-r2d2-chrony.md#6-reviewed-result). **Current step: [1.5 — read-only Cinder disk inspection](05-cinder-storage.md).**
 
 ## Phase 1 finish check
 
@@ -38,4 +38,4 @@ Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint r
 - [x] Chrony is installed, enabled and synchronized on R2d2.
 - [ ] The reviewed node3 SATA disk backs the Cinder volume group, separately from Ubuntu.
 
-**Latest completed checkpoint:** [1.3d — Chrony result and lesson](03d-r2d2-chrony.md#6-reviewed-result). The next step will be agreed before proceeding.
+**Latest completed checkpoint:** [1.3d — Chrony result and lesson](03d-r2d2-chrony.md#6-reviewed-result). **Next authorized step:** [1.5 — inspect node3's SATA disk](05-cinder-storage.md#3-run-on-r2d2); return the report before any disk preparation.

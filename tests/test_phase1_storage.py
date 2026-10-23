@@ -82,13 +82,15 @@ class StorageEvidenceTests(unittest.TestCase):
 FAKE_SSH = '''#!/usr/bin/env python3
 import os, pathlib, sys
 pathlib.Path(os.environ['STORAGE_FIXTURE_CALLS']).write_text(sys.argv[-2]+'\\n'+sys.argv[-1])
+import json
+pathlib.Path(os.environ['STORAGE_FIXTURE_ARGV']).write_text(json.dumps(sys.argv[1:]))
 print('fixture storage evidence')
 sys.exit(int(os.environ.get('STORAGE_FIXTURE_STATUS', '0')))
 '''
 
 
 class StorageWrapperTests(unittest.TestCase):
-    def exercise(self, root, args=(), status=0):
+    def exercise(self, root, args=(), status=0, identity=None):
         root = Path(root)
         (root / 'scripts').mkdir()
         for filename in ('phase1-storage-check.sh', 'phase1-storage-node.py'):
@@ -98,7 +100,14 @@ class StorageWrapperTests(unittest.TestCase):
         (bindir / 'ssh').write_text(FAKE_SSH)
         (bindir / 'ssh').chmod(0o700)
         call_file = root / 'ssh-calls.txt'
+        home = root / 'home'
+        (home / '.ssh').mkdir(parents=True)
+        if identity == 'regular':
+            (home / '.ssh/openstack-from-zero').write_text('fixture identity; not a real key')
+        elif identity == 'symlink':
+            (home / '.ssh/openstack-from-zero').symlink_to(root / 'missing-key')
         env = {**os.environ, 'PATH': str(bindir)+os.pathsep+os.environ['PATH'],
+               'HOME': str(home), 'STORAGE_FIXTURE_ARGV': str(root / 'ssh-argv.json'),
                'STORAGE_FIXTURE_CALLS': str(call_file), 'STORAGE_FIXTURE_STATUS': str(status)}
         master, slave = pty.openpty()
         try:
@@ -131,6 +140,22 @@ class StorageWrapperTests(unittest.TestCase):
             self.assertIn('RESULT: STORAGE_INSPECTION_NEEDS_REVIEW', result.stdout)
         with tempfile.TemporaryDirectory() as root:
             result, call = self.exercise(root, ['--user', 'joe;false'])
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(call, '')
+
+    def test_existing_project_key_is_selected_without_copying_it(self):
+        with tempfile.TemporaryDirectory() as root:
+            result, call = self.exercise(root, identity='regular')
+            self.assertEqual(result.returncode, 0, result.stdout)
+            args = json.loads((Path(root) / 'ssh-argv.json').read_text())
+            self.assertEqual(args[args.index('-i') + 1], str(Path(root) / 'home/.ssh/openstack-from-zero'))
+            self.assertIn('IdentitiesOnly=yes', args)
+            self.assertNotIn('fixture identity', call)
+            self.assertIn('Key-unlock prompt: key passphrase', result.stdout)
+
+    def test_symlinked_project_key_stops_before_connection(self):
+        with tempfile.TemporaryDirectory() as root:
+            result, call = self.exercise(root, identity='symlink')
             self.assertEqual(result.returncode, 2)
             self.assertEqual(call, '')
 

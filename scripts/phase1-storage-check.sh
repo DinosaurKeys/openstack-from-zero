@@ -20,6 +20,14 @@ if [[ ! "$ssh_user" =~ ^[a-z_][a-z0-9_-]*\$?$ ]]; then
     echo "Invalid Linux SSH account" >&2; exit 2
 fi
 if [[ ! -t 0 ]]; then echo "Run from an interactive R2d2 terminal" >&2; exit 2; fi
+identity_file="$HOME/.ssh/openstack-from-zero"
+identity_options=()
+if [[ -e "$identity_file" || -L "$identity_file" ]]; then
+    if [[ -L "$identity_file" || ! -f "$identity_file" || ! -r "$identity_file" ]]; then
+        echo "Project SSH private-key file needs review; no node connection made" >&2; exit 2
+    fi
+    identity_options=(-i "$identity_file" -o IdentitiesOnly=yes)
+fi
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -L "$repo_root/reports" ]]; then echo "reports must be a real directory" >&2; exit 2; fi
 remote_command="$(python3 - "$repo_root/scripts/phase1-storage-node.py" <<'PY'
@@ -32,8 +40,13 @@ PY
 mkdir -p -- "$repo_root/reports" || exit 1
 report_path="$(mktemp "$repo_root/reports/phase1-storage-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX.txt")" || exit 1
 printf 'Phase 1: node3 Cinder disk inspection\nMode: READ ONLY\nNode: node3 (192.168.0.202)\nSSH and sudo may prompt. No packages are installed.\n' | tee -a "$report_path"
+if ((${#identity_options[@]})); then
+    printf 'SSH identity: %s (private key stays on R2d2)\nKey-unlock prompt: key passphrase; sudo prompt: joe password on node3.\n' "$identity_file" | tee -a "$report_path"
+else
+    printf 'Project key absent: use existing SSH authentication; node3 login password may be requested.\n' | tee -a "$report_path"
+fi
 ssh -tt -o ConnectTimeout=10 -o ConnectionAttempts=1 -o StrictHostKeyChecking=ask \
-    -o ControlMaster=no -o ControlPath=none "$ssh_user@192.168.0.202" "$remote_command" 2>&1 | tee -a "$report_path"
+    -o ControlMaster=no -o ControlPath=none "${identity_options[@]}" "$ssh_user@192.168.0.202" "$remote_command" 2>&1 | tee -a "$report_path"
 pipe_status=("${PIPESTATUS[@]}")
 result="STORAGE_INSPECTION_COLLECTED"
 exit_code=0
