@@ -4,7 +4,7 @@
 
 **Storage step: inspect the SATA disks on node1, node2 and node3.** We review one combined report before preparing any Cinder storage pools.
 
-**Current step: read-only inspection on all three nodes, authorized by Joe.** SSH keys, node-name resolution and Chrony on R2d2 are complete. Disk inspection and Cinder-pool creation are still pending. For a rebuild, follow the preceding chapters first.
+**Current step: read-only inspection on all three nodes, authorized by Joe.** SSH keys, node-name resolution and Chrony on R2d2 are complete. **Disk inspection is complete and reviewed.** Cinder-pool creation remains pending. For a rebuild, follow the preceding chapters first.
 
 A Cinder volume is a virtual disk you can attach to a VM. Before assigning physical storage to Cinder, we need current evidence that identifies the intended disk and shows any existing use.
 
@@ -18,9 +18,9 @@ The intended scope is separate SATA storage on all three nodes. Ubuntu stays on 
 
 | Node | Management address | Current SATA details |
 |---|---|---|
-| node1 | `192.168.0.200` | To be collected |
-| node2 | `192.168.0.201` | To be collected |
-| node3 | `192.168.0.202` | To be checked again |
+| node1 | `192.168.0.200` | Kingston SUV400S37240G; serial `50026B7766070422` |
+| node2 | `192.168.0.201` | ADATA SU630; serial `4P3521354988` |
+| node3 | `192.168.0.202` | Kingston SA400S37240G; serial `50026B768317883A` |
 
 The earlier node3 inventory remains below as a reference, not as a substitute for fresh discovery.
 
@@ -99,9 +99,43 @@ The report contains a separate section and collection status for each node, then
 
 After review, we explain and approve the exact disk operation, then prepare the Cinder pool. The short LVM lesson follows the completed storage checkpoint.
 
-## 5. Short lecture — after review
+## 5. Reviewed inspection result
 
-The inspection lesson will be added after Joe's actual report is reviewed. All inspection commands and rebuilding steps above will remain visible.
+Joe's combined report `phase1-storage-20261023T105018Z-y9zYak.txt` ends with **`RESULT: STORAGE_INSPECTION_COLLECTED`**. Every selected node returned `COLLECTED`.
+
+| Check | Observed on all three nodes |
+|---|---|
+| SATA disk | `/dev/sda`, exactly `240057409536` bytes per node |
+| Partitions and mounts on SATA | None detected |
+| SATA filesystem/RAID signatures | None reported by `wipefs --no-act` |
+| SATA kernel holders | None |
+| Existing LVM | Only `ubuntu-vg` on `/dev/nvme0n1p3`; SATA is not an existing PV |
+| Ubuntu root and boot | Backed by NVMe |
+| Active swap | `/swap.img` file |
+| Active kernel RAID arrays | None listed |
+| SMART overall assessment | `PASSED` on all three SATA disks |
+
+Confirmed SATA identifiers:
+
+| Node | Stable disk path |
+|---|---|
+| node1 | `/dev/disk/by-id/ata-KINGSTON_SUV400S37240G_50026B7766070422` |
+| node2 | `/dev/disk/by-id/ata-ADATA_SU630_4P3521354988` |
+| node3 | `/dev/disk/by-id/ata-KINGSTON_SA400S37240G_50026B768317883A` |
+
+**Health detail retained:** node1 reports `Runtime_Bad_Block` raw value `11`, alongside SMART overall `PASSED` and `Current_Pending_Sector = 0`. No vendor-specific interpretation is assumed. Each disk's existing extended self-test log records a completed test without error; this inspection did not start a new test. SMART results are observations, not a guarantee against future failure.
+
+No disk configuration was changed. No `cinder-volumes` pool exists in this report.
+
+## 6. Short lecture — what this result means
+
+The inspection found no current use of these SATA disks in the mounts, signatures, RAID, holders and LVM information collected. This is stronger evidence than checking the disk name alone, but it is not a claim that every byte is blank.
+
+Ubuntu's disks are separate: the NVMe disk contains partitions and the existing `ubuntu-vg` pool. The SATA disk is the candidate for a different pool named `cinder-volumes`.
+
+In LVM terminology, a **physical volume (PV)** is a disk or partition prepared for LVM. A **volume group (VG)** combines that space into a pool. **Logical volumes (LVs)** are virtual disks allocated from the pool.
+
+The intended next preparation would create one SATA-backed pool on each node. Those would be three separate local pools, with no automatic replication between them. The exact provisioning script and Kolla integration must be explained and agreed before proceeding. All inspection commands above remain available for rebuilding.
 
 The intended layout uses a separate local LVM pool on each storage node. These pools do not automatically replicate volumes between nodes. Before provisioning, we must validate the Kolla configuration for separate LVM backends; the Kolla guide flags limitations in multi-controller configurations. Keep Kolla prechecks enabled. Volume access from both computes is tested in the first-VM phase.
 
