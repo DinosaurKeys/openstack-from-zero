@@ -4,7 +4,18 @@
 
 **Purpose:** let your browser recognize the lab's HTTPS certificate when Horizon is deployed.
 
-**Current checkpoint:** Joe uses Chrome and Firefox on Windows and Linux. R2d2 runs in VMware Workstation on Joe's Windows 11 laptop. Windows-to-R2d2 TCP port 22 reachability is confirmed over VMnet8; authenticated file transfer and browser import are still pending. These import steps are prepared for use **after the certificate file has been transferred and verified**. Live Horizon validation comes after deployment.
+**Current checkpoint:** Joe confirmed the public CA import into **Chrome on Windows 11**. The certificate was copied to `C:\Users\joe\lab-root.crt`, and Joe reported the Step 4 verification marker. Linux Firefox is next; its local certificate location is not yet known. Live Horizon HTTPS has not been tested.
+
+## Choose your browser path
+
+| Where you are working | What to follow |
+|---|---|
+| **Windows 11 — Chrome** | **Import confirmed by Joe.** Keep the Windows steps below for rebuilding; no repeat is needed now. |
+| **Linux — Firefox** | **[Follow this separate Linux Firefox guide](F-linux-firefox.md). Start with locating the certificate.** |
+| Windows — Firefox | Section D below, if you later choose to use it. Import is unconfirmed. |
+| Linux — Chrome | Section C below, if you later choose to use it. Import is unconfirmed. |
+
+**You do not have to complete every browser/OS combination.** Use the browser you want to learn with. The Linux reference command below is not an extra step after Windows verification.
 
 ## A. Understand the file
 
@@ -72,7 +83,9 @@ Return the copy result and `CA_CERTIFICATE_VERIFIED` line for review. Chrome/Fir
 
 For a fresh rebuild, use the new reviewed CA fingerprint in Step 4. For a separate Linux computer, confirm its route before choosing a transfer command.
 
-### Certificate fingerprint checks for study or a separately transferred file
+### Optional reference — not another Windows step
+
+**Windows Step 4 already verifies the Windows copy. If you are now setting up Linux Firefox, follow [the separate guide](F-linux-firefox.md), which places each command in context.**
 
 **On a Linux browser computer with OpenSSL:** run this in the folder containing the downloaded public certificate. It reads the certificate and prints its SHA256 identity; it changes nothing.
 
@@ -109,6 +122,8 @@ This is Chrome's certificate manager for current Chrome (134 and later). Labels 
 
 ## D. Firefox — Windows and Linux
 
+**For the current Linux Firefox task, use [the dedicated guide](F-linux-firefox.md).** These general steps remain available for study and Windows Firefox.
+
 This explicit Firefox import works independently of whether Firefox inherits Windows system trust. It avoids relying on Linux distribution-specific system integration.
 
 1. Open Firefox **Settings**.
@@ -127,8 +142,8 @@ Record which combinations you completed:
 
 | Browser computer | Chrome CA imported | Firefox CA imported |
 |---|---|---|
-| Windows | Pending | Pending |
-| Linux | Pending | Pending |
+| Windows | **Import confirmed by Joe** | Unconfirmed — optional |
+| Linux | Unconfirmed — optional | Pending — requested next |
 
 **After Phase 3 deploys Horizon**, we will test `https://192.168.0.151` from the chosen browser computers. We will confirm network reachability, certificate validity and the Horizon login page then. Keep certificate verification enabled; no warning bypass is part of this procedure.
 
