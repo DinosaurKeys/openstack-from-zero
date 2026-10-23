@@ -19,4 +19,4 @@ Build a cloud you understand. Deploy an application. Monitor it.
 
 Each step: **purpose → explain the script → run → review the result → short lecture**.
 
-**Current checkpoint:** the SSH/time/name inspection is reviewed. The nodes already have active Chrony and correct node-name mappings; R2d2 key-only access is not yet confirmed. Continue with **[1.3b — Create SSH keys and copy the public key](docs/phase-01/03b-ssh-keys.md)**. This step is limited to SSH-key access.
+**Current checkpoint:** SSH-key setup passed on all three nodes with fresh key-only logins. Read **[1.3b — the successful result and short lesson](docs/phase-01/03b-ssh-keys.md#7-reviewed-result)**. The complete setup steps remain visible; the next configuration change awaits agreement.

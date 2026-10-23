@@ -4,7 +4,9 @@
 
 **Goal:** let `joe` on R2d2 log in to all three nodes using a dedicated SSH key.
 
-Your inspection confirmed password access to the nodes. It found no regular `.pub` files or loaded agent keys on R2d2, and did not confirm key-only login. The script below checks its own filenames before creating anything.
+**Status: complete.** Joe's run ended with `SSH_KEYS_READY for all`. The full setup procedure below remains visible for study and rebuilding.
+
+Your earlier inspection confirmed password access to the nodes. It found no regular `.pub` files or loaded agent keys on R2d2, and did not confirm key-only login. The script below checks its own filenames before creating anything.
 
 ## 1. Understand the two files
 
@@ -85,8 +87,31 @@ ssh -i ~/.ssh/openstack-from-zero joe@192.168.0.200
 
 Type `exit` in the node's shell to return to R2d2.
 
-## 7. Short lecture — after your result is reviewed
+## 7. Reviewed result
 
-The reviewed result and its short explanation will be added here after your run. The complete procedure above stays visible for study and rebuilding.
+| Check | Result from Joe's run |
+|---|---|
+| Dedicated private/public pair | Created on R2d2; fingerprints matched |
+| Local key unlock | Passphrase entered and key loaded into the existing SSH agent |
+| Public-key installation | One key added for `joe` on each node |
+| node1 `192.168.0.200` | Fresh key-only login passed |
+| node2 `192.168.0.201` | Fresh key-only login passed |
+| node3 `192.168.0.202` | Fresh key-only login passed |
+
+The final marker was **`RESULT: SSH_KEYS_READY for all`**. Chrony, `/etc/hosts`, NICs and sudo policy were not changed.
+
+## 8. Short lecture — what your result means
+
+Creating the two files alone does not grant access. `ssh-copy-id` added the public key to each node's `authorized_keys`, using that node's account password to authorize the addition.
+
+R2d2 then used its private key locally to prove its identity. Each node checked that proof against the public key it now has. The private key stayed on R2d2.
+
+The final checks used fresh connections with node-password authentication disabled. Therefore, the three `KEY_LOGIN_OK` lines prove that this key pair worked on all three intended nodes.
+
+The key passphrase unlocks your private-key file locally. It is different from the node's login password, and SSH-key access does not change sudo permissions.
+
+Your agent reported a **14,400-second lifetime: four hours**. That is the lifetime of its loaded key, not the key files or the public-key entries on the nodes. When the loaded key expires, the files remain valid; a later login using the explicit `-i` command may ask for the key passphrase again.
+
+**Checkpoint complete.** Keep the steps above for reference. The next configuration change will be agreed with Joe before proceeding.
 
 References: [OpenSSH key generation](https://man.openbsd.org/ssh-keygen) · [Public-key installation](https://manpages.debian.org/bookworm/openssh-client/ssh-copy-id.1.en.html) · [SSH agent key loading](https://man.openbsd.org/ssh-add).
