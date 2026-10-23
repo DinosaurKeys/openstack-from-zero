@@ -4,7 +4,7 @@
 
 **Goal:** prepare R2d2 with the tools and reviewed configuration needed to install OpenStack in Phase 3.
 
-**Current: Chapter E is ready to run.** Chapters A–D are completed and reviewed. Chapter F remains a draft of the next validation step. We review one actual result before making the next configuration change.
+**Current: Chapter E is completed and reviewed; Chapter F is next.** Chapters A–E are completed and reviewed. Chapter F remains a draft pending its validation/trust plan. We review one actual result before making the next configuration change.
 
 ![R2d2 manages the three-node lab; installer tools and cloud services are planned](../images/lab-layout.svg)
 
@@ -16,8 +16,8 @@
 | [Chapter B — Select compatible versions](B-select-versions.md) | Agree on the OpenStack, Kolla-Ansible and Ansible versions | **Complete — versions and environment path agreed** |
 | [Chapter C — Install management tools](C-install-tools.md) | Build an isolated Python environment on R2d2 | **Complete — installation and activation confirmed** |
 | [Chapter D — Create the inventory](D-create-inventory.md) | List machines, roles and connection settings | **Complete — access and three-compute layout verified** |
-| [Chapter E — Configure the lab](E-configure-lab.md) | Prepare network, storage and service settings | **Current — local configuration script ready; report pending** |
-| [Chapter F — Validate preparation](F-validate-preparation.md) | Review access, inventory and configuration before installation | Draft — previous chapters must pass |
+| [Chapter E — Configure the lab](E-configure-lab.md) | Prepare network, storage and service settings | **Complete — private configuration and HTTPS files prepared** |
+| [Chapter F — Validate preparation](F-validate-preparation.md) | Review access, inventory and configuration before installation | Next — validation and client trust plan pending |
 
 ## How this phase works
 
@@ -25,7 +25,7 @@ Each executable chapter keeps the same structure: **purpose → explain the scri
 
 The script is checked locally before publication. Local tests use simulated machine/package data; they cannot prove R2d2's actual state or network access. Your report supplies that evidence. Working procedures go in the guide; detailed execution evidence stays in private reports.
 
-Read [Chapter A's reviewed result and short lesson](A-check-r2d2.md#5-reviewed-result), and [Chapter B's agreed version set](B-select-versions.md), read [Chapter C's completed lesson](C-install-tools.md#5-short-lecture--after-review), read [Chapter D's completed inventory guide](D-create-inventory.md), then [run Chapter E](E-configure-lab.md#d-download-and-run). The Chapter A commands remain available for a rebuild. Draft chapters explain the upcoming work without asking you to run unfinished commands.
+Read [Chapter A's reviewed result and short lesson](A-check-r2d2.md#5-reviewed-result), and [Chapter B's agreed version set](B-select-versions.md), read [Chapter C's completed lesson](C-install-tools.md#5-short-lecture--after-review), read [Chapter D's completed inventory guide](D-create-inventory.md), read [Chapter E's reviewed result and lesson](E-configure-lab.md#reviewed-result), then [Chapter F's draft plan](F-validate-preparation.md). The Chapter A commands remain available for a rebuild. Draft chapters explain the upcoming work without asking you to run unfinished commands.
 
 ## Phase 2 finish check
 
@@ -33,7 +33,7 @@ Read [Chapter A's reviewed result and short lesson](A-check-r2d2.md#5-reviewed-r
 - [x] Compatible versions are agreed and recorded.
 - [x] Management tools are installed in the agreed isolated environment.
 - [x] The inventory assigns all three controller/network/compute/storage hosts correctly.
-- [ ] Network, storage and service configuration is reviewed; secrets stay private.
+- [x] Network, storage and service configuration is reviewed; secrets stay private.
 - [ ] Ansible access and configuration validation pass.
 
 **Phase 3 boundary:** installing node dependencies with Kolla bootstrap, running full Kolla prechecks and deploying OpenStack happen in Phase 3. This phase prepares the management environment and configuration.

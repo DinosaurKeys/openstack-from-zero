@@ -4,7 +4,7 @@
 
 **Goal:** prepare the reviewed settings that Kolla will use during installation.
 
-**Status: ready to run; live preparation report pending.** The three-compute inventory update passed. Joe confirmed the addresses below are free and chose the simple service baseline with HTTPS.
+**Status: completed and reviewed.** Joe's report returned `LAB_CONFIG_PREPARED` on 2026-10-23. The setup commands remain below for rebuilding. The three-compute inventory update passed. Joe confirmed the addresses below are free and chose the simple service baseline with HTTPS.
 
 ## 1. Purpose
 
@@ -134,9 +134,36 @@ The successful marker means local settings, credential population, certificate c
 
 Before publication, six regression tests passed. Real Kolla 23.0.0 credential generation, real Ansible 2.21.5 inventory parsing, Kolla playbook syntax checking and OpenSSL certificate-chain/IP verification also passed in an isolated development folder. A second run preserved the generated passwords and keys. No live node or deployed HTTPS test was performed.
 
+### Reviewed result
+
+Joe returned `phase2-config-20261023T185536Z-s1nj1s3p.txt`.
+
+| Check | Observed result |
+|---|---|
+| Cloud settings and network plan | Prepared privately on R2d2 |
+| Three node host-variable files | Prepared; Ansible read each expected external USB NIC |
+| Inventory | Expected three-node role mappings passed |
+| Service credentials | Populated privately; no values included in the report |
+| HTTPS certificate files | Certificate chain, key matches and VIP SAN verified |
+| Final checkpoint | `LAB_CONFIG_PREPARED` |
+
+Public CA SHA-256 fingerprint, recorded for later trust verification:
+
+```text
+278a4e6a84b761f954b9bbf1f8051c3560b63f0eb073efc9e95d8d1c69df3cbb
+```
+
+This is a public certificate fingerprint, not a password or private key. The group-name warnings did not stop inventory parsing; both inventory checks and the final checkpoint passed.
+
+**No IP addresses were assigned, nodes contacted or services deployed by this step.** CA trust installation, active address-conflict checks and live HTTPS verification remain pending. Do not regenerate the credentials or certificates as a default next action.
+
 ### Short lecture — after review
 
-The short lesson will follow Joe's actual preparation report. The procedure above stays visible for rebuilding. Three independent LVM backends do not provide automatic replication.
+`globals.yml` is the cloud's settings sheet. `host_vars` supplies settings that differ by node, such as the USB NIC name. `passwords.yml` holds the services' private credentials.
+
+The API certificate identifies `192.168.0.151`. Our lab CA signs that certificate; a client must trust the CA's **public certificate** to verify the API's identity. Private keys remain on R2d2. Preparing these files does not start a website or make the VIP active.
+
+Chapter F checks the prepared configuration and plans the trust steps before deployment. Three independent LVM backends still do not provide automatic replication.
 
 References: [Kolla 23.0.0 TLS configuration](https://github.com/openstack/kolla-ansible/blob/23.0.0/doc/source/admin/tls.rst) · [Released credential generator](https://github.com/openstack/kolla-ansible/blob/23.0.0/kolla_ansible/cmd/genpwd.py).
 
