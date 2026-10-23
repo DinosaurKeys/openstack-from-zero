@@ -4,7 +4,7 @@
 
 **Goal:** check that the files on R2d2 still match the three nodes before installation.
 
-**Status: ready to run.** Chapter E passed. This chapter's live report is pending. Horizon remains enabled in the plan so Joe can learn through its web dashboard.
+**Status: preparation checks passed and reviewed.** R2d2 CA trust is verified. Browser certificate transfer/import remain pending. The complete run procedure stays below for rebuilding. Horizon remains enabled in the plan so Joe can learn through its web dashboard.
 
 ## 1. Purpose
 
@@ -97,16 +97,47 @@ No Horizon connection test is expected yet: the VIP, HTTPS listener and dashboar
 
 ## 6. Finish check and review
 
-- [ ] Review the actual report from this chapter.
-- [ ] Review any virtualization, NIC, storage, clock or VIP findings.
-- [ ] Verify R2d2 CA trust if requested.
+- [x] Review the actual report from this chapter.
+- [x] Review the reported virtualization, NIC, storage, clock and VIP observations.
+- [x] Verify R2d2 CA trust.
 - [ ] Confirm public-CA transfer and import on the intended browser computers.
 - [ ] Agree on Phase 3 before running bootstrap or deployment.
 
-**Development verification:** ten regression tests cover read-only probes, wrong-node rejection, ARP packet handling, certificate/configuration preservation, CA mismatch, private-file guards and trust destination protection. Real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5 inventory parsing, playbook syntax, ad-hoc argument parsing and OpenSSL certificate verification also passed in an isolated development folder. These are not live SSH/sudo/ARP or browser results from Joe's lab. No live completion is claimed yet.
+**Development verification:** ten regression tests cover read-only probes, wrong-node rejection, ARP packet handling, certificate/configuration preservation, CA mismatch, private-file guards and trust destination protection. Real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5 inventory parsing, playbook syntax, ad-hoc argument parsing and OpenSSL certificate verification also passed in an isolated development folder. These development checks are separate from Joe's live results below. Browser import and live Horizon HTTPS are not yet verified.
 
-## 7. Short lecture — after review
+## 7. Reviewed result
 
-After the report is reviewed, this section will explain the observed result: what matched, what CA trust proves, and what Phase 3 must still verify. The commands above will remain for study and rebuilding.
+Joe's report `phase2-validation-20261023T200411Z-e73cu3l0.txt` returned:
+
+```text
+RESULT: PREPARATION_CHECKS_PASSED
+RESULT: R2D2_CA_TRUST_READY (offline certificate verification; browser trust is separate)
+```
+
+| Checkpoint | Observed result |
+|---|---|
+| Local preparation | Agreed tool versions, three-node roles, globals, USB mappings and credential completeness passed. |
+| Certificate | Existing CA fingerprint matched Chapter E; certificate chain, dates, keys and VIP SAN passed. |
+| Kolla syntax | Passed. Bootstrap, full Kolla prechecks and deployment did not run. |
+| All three nodes | Correct identity, Ubuntu 24.04, management address/route and sudo access. Chrony active and clocks reported synchronized. |
+| USB NICs | Expected MACs, links up and no host addresses, on all three nodes. |
+| Cinder pools | Each recorded SATA identity matched; each `cinder-volumes` pool contained one PV and zero LVs. |
+| Virtualization | CPU flags and `/dev/kvm` present on all three nodes. Each reported four CPU threads and approximately 15.5 GiB RAM. Usable KVM acceleration remains a Phase 3 check. |
+| Planned VIP | No active conflict observed from any node during the bounded LAN probes. Silent/offline devices cannot be excluded. |
+| R2d2 trust | Public CA installed; the saved server certificate verified successfully against Ubuntu's system trust bundle. |
+
+No node configuration or storage contents were changed. Browser trust, the certificate-transfer route and live Horizon HTTPS remain pending.
+
+## 8. Short lecture — after review
+
+**The instructions match the machines.** Our inventory and saved settings agree with the current node identities, NICs and empty storage pools. That gives us a checked starting point for installation.
+
+**The pool is ready; a cloud volume does not exist yet.** One PV means the selected SATA disk backs the pool. Zero LVs means Cinder has not created any volumes in it.
+
+**Certificate trust is local.** R2d2 now recognizes our lab CA. Chrome and Firefox on your Windows/Linux computers still need their own confirmed import. Trusting a certificate does not make the future dashboard reachable.
+
+**Syntax is only one checkpoint.** We checked that the playbook can be read, not that OpenStack is deployed. Phase 3 must prepare host dependencies, run full Kolla prechecks and then deploy and test the services. We agree on that work before starting it.
+
+The run commands remain above for study and rebuilding.
 
 [Ubuntu CA trust documentation](https://documentation.ubuntu.com/server/how-to/security/install-a-root-ca-certificate-in-the-trust-store/index.html)

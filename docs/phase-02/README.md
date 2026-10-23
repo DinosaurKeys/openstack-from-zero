@@ -4,7 +4,7 @@
 
 **Goal:** prepare R2d2 with the tools and reviewed configuration needed to install OpenStack in Phase 3.
 
-**Current: Chapter E is completed and reviewed; Chapter F is next.** Chapters A–E are completed and reviewed. Chapter F is ready to run: validation, optional R2d2 public-CA trust and browser import instructions. Its live report and certificate-transfer route to the browser computers are pending. We review one actual result before making the next configuration change.
+**Current: Chapter F's preparation checks and R2d2 CA trust passed and are reviewed.** Chapters A–E are completed and reviewed. Browser certificate transfer/import remain pending; Phase 3 has not started. We review one actual result before making the next configuration change.
 
 ![R2d2 manages the three-node lab; installer tools and cloud services are planned](../images/lab-layout.svg)
 
@@ -17,7 +17,7 @@
 | [Chapter C — Install management tools](C-install-tools.md) | Build an isolated Python environment on R2d2 | **Complete — installation and activation confirmed** |
 | [Chapter D — Create the inventory](D-create-inventory.md) | List machines, roles and connection settings | **Complete — access and three-compute layout verified** |
 | [Chapter E — Configure the lab](E-configure-lab.md) | Prepare network, storage and service settings | **Complete — private configuration and HTTPS files prepared** |
-| [Chapter F — Validate preparation](F-validate-preparation.md) | Review access, inventory and configuration before installation | Ready to run — report and browser trust pending |
+| [Chapter F — Validate preparation](F-validate-preparation.md) | Review access, inventory and configuration before installation | Preparation checks and R2d2 CA trust passed; browser trust pending |
 
 ## How this phase works
 
@@ -34,6 +34,7 @@ Read [Chapter A's reviewed result and short lesson](A-check-r2d2.md#5-reviewed-r
 - [x] Management tools are installed in the agreed isolated environment.
 - [x] The inventory assigns all three controller/network/compute/storage hosts correctly.
 - [x] Network, storage and service configuration is reviewed; secrets stay private.
-- [ ] Ansible access and configuration validation pass.
+- [x] Ansible access and configuration validation pass.
+- [ ] Public CA transferred and imported on the intended browser computers.
 
 **Phase 3 boundary:** installing node dependencies with Kolla bootstrap, running full Kolla prechecks and deploying OpenStack happen in Phase 3. This phase prepares the management environment and configuration.
