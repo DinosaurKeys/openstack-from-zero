@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="760" viewBox="0 0 1120 760" role="img" aria-labelledby="title description">
+<title id="title">LVM preparation: disk, physical volume and volume group</title><desc id="description">Teaching example repeated separately on every node. The physical SATA disk is initialized as a physical volume with pvcreate, then added to a cinder-volumes volume group with vgcreate. No logical volumes are created in this phase. Later Cinder creates logical volumes or manages a thin pool for VM storage. Containers and sizes are conceptual, not to scale.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#3a678e"/></marker><style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#19324a}.title{font-size:28px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:18px}.small{font-size:15px;fill:#536879}.line{stroke:#3a678e;stroke-width:2;fill:none;marker-end:url(#arrow)}</style></defs>
+<rect width="1120" height="760" rx="18" fill="#f5f8fb"/>
+<text x="32" y="48" class="title">LVM — what changes on ONE node</text>
+<text x="32" y="79" class="small">The same process is repeated independently on node1, node2 and node3.</text>
+<rect x="32" y="110" width="332" height="334" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
+<text x="50" y="147" class="head">1. Inspected disk</text>
+<text x="50" y="174" class="small">Starting point</text>
+<rect x="50" y="205" width="296" height="120" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
+<text x="64" y="243" class="body">Physical SATA SSD</text>
+<text x="64" y="272" class="small">240 GB of physical capacity</text>
+<text x="64" y="300" class="small">No LVM pool yet</text>
+<text x="50" y="372" class="small">Same hardware throughout.</text>
+<text x="50" y="402" class="small">We are changing its metadata.</text>
+<rect x="394" y="110" width="332" height="334" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
+<text x="412" y="147" class="head">2. Physical volume (PV)</text>
+<text x="412" y="174" class="small">After pvcreate</text>
+<rect x="412" y="205" width="296" height="120" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
+<text x="426" y="243" class="body">Same SATA disk</text>
+<text x="426" y="272" class="small">LVM label + metadata written</text>
+<text x="426" y="300" class="small">Now recognized as a PV</text>
+<text x="412" y="372" class="small">PV is the disk’s LVM identity.</text>
+<text x="412" y="402" class="small">No extra physical disk is added.</text>
+<rect x="756" y="110" width="332" height="334" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
+<text x="774" y="147" class="head">3. Volume group (VG)</text>
+<text x="774" y="174" class="small">After vgcreate</text>
+<rect x="774" y="195" width="296" height="151" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-width="2"/>
+<text x="788" y="229" class="body">Pool: cinder-volumes</text>
+<rect x="786" y="247" width="272" height="72" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
+<text x="800" y="275" class="small">Space from the SATA PV</text>
+<text x="800" y="302" class="small">1 PV · 0 logical volumes</text>
+<text x="774" y="372" class="small">VG manages the available space.</text>
+<text x="774" y="402" class="small">No filesystem is mounted here.</text>
+<rect x="32" y="480" width="1056" height="195" rx="12" fill="#e8f1fa" stroke="#91b2cf" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="52" y="516" class="head">Later — after OpenStack is deployed</text>
+<text x="52" y="546" class="body">Cinder allocates logical volumes (LVs): virtual disks backed by pool space.</text>
+<rect x="52" y="567" width="240" height="60" rx="12" fill="#fff" stroke="#91b2cf" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="69" y="604" class="body">Example VM volume A</text>
+<rect x="312" y="567" width="240" height="60" rx="12" fill="#fff" stroke="#91b2cf" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="329" y="604" class="body">Example VM volume B</text>
+<text x="584" y="588" class="small">Concept only; these volumes do not exist yet.</text>
+<text x="584" y="615" class="small">Cinder may manage thin-pool LVs internally.</text>
+<text x="52" y="654" class="small">A guest OS can partition and format its virtual disk later. We do not run mkfs on the host VG.</text>
+<text x="32" y="715" class="body">This step stops at VG creation. Do not create example LVs manually; Cinder will manage them.</text>
+<text x="32" y="744" class="small">Boxes show roles and ownership, not additional disks or measured space usage.</text>
+</svg>

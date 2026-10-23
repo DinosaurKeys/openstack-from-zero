@@ -8,9 +8,9 @@
 
 A Cinder volume is a virtual disk you can attach to a VM. Before assigning physical storage to Cinder, we need current evidence that identifies the intended disk and shows any existing use.
 
-![Node3 example: Ubuntu uses NVMe and the separate SATA disk is a Cinder candidate](../images/storage-layout.svg)
+![All three nodes: existing Ubuntu on NVMe and separate SATA disks for planned local Cinder pools](../images/storage-layout.svg)
 
-The diagram shows node3 as an example. The current inspection covers SATA disks on **all three nodes**.
+Each node has its own SATA disk and its own planned Cinder pool. Dashed boxes show preparation whose live result is still pending; they do not mean the pools already exist.
 
 ## 1. Which disk and why?
 

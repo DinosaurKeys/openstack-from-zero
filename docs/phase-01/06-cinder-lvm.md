@@ -6,6 +6,77 @@
 
 **Status: Joe approved independent LVM pools with an empty cluster name and the explained cluster-check exception. Ready for Joe to run; live pool creation is pending.** Read the purpose and script explanation before running. The inspection is complete; all previous commands remain available in Chapter 1.5.
 
+## Before running — understand LVM step by step
+
+LVM means **Logical Volume Manager**. It manages disk space so software can allocate virtual disks from a pool.
+
+![LVM process: inspected SATA disk, physical volume, then volume group; logical volumes are created later](../images/lvm-process.svg)
+
+### Step A — Start with the physical disk
+
+Each node has two separate physical disks: NVMe for Ubuntu, and the inspected 240 GB SATA SSD for this storage step. The same SATA disk remains the hardware underneath every LVM layer.
+
+We use the whole SATA disk as the LVM device. We are not adding a partition table or creating a new physical disk.
+
+### Step B — Prepare the physical volume (PV)
+
+`pvcreate` writes an LVM label and metadata to the selected disk. That tells Linux, “this disk can supply space to LVM.”
+
+**PV means physical volume:** in this lab, it is the SATA disk prepared for LVM. This is not an ext4 filesystem and it does not create a folder or a VM disk.
+
+### Step C — Create the volume group (VG)
+
+`vgcreate` creates the named storage pool and assigns the PV to it.
+
+**VG means volume group.** Our name is `cinder-volumes`. A VG can use multiple PVs, but our agreed layout uses **one SATA PV per node's VG**.
+
+The pool is a source of capacity, somewhat like the capacity you allocate virtual disks from in VMware. LVM itself is not a VMFS-style filesystem or datastore mount.
+
+![Three separate Cinder LVM pools, with Ubuntu remaining on each node's NVMe disk](../images/storage-layout.svg)
+
+The same VG name can exist on separate hosts. `node1:cinder-volumes` and `node2:cinder-volumes` refer to different local pools. This does not create one shared 720 GB pool or copy data between nodes. The Cinder cluster-name setting is separate from the VG name.
+
+### Step D — Logical volumes (LVs) come later
+
+**LV means logical volume:** a virtual block device allocated from LVM-managed space.
+
+After OpenStack is deployed, Cinder manages the logical volumes for VM storage. Depending on its configured LVM mode, it may also manage a thin pool internally. We do not create example LVs by hand in this step.
+
+A VM can later see an attached Cinder volume as a virtual disk and use its own partitions and filesystem. We do not format or mount the host's `cinder-volumes` VG.
+
+### What changes when this script finishes?
+
+| Item | Before preparation, from your inspection | Expected after successful preparation |
+|---|---|---|
+| Physical SATA SSD | One per node, 240 GB each | Same physical disk |
+| SATA LVM identity | Not an existing PV | One initialized PV |
+| SATA pool | No `cinder-volumes` VG | One `cinder-volumes` VG per node |
+| Logical volumes in that pool | None | Still none; zero LVs |
+| Ubuntu `ubuntu-vg` and NVMe | Existing operating-system storage | Unchanged |
+
+The allocatable pool capacity is slightly below the physical disk capacity because LVM needs metadata and alignment space. Linux may display approximately **223.6 GiB** for a disk sold as **240 GB**; those use different units.
+
+### Understand the two write commands
+
+**Reference only:** these are the operations the helper runs as root on node1, after its checks. Do not run them manually as an extra step.
+
+```bash
+pvcreate /dev/disk/by-id/ata-KINGSTON_SUV400S37240G_50026B7766070422
+vgcreate cinder-volumes /dev/disk/by-id/ata-KINGSTON_SUV400S37240G_50026B7766070422
+```
+
+In the first command, the argument is the reviewed physical disk. In the second, `cinder-volumes` is the new pool name and the final argument is the PV supplying its space. The script uses node2's and node3's own confirmed disk identifiers on those machines.
+
+The helper also reads the following reports; you do not need to type these separately:
+
+| Tool | What you learn |
+|---|---|
+| `pvs` | Which disks/partitions are PVs and which VG owns each |
+| `vgs` | Which storage pools exist |
+| `lvs` | Which logical volumes exist inside those pools |
+
+The one command you run from R2d2 is still the wrapper in **section 4** below. It performs these checks and operations in order and saves one combined report.
+
 ## 1. Agreed Kolla design
 
 The reviewed Kolla-Ansible **2026.1** documentation supports LVM volume groups on storage nodes. Its default Cinder check also requires a cluster name when the inventory has multiple `cinder-volume` hosts. However, Cinder's LVM driver does not support active/active clustering, and Cinder rejects a cluster name with that driver.

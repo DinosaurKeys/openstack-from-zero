@@ -1,30 +1,63 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="366" viewBox="0 0 1000 366" role="img" aria-labelledby="title description">
-  <title id="title">Node3 storage: Ubuntu and planned Cinder pool</title>
-  <desc id="description">Ubuntu currently uses the NVMe disk. The separate Kingston SATA disk is the candidate for a future cinder-volumes LVM pool and persistent VM volumes. The SATA disk is being inspected; the Cinder pool has not been created.</desc>
-  <defs>
-    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#3a678e"/></marker>
-    <style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#19324a}.head{font-size:25px;font-weight:700}.label{font-size:19px;font-weight:700}.small{font-size:16px;fill:#536879}.line{stroke:#3a678e;stroke-width:3;fill:none;marker-end:url(#arrow)}.planned{stroke-dasharray:6 5}</style>
-  </defs>
-  <rect width="1000" height="366" rx="16" fill="#f5f8fb"/>
-  <text x="30" y="43" class="head">node3 — two disks, two jobs</text>
-  <rect x="30" y="72" width="252" height="90" rx="12" fill="#e8f1fa" stroke="#91b2cf"/>
-  <text x="50" y="105" class="label">NVMe disk</text>
-  <text x="50" y="134" class="small">Existing Ubuntu storage</text>
-  <path d="M282 117 H368" class="line"/>
-  <rect x="378" y="72" width="282" height="90" rx="12" fill="#e8f1fa" stroke="#91b2cf"/>
-  <text x="398" y="105" class="label">Ubuntu LVM → /</text>
-  <text x="398" y="134" class="small">Operating system</text>
-  <rect x="30" y="209" width="252" height="98" rx="12" fill="#e5f3ec" stroke="#84b99c"/>
-  <text x="50" y="242" class="label">Kingston SATA disk</text>
-  <text x="50" y="269" class="small">240 GB • inspect now</text>
-  <text x="50" y="292" class="small">Serial ends 7883A</text>
-  <path d="M282 258 H368" class="line planned"/>
-  <rect x="378" y="209" width="282" height="98" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-dasharray="6 5"/>
-  <text x="398" y="246" class="label">cinder-volumes</text>
-  <text x="398" y="276" class="small">Planned LVM storage pool</text>
-  <path d="M660 258 H728" class="line planned"/>
-  <rect x="738" y="209" width="232" height="98" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-dasharray="6 5"/>
-  <text x="758" y="246" class="label">VM volumes</text>
-  <text x="758" y="276" class="small">Created later by Cinder</text>
-  <text x="30" y="342" class="small">Solid: existing Ubuntu storage. Dashed: planned storage, not created yet.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="740" viewBox="0 0 1120 740" role="img" aria-labelledby="title description">
+<title id="title">Three nodes: separate Ubuntu and Cinder storage</title><desc id="description">Each node has existing Ubuntu storage on NVMe and one inspected 240 GB SATA disk. Preparation will turn each SATA disk into one physical volume in a separate local cinder-volumes volume group. Pool creation has not yet been reported. There is no replication between nodes.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#3a678e"/></marker><style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#19324a}.title{font-size:28px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:18px}.small{font-size:15px;fill:#536879}.line{stroke:#3a678e;stroke-width:2;fill:none;marker-end:url(#arrow)}</style></defs>
+<rect width="1120" height="740" rx="18" fill="#f5f8fb"/>
+<text x="32" y="48" class="title">Three nodes — Ubuntu stays separate from Cinder</text>
+<text x="32" y="78" class="small">SATA inspection complete. Pool preparation approved; live creation result still pending.</text>
+<rect x="32" y="104" width="332" height="552" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
+<text x="50" y="141" class="head">node1</text>
+<text x="50" y="168" class="small">192.168.0.200</text>
+<rect x="48" y="190" width="300" height="102" rx="12" fill="#e8f1fa" stroke="#91b2cf" stroke-width="2"/>
+<text x="62" y="222" class="body">NVMe — existing Ubuntu</text>
+<text x="62" y="249" class="small">ubuntu-vg → ubuntu-lv → /</text>
+<text x="62" y="273" class="small">Boot partitions also use NVMe</text>
+<rect x="48" y="316" width="300" height="110" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
+<text x="62" y="348" class="body">Kingston UV400 SATA · 240 GB</text>
+<text x="62" y="375" class="small">Serial: 50026B7766070422</text>
+<text x="62" y="401" class="small">Identity and existing use reviewed</text>
+<path d="M332 427 L332 479" class="line"/>
+<text x="50" y="457" class="small">Next: pvcreate + vgcreate</text>
+<rect x="48" y="490" width="300" height="144" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="62" y="523" class="head">VG: cinder-volumes</text>
+<text x="62" y="550" class="small">Uses this node’s SATA PV only</text>
+<text x="62" y="576" class="small">After preparation: 1 PV, 0 LVs</text>
+<text x="62" y="605" class="small">Cinder creates VM volumes later</text>
+<rect x="394" y="104" width="332" height="552" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
+<text x="412" y="141" class="head">node2</text>
+<text x="412" y="168" class="small">192.168.0.201</text>
+<rect x="410" y="190" width="300" height="102" rx="12" fill="#e8f1fa" stroke="#91b2cf" stroke-width="2"/>
+<text x="424" y="222" class="body">NVMe — existing Ubuntu</text>
+<text x="424" y="249" class="small">ubuntu-vg → ubuntu-lv → /</text>
+<text x="424" y="273" class="small">Boot partitions also use NVMe</text>
+<rect x="410" y="316" width="300" height="110" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
+<text x="424" y="348" class="body">ADATA SU630 SATA · 240 GB</text>
+<text x="424" y="375" class="small">Serial: 4P3521354988</text>
+<text x="424" y="401" class="small">Identity and existing use reviewed</text>
+<path d="M694 427 L694 479" class="line"/>
+<text x="412" y="457" class="small">Next: pvcreate + vgcreate</text>
+<rect x="410" y="490" width="300" height="144" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="424" y="523" class="head">VG: cinder-volumes</text>
+<text x="424" y="550" class="small">Uses this node’s SATA PV only</text>
+<text x="424" y="576" class="small">After preparation: 1 PV, 0 LVs</text>
+<text x="424" y="605" class="small">Cinder creates VM volumes later</text>
+<rect x="756" y="104" width="332" height="552" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
+<text x="774" y="141" class="head">node3</text>
+<text x="774" y="168" class="small">192.168.0.202</text>
+<rect x="772" y="190" width="300" height="102" rx="12" fill="#e8f1fa" stroke="#91b2cf" stroke-width="2"/>
+<text x="786" y="222" class="body">NVMe — existing Ubuntu</text>
+<text x="786" y="249" class="small">ubuntu-vg → ubuntu-lv → /</text>
+<text x="786" y="273" class="small">Boot partitions also use NVMe</text>
+<rect x="772" y="316" width="300" height="110" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
+<text x="786" y="348" class="body">Kingston A400 SATA · 240 GB</text>
+<text x="786" y="375" class="small">Serial: 50026B768317883A</text>
+<text x="786" y="401" class="small">Identity and existing use reviewed</text>
+<path d="M1056 427 L1056 479" class="line"/>
+<text x="774" y="457" class="small">Next: pvcreate + vgcreate</text>
+<rect x="772" y="490" width="300" height="144" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="786" y="523" class="head">VG: cinder-volumes</text>
+<text x="786" y="550" class="small">Uses this node’s SATA PV only</text>
+<text x="786" y="576" class="small">After preparation: 1 PV, 0 LVs</text>
+<text x="786" y="605" class="small">Cinder creates VM volumes later</text>
+<text x="32" y="689" class="body">Three separate local pools. Same VG name on each host; no shared pool or automatic replicas.</text>
+<text x="32" y="719" class="small">Blue: existing Ubuntu. Green: inspected SATA. Dashed amber: approved preparation, not yet verified live.</text>
 </svg>
