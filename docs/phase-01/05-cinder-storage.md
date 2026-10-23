@@ -10,7 +10,7 @@ A Cinder volume is a virtual disk you can attach to a VM. Before assigning physi
 
 ![All three nodes: existing Ubuntu on NVMe and separate SATA disks for planned local Cinder pools](../images/storage-layout.svg)
 
-Each node has its own SATA disk and its own planned Cinder pool. Dashed boxes show preparation whose live result is still pending; they do not mean the pools already exist.
+Each node has its own SATA disk and its own Cinder LVM pool. Pool creation is now verified in [Chapter 1.6](06-cinder-lvm.md#6-reviewed-creation-result). Cinder services and VM volumes are still future work; the original inspection result below describes the disks before preparation.
 
 ## 1. Which disk and why?
 

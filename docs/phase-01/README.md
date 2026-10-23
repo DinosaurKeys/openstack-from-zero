@@ -20,10 +20,10 @@ Each chapter includes its purpose, script link, commands to run, expected result
 | [1.3c — Resolve node names on R2d2](03c-r2d2-hosts.md) | Complete — all three node names resolve correctly | [Explain and run hosts script](03c-r2d2-hosts.md) |
 | [1.3d — Install Chrony on R2d2](03d-r2d2-chrony.md) | Complete — active, enabled and initially synchronized | [Explain and run Chrony script](03d-r2d2-chrony.md) |
 | [1.4 — Prepare the USB NICs](04-nics-and-storage.md) | Complete — all three links and fresh SSH passed | [Run NIC script](04-nics-and-storage.md#3-run-on-r2d2) |
-| [1.5 — Prepare Cinder storage](05-cinder-storage.md) | Inspection complete — all three reviewed; LVM creation pending | [Run storage inspection](05-cinder-storage.md#3-run-on-r2d2) |
-| [1.6 — Create Cinder LVM pools](06-cinder-lvm.md) | **Current — approved; ready to create pools; live result pending** | [Purpose, script and commands](06-cinder-lvm.md) |
+| [1.5 — Prepare Cinder storage](05-cinder-storage.md) | Inspection complete — all three reviewed | [Run storage inspection](05-cinder-storage.md#3-run-on-r2d2) |
+| [1.6 — Create Cinder LVM pools](06-cinder-lvm.md) | Complete — three local pools created and verified | [Purpose, script and commands](06-cinder-lvm.md) |
 
-Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint remains complete. The SSH/time/name inspection is also reviewed. SSH-key setup now ends with **`SSH_KEYS_READY for all`**. Its reviewed result and short lesson remain available. **Node-name setup is also complete:** [1.3c — reviewed result and lesson](03c-r2d2-hosts.md#5-reviewed-result). **Chrony on R2d2 is also complete:** [1.3d — reviewed result and lesson](03d-r2d2-chrony.md#6-reviewed-result). **SATA inspection is complete:** [1.5 — reviewed result and lesson](05-cinder-storage.md#5-reviewed-inspection-result). LVM-pool creation remains pending.
+Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint remains complete. The SSH/time/name inspection is also reviewed. SSH-key setup now ends with **`SSH_KEYS_READY for all`**. Its reviewed result and short lesson remain available. **Node-name setup is also complete:** [1.3c — reviewed result and lesson](03c-r2d2-hosts.md#5-reviewed-result). **Chrony on R2d2 is also complete:** [1.3d — reviewed result and lesson](03d-r2d2-chrony.md#6-reviewed-result). **SATA inspection is complete:** [1.5 — reviewed result and lesson](05-cinder-storage.md#5-reviewed-inspection-result). **LVM pools are also complete:** [1.6 — creation result and lesson](06-cinder-lvm.md#6-reviewed-creation-result).
 
 ## Phase 1 finish check
 
@@ -38,6 +38,6 @@ Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint r
 - [x] R2d2 resolves node1, node2 and node3 to their confirmed management IPs.
 - [x] Chrony is installed, enabled and synchronized on R2d2.
 - [x] Current SATA identities, existing use and health evidence reviewed on all three nodes.
-- [ ] Approved SATA disks back the intended Cinder LVM pools, separately from Ubuntu.
+- [x] Approved SATA disks back the intended Cinder LVM pools, separately from Ubuntu.
 
-**Latest completed checkpoint:** [1.5 — SATA inspection result and lesson](05-cinder-storage.md#5-reviewed-inspection-result). **Next prepared step:** [1.6 — create LVM pools](06-cinder-lvm.md). Joe approved independent pools, an empty cluster name and the explained cluster-check exception. Run its apply command and return the report.
+**Latest completed checkpoint:** [1.6 — three LVM pools created and verified](06-cinder-lvm.md#6-reviewed-creation-result). Read the lesson and use the optional read-only command to view a pool. Phase 2 will be agreed before proceeding.

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="790" viewBox="0 0 1120 790" role="img" aria-labelledby="title description">
   <title id="title">OpenStack from zero: planned lab</title>
-  <desc id="description">R2d2 is installed on VMware with DHCP address 192.168.162.131/24. SSH inspection passed as joe on all three intended Ubuntu 24.04 nodes. All three USB NICs now have saved Netplan settings, 1 Gb/s full-duplex links and no host addresses; fresh management SSH passed. All NICs share the same untagged switch and TP-Link LAN. Controller and compute services are planned, as are separate Cinder LVM pools on the SATA disks of node1, node2 and node3. Privileged SATA inspection passed on all three. Pool preparation is approved but has no returned live result yet.</desc>
+  <desc id="description">R2d2 is installed on VMware with DHCP address 192.168.162.131/24. SSH inspection passed as joe on all three intended Ubuntu 24.04 nodes. All three USB NICs now have saved Netplan settings, 1 Gb/s full-duplex links and no host addresses; fresh management SSH passed. All NICs share the same untagged switch and TP-Link LAN. Controller and compute services are planned, separate Cinder LVM pools are now created on the SATA disks of node1, node2 and node3. One physical volume and zero logical volumes were verified per pool. Cinder services and VM volumes are not deployed yet.</desc>
   <defs>
     <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9" fill="#3a678e"/></marker>
     <style>
@@ -40,19 +40,19 @@
   <text x="62" y="481" class="body blue">192.168.0.200</text>
   <text x="62" y="519" class="body">Controller</text>
   <rect x="59" y="538" width="294" height="40" rx="7" fill="#e5f3ec"/>
-  <text x="71" y="564" class="small green">Planned: SATA disk → Cinder LVM</text>
+  <text x="71" y="564" class="small green">SATA: empty LVM pool verified</text>
   <text x="62" y="606" class="small">Ubuntu Server 24.04 LTS</text>
   <text x="416" y="453" class="head">node2</text>
   <text x="416" y="481" class="body blue">192.168.0.201</text>
   <text x="416" y="519" class="body">Controller + compute</text>
   <rect x="413" y="538" width="294" height="40" rx="7" fill="#e5f3ec"/>
-  <text x="425" y="564" class="small green">Planned: SATA disk → Cinder LVM</text>
+  <text x="425" y="564" class="small green">SATA: empty LVM pool verified</text>
   <text x="416" y="606" class="small">Ubuntu Server 24.04 LTS</text>
   <text x="770" y="453" class="head">node3</text>
   <text x="770" y="481" class="body blue">192.168.0.202</text>
   <text x="770" y="519" class="body">Controller + compute</text>
   <rect x="767" y="538" width="294" height="40" rx="7" fill="#e5f3ec"/>
-  <text x="779" y="564" class="small green">Planned: SATA disk → Cinder LVM</text>
+  <text x="779" y="564" class="small green">SATA: empty LVM pool verified</text>
   <text x="770" y="606" class="small">Ubuntu Server 24.04 LTS</text>
 
   <path d="M206 631 V679 M560 631 V679 M914 631 V679" class="provider"/>

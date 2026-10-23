@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="740" viewBox="0 0 1120 740" role="img" aria-labelledby="title description">
-<title id="title">Three nodes: separate Ubuntu and Cinder storage</title><desc id="description">Each node has existing Ubuntu storage on NVMe and one inspected 240 GB SATA disk. Preparation will turn each SATA disk into one physical volume in a separate local cinder-volumes volume group. Pool creation has not yet been reported. There is no replication between nodes.</desc>
+<title id="title">Three nodes: separate Ubuntu and Cinder storage</title><desc id="description">Each node has existing Ubuntu storage on NVMe and one inspected 240 GB SATA disk. Each SATA disk now supplies one physical volume in a verified empty local cinder-volumes volume group. There is no replication between nodes.</desc>
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#3a678e"/></marker><style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#19324a}.title{font-size:28px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:18px}.small{font-size:15px;fill:#536879}.line{stroke:#3a678e;stroke-width:2;fill:none;marker-end:url(#arrow)}</style></defs>
 <rect width="1120" height="740" rx="18" fill="#f5f8fb"/>
 <text x="32" y="48" class="title">Three nodes — Ubuntu stays separate from Cinder</text>
-<text x="32" y="78" class="small">SATA inspection complete. Pool preparation approved; live creation result still pending.</text>
+<text x="32" y="78" class="small">Pool creation verified on all three nodes: one SATA PV and zero LVs per local pool.</text>
 <rect x="32" y="104" width="332" height="552" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
 <text x="50" y="141" class="head">node1</text>
 <text x="50" y="168" class="small">192.168.0.200</text>
@@ -16,11 +16,11 @@
 <text x="62" y="375" class="small">Serial: 50026B7766070422</text>
 <text x="62" y="401" class="small">Identity and existing use reviewed</text>
 <path d="M332 427 L332 479" class="line"/>
-<text x="50" y="457" class="small">Next: pvcreate + vgcreate</text>
-<rect x="48" y="490" width="300" height="144" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="50" y="457" class="small">Done: pvcreate + vgcreate</text>
+<rect x="48" y="490" width="300" height="144" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
 <text x="62" y="523" class="head">VG: cinder-volumes</text>
 <text x="62" y="550" class="small">Uses this node’s SATA PV only</text>
-<text x="62" y="576" class="small">After preparation: 1 PV, 0 LVs</text>
+<text x="62" y="576" class="small">Verified: 1 PV, 0 LVs</text>
 <text x="62" y="605" class="small">Cinder creates VM volumes later</text>
 <rect x="394" y="104" width="332" height="552" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
 <text x="412" y="141" class="head">node2</text>
@@ -34,11 +34,11 @@
 <text x="424" y="375" class="small">Serial: 4P3521354988</text>
 <text x="424" y="401" class="small">Identity and existing use reviewed</text>
 <path d="M694 427 L694 479" class="line"/>
-<text x="412" y="457" class="small">Next: pvcreate + vgcreate</text>
-<rect x="410" y="490" width="300" height="144" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="412" y="457" class="small">Done: pvcreate + vgcreate</text>
+<rect x="410" y="490" width="300" height="144" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
 <text x="424" y="523" class="head">VG: cinder-volumes</text>
 <text x="424" y="550" class="small">Uses this node’s SATA PV only</text>
-<text x="424" y="576" class="small">After preparation: 1 PV, 0 LVs</text>
+<text x="424" y="576" class="small">Verified: 1 PV, 0 LVs</text>
 <text x="424" y="605" class="small">Cinder creates VM volumes later</text>
 <rect x="756" y="104" width="332" height="552" rx="12" fill="#fff" stroke="#cbd8e2" stroke-width="2"/>
 <text x="774" y="141" class="head">node3</text>
@@ -52,12 +52,12 @@
 <text x="786" y="375" class="small">Serial: 50026B768317883A</text>
 <text x="786" y="401" class="small">Identity and existing use reviewed</text>
 <path d="M1056 427 L1056 479" class="line"/>
-<text x="774" y="457" class="small">Next: pvcreate + vgcreate</text>
-<rect x="772" y="490" width="300" height="144" rx="12" fill="#fff5e2" stroke="#d7b77a" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="774" y="457" class="small">Done: pvcreate + vgcreate</text>
+<rect x="772" y="490" width="300" height="144" rx="12" fill="#e5f3ec" stroke="#84b99c" stroke-width="2"/>
 <text x="786" y="523" class="head">VG: cinder-volumes</text>
 <text x="786" y="550" class="small">Uses this node’s SATA PV only</text>
-<text x="786" y="576" class="small">After preparation: 1 PV, 0 LVs</text>
+<text x="786" y="576" class="small">Verified: 1 PV, 0 LVs</text>
 <text x="786" y="605" class="small">Cinder creates VM volumes later</text>
 <text x="32" y="689" class="body">Three separate local pools. Same VG name on each host; no shared pool or automatic replicas.</text>
-<text x="32" y="719" class="small">Blue: existing Ubuntu. Green: inspected SATA. Dashed amber: approved preparation, not yet verified live.</text>
+<text x="32" y="719" class="small">Blue: existing Ubuntu. Green: inspected SATA and verified empty LVM pools. VM volumes come later.</text>
 </svg>

@@ -4,7 +4,7 @@
 
 **Goal:** create one empty `cinder-volumes` storage pool on each node's reviewed SATA disk.
 
-**Status: Joe approved independent LVM pools with an empty cluster name and the explained cluster-check exception. Ready for Joe to run; live pool creation is pending.** Read the purpose and script explanation before running. The inspection is complete; all previous commands remain available in Chapter 1.5.
+**Status: complete.** Joe's apply report confirms pool creation and verification on all three nodes. The purpose, script explanation and original commands remain below for study and rebuilding.
 
 ## Before running — understand LVM step by step
 
@@ -163,8 +163,50 @@ RESULT: CINDER_LVM_READY for all
 
 Use the printed `cat` command to display the report and send it back. Stop for review before moving to the next chapter. A created pool is not proof that OpenStack volume creation or attachment works; that is tested after deployment.
 
-## 6. Short lecture — after review
+## 6. Reviewed creation result
 
-The short lesson will follow Joe's live result. All commands above will stay visible for study and rebuilding.
+Joe's report `phase1-lvm-20261023T114712Z-Oyo7Ks.txt` used **`Apply disk changes: true`**. This was an apply run, not just a precheck.
+
+| Node | Operations recorded | Verified final state |
+|---|---|---|
+| node1 | `pvcreate`, then `vgcreate cinder-volumes` on its reviewed SATA disk | 1 PV, 0 LVs; Ubuntu/system LVM unchanged |
+| node2 | `pvcreate`, then `vgcreate cinder-volumes` on its reviewed SATA disk | 1 PV, 0 LVs; Ubuntu/system LVM unchanged |
+| node3 | `pvcreate`, then `vgcreate cinder-volumes` on its reviewed SATA disk | 1 PV, 0 LVs; Ubuntu/system LVM unchanged |
+
+Each node progressed through `blank → pv-only → ready`. Every node returned its own `CINDER_LVM_READY` marker, and the combined result was:
+
+**`RESULT: CINDER_LVM_READY for all`**
+
+The three local pools exist. They contain no logical volumes yet. The original commands above remain for study and rebuilding; you do not need to recreate the pools.
+
+## 7. Short lecture — where is the pool?
+
+A VG is LVM-managed storage capacity. It is not a folder, mounted filesystem or an extra physical disk. Therefore, it does not appear as a new mounted drive in `df -h`.
+
+Your report proves more than command execution: after `vgcreate`, the script read LVM ownership again and verified the final pool state. The report prints command names and verification markers, but it does not display the commands' normal success messages or a plain `vgs` table.
+
+The pool is currently empty: one physical volume supplies its capacity, and there are zero logical volumes. Later, Cinder will allocate VM storage from it. No filesystem needs to be mounted on the host to make this empty VG visible in LVM reports.
+
+## 8. See the existing pool directly — read only
+
+On **R2d2 as joe**, this command connects to node1 and displays only its existing Cinder volume group:
+
+```bash
+ssh -t -i ~/.ssh/openstack-from-zero joe@node1 'sudo vgs cinder-volumes'
+```
+
+If prompted, the key-unlock prompt needs your SSH-key passphrase; sudo needs joe's password on **node1**. The SSH session closes after displaying the table.
+
+Look for these columns:
+
+| Column | Meaning and expected result |
+|---|---|
+| `VG` | Pool name: `cinder-volumes` |
+| `#PV` | Physical volumes supplying space: `1` |
+| `#LV` | Logical volumes allocated: `0` at this checkpoint |
+| `VSize` | Pool capacity; slightly below the disk's full capacity |
+| `VFree` | Space not yet allocated to logical volumes |
+
+To inspect node2 or node3, replace `node1` with that hostname. This command creates nothing and changes no disk configuration. Send the displayed table if you want to review the visible pool details before continuing.
 
 Command references: [pvcreate](https://man7.org/linux/man-pages/man8/pvcreate.8.html) · [vgcreate](https://man7.org/linux/man-pages/man8/vgcreate.8.html).
