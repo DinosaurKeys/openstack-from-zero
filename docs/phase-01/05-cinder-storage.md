@@ -25,7 +25,7 @@ The earlier inventory showed no filesystem, partitions or mounts on it. Administ
 
 ## 2. What this script does
 
-Run the [script](../../scripts/phase1-storage-check.sh) on **R2d2**. It connects only to **node3**, using `joe` and sudo.
+Run the [phase1-storage-check.sh](../../scripts/phase1-storage-check.sh) on **R2d2**. It connects only to **node3**, using `joe` and sudo.
 
 | Check | Why we need it |
 |---|---|
@@ -35,11 +35,11 @@ Run the [script](../../scripts/phase1-storage-check.sh) on **R2d2**. It connects
 | `wipefs --no-act` | Read filesystem/partition/RAID signatures; `--no-act` prevents writes |
 | `smartctl --all`, if installed | Read existing disk health data; starts no self-test |
 
-It uses the [node helper](../../scripts/phase1-storage-node.py), installs no packages, and changes no disk configuration. It saves one private report under `reports/` on R2d2. Missing tools or failed commands are recorded for review.
+It uses the [phase1-storage-node.py helper](../../scripts/phase1-storage-node.py), installs no packages, and changes no disk configuration. It saves one private report under `reports/` on R2d2. Missing tools or failed commands are recorded for review.
 
 ## 3. Run on R2d2
 
-These commands enter the course folder, download the update, and run the inspection. SSH and sudo may ask for node3's password.
+These commands enter the course folder, download the update, and run the inspection. `--user joe` selects the node SSH account. SSH and sudo may ask for node3's password.
 
 ```bash
 cd ~/openstack-from-zero

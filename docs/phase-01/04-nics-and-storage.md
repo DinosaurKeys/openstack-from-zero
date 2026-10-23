@@ -1,29 +1,10 @@
 # 1.4 — Prepare the USB NICs
 
-[Phase 1](README.md) · [Next: Cinder disk](05-cinder-storage.md)
+[Phase 1](README.md) · [Previous: SSH access](03-access-check.md) · [Next: Cinder disk](05-cinder-storage.md)
 
-**Status: complete.** Your report ends with **`RESULT: USB_NETWORK_READY for all`**.
+**Status: complete.** The full procedure remains visible for study or a rebuild. The reviewed result and lesson follow the steps.
 
-| Node | USB link | Host addresses on USB | Management and fresh SSH |
-|---|---|---|---|
-| node1 | 1 Gb/s, full duplex | None | Passed |
-| node2 | 1 Gb/s, full duplex | None | Passed |
-| node3 | 1 Gb/s, full duplex | None | Passed |
-
-All three Netplan trials were accepted. Management IPs, routes and DNS stayed intact. The settings are saved on disk; a reboot check and VM traffic forwarding remain later checks.
-
-## Short lecture — what your result means
-
-A NIC can carry Ethernet frames without an IP assigned to the host. The built-in NIC is your host's management connection; the USB NIC will carry Neutron's external VM traffic.
-
-Both cables still use the same LAN and switch. Two NICs give the traffic separate interfaces; they do not create separate physical networks.
-
-Netplan stores the USB settings for future boots. Kolla later connects that NIC to OpenStack's external bridge. The reported 1 Gb/s is the physical link speed, not a measured VM throughput.
-
-**Next:** [1.5 — Inspect the Cinder disk](05-cinder-storage.md).
-
-<details>
-<summary>Confirmed NIC map and later address plan</summary>
+**Purpose:** prepare each USB NIC for external VM traffic while preserving the built-in management connection.
 
 ## 1. The confirmed network
 
@@ -53,14 +34,9 @@ Your offered `.151–.250` range includes the nodes. Use this smaller initial pl
 
 The API VIP is one shared API address for the controllers. These cloud addresses are planning values; this NIC step did not assign them.
 
-</details>
-
-<details>
-<summary>Completed procedure — script, commands and restoration</summary>
-
 ## 2. What the script does
 
-Run the [wrapper](../../scripts/phase1-network.sh) on R2d2. It sends the [node helper](../../scripts/phase1-network-node.py) through SSH and works on one node at a time.
+Run the [phase1-network.sh](../../scripts/phase1-network.sh) on R2d2. It sends the [phase1-network-node.py helper](../../scripts/phase1-network-node.py) through SSH and works on one node at a time.
 
 | Action | Effect |
 |---|---|
@@ -78,6 +54,8 @@ The wrapper uses tools already on R2d2: Bash, Python 3 and OpenSSH. The helper u
 ## 3. Run on R2d2
 
 Have node console access available during network changes.
+
+The commands enter the course folder, download the latest files, and run the script. `--user joe` selects the node SSH account; `--apply` saves and trials the USB configuration.
 
 ```bash
 cd ~/openstack-from-zero
@@ -106,7 +84,27 @@ Each node must show:
 
 The script prints the combined report path and a `cat` command to read it. Reports stay out of Git. VM traffic forwarding is tested later with the first VM.
 
-### Preview, repeat runs and restoration
+## Recorded result from this lab
+
+Your report ends with **`RESULT: USB_NETWORK_READY for all`**.
+
+| Node | USB link | Host addresses on USB | Management and fresh SSH |
+|---|---|---|---|
+| node1 | 1 Gb/s, full duplex | None | Passed |
+| node2 | 1 Gb/s, full duplex | None | Passed |
+| node3 | 1 Gb/s, full duplex | None | Passed |
+
+All three Netplan trials were accepted. Management IPs, routes and DNS stayed intact. The settings are saved on disk; a reboot check and VM traffic forwarding remain later checks.
+
+## 5. Short lecture — what your result means
+
+A NIC can carry Ethernet frames without an IP assigned to the host. The built-in NIC is your host's management connection; the USB NIC will carry Neutron's external VM traffic.
+
+Both cables still use the same LAN and switch. Two NICs give the traffic separate interfaces; they do not create separate physical networks.
+
+Netplan stores the USB settings for future boots. Kolla later connects that NIC to OpenStack's external bridge. The reported 1 Gb/s is the physical link speed, not a measured VM throughput.
+
+## 6. Preview, repeat runs and restoration
 
 Without `--apply`, the script shows the candidate without changing node configuration. `--node node2` selects one node. A matching, working configuration skips another Netplan trial.
 
@@ -116,6 +114,6 @@ Netplan documents rollback caveats. If SSH is lost or restoration needs review, 
 
 Local fixture checks passed for configuration preservation, rejection, restoration, repeat runs and wrapper behavior. They do not substitute for the real Netplan and hardware checks in your run.
 
-</details>
+**Next:** [1.5 — Inspect the Cinder disk](05-cinder-storage.md).
 
 References: [Netplan configuration](https://netplan.readthedocs.io/en/stable/netplan-yaml/) · [Netplan timed trial and caveats](https://netplan.readthedocs.io/en/stable/netplan-try/) · [Kolla external NICs](https://docs.openstack.org/kolla-ansible/2026.1/reference/networking/neutron.html#network-interfaces).

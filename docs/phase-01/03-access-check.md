@@ -1,31 +1,12 @@
 # 1.3 — Check access from R2d2
 
-[Phase 1](README.md) · [Next: USB NICs](04-nics-and-storage.md)
+[Phase 1](README.md) · [Previous: Ubuntu nodes](02-ubuntu-nodes.md) · [Next: USB NICs](04-nics-and-storage.md)
 
-**Status: complete.** Your report ends with **`NODE_IDENTITY_CHECKS_PASSED`**.
+**Status: complete.** Your report ends with **`NODE_IDENTITY_CHECKS_PASSED`**. The full procedure remains visible for study or a rebuild.
 
-| Node | SSH account | Ubuntu | Verified management address |
-|---|---|---|---|
-| node1 | `joe` | 24.04 | `192.168.0.200/24` |
-| node2 | `joe` | 24.04 | `192.168.0.201/24` |
-| node3 | `joe` | 24.04 | `192.168.0.202/24` |
+**Purpose:** verify access and read the actual node identities. Run the commands below on **R2d2**. The inspection reads information without changing node configuration.
 
-All three use `enp0s31f6` for management, with configured gateway and DNS `192.168.0.1`. Their reports and R2d2's report show `NTPSynchronized=yes`.
-
-NIC identities are recorded in [Chapter 1.4](04-nics-and-storage.md). Node3's storage candidate is recorded in [Chapter 1.5](05-cinder-storage.md). The full private report stays outside Git.
-
-## Short lecture — what your result means
-
-Ping showed that the addresses respond. SSH has now authenticated your account and read the actual operating systems, hostnames and addresses. That establishes which machines R2d2 is administering.
-
-The three nodes expose a CPU virtualization flag and `/dev/kvm`. That is useful evidence for the planned computes; running a VM is a later test. R2d2 is the administration VM and does not need to run the cloud's VMs.
-
-**Next:** [1.4 — Prepare the USB NICs](04-nics-and-storage.md).
-
-<details>
-<summary>Completed inspection — command reference</summary>
-
-## A. Download the course once
+## 1. Download the course on R2d2
 
 Git downloads and updates this repository; the SSH client connects to the nodes. Both are Ubuntu system packages on R2d2, installed with their required dependencies.
 
@@ -45,9 +26,9 @@ cd "$HOME/openstack-from-zero"
 git pull --ff-only
 ```
 
-## B. Run one combined inspection
+## 2. Run the access check on R2d2
 
-The [script](../../scripts/phase1-check.py) uses Python's standard library. It needs no pip packages or virtual environment.
+The [phase1-check.py](../../scripts/phase1-check.py) uses Python's standard library. It needs no pip packages or virtual environment.
 
 | What it does | Where |
 |---|---|
@@ -60,6 +41,7 @@ The [script](../../scripts/phase1-check.py) uses Python's standard library. It n
 It reads the nodes without changing their configuration. SSH may save a host key in R2d2's normal known-hosts file when you accept it.
 
 ```bash
+cd ~/openstack-from-zero
 python3 scripts/phase1-check.py --ssh --user joe
 ```
 
@@ -67,7 +49,7 @@ Here, `--ssh` enables node inspection and `--user joe` selects the node login ac
 
 On a first connection, verify the displayed host fingerprint against the node console before accepting it. For an ED25519 host key, display it at that node's console with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. A changed-key warning remains visible for review.
 
-## Success check
+## 3. Expected result
 
 The final marker is **`NODE_IDENTITY_CHECKS_PASSED`**.
 
@@ -83,4 +65,22 @@ The script prints the report path and a `cat` command to read it. Reports stay o
 
 Sudo, disk health, permission to erase a disk and full OpenStack readiness are separate checks.
 
-</details>
+## 4. Recorded result from this lab
+
+| Node | SSH account | Ubuntu | Verified management address |
+|---|---|---|---|
+| node1 | `joe` | 24.04 | `192.168.0.200/24` |
+| node2 | `joe` | 24.04 | `192.168.0.201/24` |
+| node3 | `joe` | 24.04 | `192.168.0.202/24` |
+
+All three use `enp0s31f6` for management, with configured gateway and DNS `192.168.0.1`. Their reports and R2d2's report show `NTPSynchronized=yes`.
+
+NIC identities are recorded in [Chapter 1.4](04-nics-and-storage.md). Node3's storage candidate is recorded in [Chapter 1.5](05-cinder-storage.md). The full private report stays outside Git.
+
+## 5. Short lecture — what your result means
+
+Ping showed that the addresses respond. SSH has now authenticated your account and read the actual operating systems, hostnames and addresses. That establishes which machines R2d2 is administering.
+
+The three nodes expose a CPU virtualization flag and `/dev/kvm`. That is useful evidence for the planned computes; running a VM is a later test. R2d2 is the administration VM and does not need to run the cloud's VMs.
+
+**Next:** [1.4 — Prepare the USB NICs](04-nics-and-storage.md).
