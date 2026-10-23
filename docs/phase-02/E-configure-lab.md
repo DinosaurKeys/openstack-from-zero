@@ -4,7 +4,7 @@
 
 **Goal:** prepare the reviewed settings that Kolla will use during installation.
 
-**Status: draft.** No configuration generator or apply command is ready yet.
+**Status: ready to run; live preparation report pending.** The three-compute inventory update passed. Joe confirmed the addresses below are free and chose the simple service baseline with HTTPS.
 
 ## 1. Purpose
 
@@ -15,6 +15,9 @@ The inventory says **which machines** to use. Kolla's settings say **how to conf
 | Setting | Confirmed design |
 |---|---|
 | Host OS | Ubuntu 24.04 on the three nodes |
+| Roles | All three nodes: controller, network, compute and local storage |
+| API access address | `192.168.0.151` — one shared internal/public VIP |
+| Future VM external pool | `192.168.0.152–192.168.0.199` |
 | Management interface | `enp0s31f6` on each node |
 | node1 external interface | `enx00e04c557e58` |
 | node2 external interface | `enx00e04c2c1678` |
@@ -23,7 +26,7 @@ The inventory says **which machines** to use. Kolla's settings say **how to conf
 | Cinder storage | Separate existing `cinder-volumes` VG on each SATA disk |
 | Cinder clustering | Independent backends, empty cluster name; the specific cluster-check exception is approved |
 
-The API VIP `.151` and future VM external allocation range `.152–.199` remain **proposals**. They must be confirmed and checked before assigning addresses. The home DHCP pool is `.2–.150`; nodes use `.200–.202`. We do not assume an address is unused simply because it is outside DHCP.
+Joe confirmed the VIP and VM pool are free on 2026-10-23. Keep them reserved for this lab. The home DHCP pool is `.2–.150`; nodes use `.200–.202`. This step records the plan; it does not configure router reservations, assign the VIP or create a VM network. A conflict check must still precede deployment.
 
 ## 3. Planned steps
 
@@ -36,10 +39,105 @@ The API VIP `.151` and future VM external allocation range `.152–.199` remain 
 
 ## 4. Script and commands
 
-The configuration script will follow the agreed values and installed release. No VIP, NIC, bridge or OpenStack service is configured by this draft.
+Read [phase2-configure.py](../../scripts/phase2-configure.py). Run it **on R2d2 as joe**. It prepares local files only.
+
+### A. Understand the settings
+
+| Choice | What it means |
+|---|---|
+| Ubuntu images, OpenStack 2026.2 | Match the selected release and node operating system |
+| Management: `enp0s31f6` | Keep the built-in NIC as the management/API path |
+| Per-node USB NICs | Store each confirmed USB name in inventory host variables for later external VM traffic |
+| Open vSwitch | Retain Kolla 23.0.0's default network implementation |
+| Core services + Horizon | Prepare login, images, networking, VMs and the web dashboard |
+| Cinder LVM | Use the existing independent `cinder-volumes` pools |
+| Heat, Cinder backups, monitoring off | Keep the initial baseline; Terraform and monitoring come in later chapters |
+| HTTPS on the shared VIP | Prepare encrypted dashboard/API entry points for `192.168.0.151` |
+
+The previously approved settings remain:
+
+```yaml
+cinder_cluster_name: ""
+cinder_cluster_skip_precheck: true
+```
+
+That is only the agreed cluster-name-check exception for independent LVM backends. Other prechecks remain enabled. It does not replicate disks or create shared storage.
+
+### B. Understand the private files
+
+Everything below is on **R2d2**, under `~/openstack-from-zero/private/phase2/`:
+
+| File or folder | Purpose |
+|---|---|
+| `kolla/globals.yml` | Kolla's cloud settings |
+| `host_vars/node1.yml`, `node2.yml`, `node3.yml` | Each node's external USB NIC name |
+| `kolla/lab-network-plan.json` | Record the reserved VIP and future VM address pool |
+| `kolla/passwords.yml` | Generated service passwords and internal service keys |
+| `kolla/certificates/` | Private lab CA, API certificate and private keys |
+
+The configuration stays in the project's private folder rather than replacing an unknown `/etc/kolla` setup on R2d2. Later Kolla commands must use this configuration directory explicitly with `--configdir`. Service configuration on the nodes is created only during later deployment.
+
+Existing, matching files are reused. An unexpected configuration folder or conflicting settings file is preserved and stops the script. Existing generated passwords and certificates are reused; a rerun does not rotate them.
+
+### C. Understand passwords and HTTPS
+
+**No sudo, node password or SSH-key passphrase is requested.** The script uses the tools already installed in Chapter C.
+
+Kolla's `kolla-genpwd` generates OpenStack's service credentials automatically. These are separate from joe's Ubuntu password and SSH key. Their values are not printed in the report. Do not paste `passwords.yml` or private keys into chat or GitHub.
+
+A **certificate authority (CA)** is a certificate issuer. This script creates a private lab CA and uses it to sign the API certificate. The certificate includes the VIP as an IP address, so no invented DNS name is needed.
+
+- `certificates/ca/lab-root.crt` is the **public CA certificate** that clients will need to trust.
+- `certificates/private/` and the `haproxy*.pem` files contain **private keys** and must stay private.
+- The API certificate lasts one year; the CA lasts ten years. Renewal is not automatic.
+- HTTPS here covers client access to the API load balancer. API backend TLS stays at the release's disabled default; this does not claim every internal connection is encrypted.
+
+The script verifies the certificate signature, key matches, dates and VIP. **It does not yet install CA trust on R2d2 or your browser computer.** Those trust steps must be completed before HTTPS use/deployment checks. A private lab CA is not automatically trusted by browsers.
+
+Planned API access after deployment:
+
+```mermaid
+flowchart TB
+  CA["Private lab CA"] -. "public certificate trusted" .-> Client["Browser or CLI"]
+  CA -. "signs certificate" .-> VIP["API VIP: 192.168.0.151"]
+  Client -->|HTTPS| VIP
+  VIP -->|"HTTP API backends"| Services["Controller API services"]
+```
+
+### D. Download and run
+
+These commands enter the repository, download Chapter E and create the explained private files:
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/phase2-configure.py --apply
+```
+
+The launcher selects the installed Kolla Python environment automatically. Your terminal can already show `(kolla)`; no extra activation or package installation is needed.
+
+Without `--apply`, the script prints the nonsecret plan and creates no files. You do not need to run both modes.
+
+The script checks the three-node inventory before writing files, generates credentials and certificates privately, then checks that Ansible reads the correct USB NIC for each node. It assigns no addresses, makes no node connections and deploys no services.
 
 ## 5. Finish check and lesson
 
-Configuration matches the agreed lab and passes local review. The short lesson follows the actual result. Three independent LVM backends do not provide automatic replication.
+Expected final marker:
+
+```text
+RESULT: LAB_CONFIG_PREPARED
+```
+
+Use the exact `cat` command printed at the end and send back that report. **Stop before Chapter F.** If the marker is `LAB_CONFIG_NEEDS_REVIEW`, send the report before making further changes. Library error details that might contain credentials are deliberately withheld.
+
+The successful marker means local settings, credential population, certificate checks and inventory NIC mappings passed. It does not mean the VIP is active or HTTPS is available.
+
+Before publication, six regression tests passed. Real Kolla 23.0.0 credential generation, real Ansible 2.21.5 inventory parsing, Kolla playbook syntax checking and OpenSSL certificate-chain/IP verification also passed in an isolated development folder. A second run preserved the generated passwords and keys. No live node or deployed HTTPS test was performed.
+
+### Short lecture — after review
+
+The short lesson will follow Joe's actual preparation report. The procedure above stays visible for rebuilding. Three independent LVM backends do not provide automatic replication.
+
+References: [Kolla 23.0.0 TLS configuration](https://github.com/openstack/kolla-ansible/blob/23.0.0/doc/source/admin/tls.rst) · [Released credential generator](https://github.com/openstack/kolla-ansible/blob/23.0.0/kolla_ansible/cmd/genpwd.py).
 
 [Next planned chapter: validate preparation](F-validate-preparation.md).

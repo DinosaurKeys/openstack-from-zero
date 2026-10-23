@@ -4,7 +4,7 @@
 
 **Goal:** tell Ansible which machines belong to this lab and which roles each machine has.
 
-**Status: all three node-access checks passed; the requested compute-role update is ready to run.** Chapter C completed successfully with Kolla-Ansible 23.0.0 and Ansible Core 2.21.5.
+**Status: complete.** All three node-access checks passed, and Joe's 2026-10-23 update returned `COMPUTE_ROLES_UPDATED` with node1, node2 and node3 in the compute group. Chapter C completed successfully with Kolla-Ansible 23.0.0 and Ansible Core 2.21.5.
 
 ## 1. Purpose
 
@@ -76,7 +76,7 @@ If it needs a new SSH agent, the script starts one for its child commands and lo
 
 ### Existing lab: add node1 to compute
 
-Joe's completed report returned `INVENTORY_ACCESS_READY for all`: identity, Python and sudo checks passed on every node with `changed=0`. That run used the earlier two-compute layout. Joe has now requested compute on **all three nodes**.
+Joe's completed report returned `INVENTORY_ACCESS_READY for all`: identity, Python and sudo checks passed on every node with `changed=0`. That run used the earlier two-compute layout. Joe requested compute on **all three nodes**, then completed the update below. The previous inventory was saved as `inventory-before-add-node1-kbim52ac.ini`; the update report returned `COMPUTE_ROLES_UPDATED`. These commands remain available for rebuilding.
 
 For this existing lab, run the following on **R2d2 as joe**. It updates only the known earlier private inventory. It makes no SSH connections and asks for no passwords.
 
@@ -135,6 +135,6 @@ Before publication, nine local regression tests passed, including backup, repeat
 
 The completed access checks prove that Ansible can reach the intended machines as joe, execute Python modules and use sudo. An inventory group is a role assignment for later deployment; it does not install services by itself.
 
-All three nodes are now the selected compute targets. This remains a plan until the inventory update is run and OpenStack is deployed. Later, removing a deployed compute requires first moving or shutting down its VMs and decommissioning the service; editing the inventory alone does not remove running services.
+All three nodes are now the selected compute targets. The inventory update is now verified; service deployment remains a later step. Later, removing a deployed compute requires first moving or shutting down its VMs and decommissioning the service; editing the inventory alone does not remove running services.
 
 [Next planned chapter: configure the lab](E-configure-lab.md).

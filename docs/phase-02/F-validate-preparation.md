@@ -18,7 +18,9 @@ This checkpoint connects the earlier results: the selected tools, correct invent
 4. Confirm Ansible access and required sudo access on all three nodes.
 5. Check that per-node NIC settings and LVM group names match our recorded results.
 6. Confirm the approved independent-LVM cluster-check exception is the only intended precheck exception.
-7. Save one report, review it, then ask Joe before starting Phase 3.
+7. Check the reserved VIP for active conflicts from the LAN and verify hardware virtualization before selecting the deployment procedure.
+8. Explain and complete the public CA trust steps on R2d2 and Joe's browser computer before HTTPS deployment/use. Ask which browser computer/OS will be used; do not assume it or disable certificate verification.
+9. Save one report, review it, then ask Joe before starting Phase 3.
 
 ## 3. Script and commands
 
