@@ -12,18 +12,18 @@ Each chapter includes its purpose, script link, commands to run, expected result
 
 | Chapter | Status | Steps and commands |
 |---|---|---|
-| [1.1 — Install R2d2](01-r2d2.md) | Complete | [Manual installation](01-r2d2.md#installation-steps) |
-| [1.2 — Install the Ubuntu nodes](02-ubuntu-nodes.md) | Ubuntu, hostnames and management IPs verified | [Manual installation](02-ubuntu-nodes.md#steps) |
-| [1.3 — Check access from R2d2](03-access-check.md) | Complete — SSH inspection passed on all three | [Run access check](03-access-check.md#2-run-the-access-check-on-r2d2) |
-| [1.3a — Check keys, time and host names](03a-access-state.md) | Complete — actual state reviewed | [Read inspection and result](03a-access-state.md) |
-| [1.3b — Create SSH keys and copy the public key](03b-ssh-keys.md) | Complete — fresh key-only login passed on all three | [Setup, result and lesson](03b-ssh-keys.md) |
-| [1.3c — Resolve node names on R2d2](03c-r2d2-hosts.md) | Complete — all three node names resolve correctly | [Explain and run hosts script](03c-r2d2-hosts.md) |
-| [1.3d — Install Chrony on R2d2](03d-r2d2-chrony.md) | Complete — active, enabled and initially synchronized | [Explain and run Chrony script](03d-r2d2-chrony.md) |
-| [1.4 — Prepare the USB NICs](04-nics-and-storage.md) | Complete — all three links and fresh SSH passed | [Run NIC script](04-nics-and-storage.md#3-run-on-r2d2) |
-| [1.5 — Prepare Cinder storage](05-cinder-storage.md) | Inspection complete — all three reviewed | [Run storage inspection](05-cinder-storage.md#3-run-on-r2d2) |
-| [1.6 — Create Cinder LVM pools](06-cinder-lvm.md) | Complete — three local pools created and verified | [Purpose, script and commands](06-cinder-lvm.md) |
+| [Chapter A — Install R2d2](01-r2d2.md) | Complete | [Manual installation](01-r2d2.md#installation-steps) |
+| [Chapter B — Install the Ubuntu nodes](02-ubuntu-nodes.md) | Ubuntu, hostnames and management IPs verified | [Manual installation](02-ubuntu-nodes.md#steps) |
+| [Chapter C — Check access from R2d2](03-access-check.md) | Complete — SSH inspection passed on all three | [Run access check](03-access-check.md#2-run-the-access-check-on-r2d2) |
+| [Chapter D — Check keys, time and host names](03a-access-state.md) | Complete — actual state reviewed | [Read inspection and result](03a-access-state.md) |
+| [Chapter E — Create SSH keys and copy the public key](03b-ssh-keys.md) | Complete — fresh key-only login passed on all three | [Setup, result and lesson](03b-ssh-keys.md) |
+| [Chapter F — Resolve node names on R2d2](03c-r2d2-hosts.md) | Complete — all three node names resolve correctly | [Explain and run hosts script](03c-r2d2-hosts.md) |
+| [Chapter G — Install Chrony on R2d2](03d-r2d2-chrony.md) | Complete — active, enabled and initially synchronized | [Explain and run Chrony script](03d-r2d2-chrony.md) |
+| [Chapter H — Prepare the USB NICs](04-nics-and-storage.md) | Complete — all three links and fresh SSH passed | [Run NIC script](04-nics-and-storage.md#3-run-on-r2d2) |
+| [Chapter I — Prepare Cinder storage](05-cinder-storage.md) | Inspection complete — all three reviewed | [Run storage inspection](05-cinder-storage.md#3-run-on-r2d2) |
+| [Chapter J — Create Cinder LVM pools](06-cinder-lvm.md) | Complete — three local pools created and verified | [Purpose, script and commands](06-cinder-lvm.md) |
 
-Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint remains complete. The SSH/time/name inspection is also reviewed. SSH-key setup now ends with **`SSH_KEYS_READY for all`**. Its reviewed result and short lesson remain available. **Node-name setup is also complete:** [1.3c — reviewed result and lesson](03c-r2d2-hosts.md#5-reviewed-result). **Chrony on R2d2 is also complete:** [1.3d — reviewed result and lesson](03d-r2d2-chrony.md#6-reviewed-result). **SATA inspection is complete:** [1.5 — reviewed result and lesson](05-cinder-storage.md#5-reviewed-inspection-result). **LVM pools are also complete:** [1.6 — creation result and lesson](06-cinder-lvm.md#6-reviewed-creation-result).
+Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint remains complete. The SSH/time/name inspection is also reviewed. SSH-key setup now ends with **`SSH_KEYS_READY for all`**. Its reviewed result and short lesson remain available. **Node-name setup is also complete:** [Chapter F — reviewed result and lesson](03c-r2d2-hosts.md#5-reviewed-result). **Chrony on R2d2 is also complete:** [Chapter G — reviewed result and lesson](03d-r2d2-chrony.md#6-reviewed-result). **SATA inspection is complete:** [Chapter I — reviewed result and lesson](05-cinder-storage.md#5-reviewed-inspection-result). **LVM pools are also complete:** [Chapter J — creation result and lesson](06-cinder-lvm.md#6-reviewed-creation-result).
 
 ## Phase 1 finish check
 
@@ -40,4 +40,4 @@ Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint r
 - [x] Current SATA identities, existing use and health evidence reviewed on all three nodes.
 - [x] Approved SATA disks back the intended Cinder LVM pools, separately from Ubuntu.
 
-**Latest completed checkpoint:** [1.6 — three LVM pools created and verified](06-cinder-lvm.md#6-reviewed-creation-result). Read the lesson and use the optional read-only command to view a pool. Phase 2 will be agreed before proceeding.
+**Latest completed checkpoint:** [Chapter J — three LVM pools created and verified](06-cinder-lvm.md#6-reviewed-creation-result). Read the lesson and use the optional read-only command to view a pool. Phase 2 will be agreed before proceeding.

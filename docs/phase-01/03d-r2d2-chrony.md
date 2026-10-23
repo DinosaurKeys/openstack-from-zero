@@ -1,4 +1,4 @@
-# 1.3d — Install Chrony on R2d2
+# Chapter G — Install Chrony on R2d2
 
 [Phase 1](README.md) · [Previous: node names](03c-r2d2-hosts.md)
 

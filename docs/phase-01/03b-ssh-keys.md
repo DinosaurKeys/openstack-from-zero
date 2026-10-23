@@ -1,4 +1,4 @@
-# 1.3b — Create SSH keys and copy the public key
+# Chapter E — Create SSH keys and copy the public key
 
 [Phase 1](README.md) · [Previous: inspect the existing setup](03a-access-state.md)
 
@@ -55,7 +55,7 @@ git pull --ff-only
 bash scripts/phase1-ssh-keys.sh --user joe --apply
 ```
 
-Normal host-key verification stays enabled. The node host identities must already be trusted from [Chapter 1.3](03-access-check.md).
+Normal host-key verification stays enabled. The node host identities must already be trusted from [Chapter C](03-access-check.md).
 
 ## 5. Check and return the result
 

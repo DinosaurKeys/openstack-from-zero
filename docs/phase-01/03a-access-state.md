@@ -1,4 +1,4 @@
-# 1.3a — Check SSH keys, time and host names
+# Chapter D — Check SSH keys, time and host names
 
 [Phase 1](README.md) · [Previous: connection check](03-access-check.md)
 
@@ -21,7 +21,7 @@ The script connects to node1 `.200`, node2 `.201` and node3 `.202` on `192.168.0
 
 It creates no keys, copies no public keys, installs no packages, and changes no host, network or time configuration. It records key filenames and public fingerprints, not private-key contents. No sudo password is needed.
 
-**Before running:** the SSH connections from [Chapter 1.3](03-access-check.md) must already work and their host identities must be trusted. This check keeps host-key verification enabled and does not add or replace trusted host keys.
+**Before running:** the SSH connections from [Chapter C](03-access-check.md) must already work and their host identities must be trusted. This check keeps host-key verification enabled and does not add or replace trusted host keys.
 
 ## 2. Download the update on R2d2
 
@@ -80,6 +80,6 @@ A synchronized clock does not identify the time service. Your nodes use Chrony; 
 
 Finding no public-key files or loaded keys does not prove no private key exists elsewhere. The next script uses a dedicated filename and checks for existing files before creating its pair.
 
-**Next, authorized by Joe:** [1.3b — Create SSH keys and copy the public key](03b-ssh-keys.md).
+**Next, authorized by Joe:** [Chapter E — Create SSH keys and copy the public key](03b-ssh-keys.md).
 
 References: [OpenSSH authentication and connection options](https://man.openbsd.org/ssh_config) · [Chrony monitoring commands](https://chrony-project.org/doc/4.4/chronyc.html).

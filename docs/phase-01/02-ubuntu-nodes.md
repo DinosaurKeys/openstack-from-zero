@@ -1,4 +1,4 @@
-# 1.2 — Install the Ubuntu nodes
+# Chapter B — Install the Ubuntu nodes
 
 [Phase 1](README.md) · [Previous: R2d2](01-r2d2.md)
 
@@ -28,7 +28,7 @@ Use the actual LAN gateway and DNS from your router/network settings. The gatewa
 
 ## Success check
 
-Each node boots, accepts a console login and shows its intended hostname. Chapter 1.3 verifies Ubuntu, the management address and SSH from R2d2.
+Each node boots, accepts a console login and shows its intended hostname. Chapter C verifies Ubuntu, the management address and SSH from R2d2.
 
 ## Short lecture — after the checkpoint
 

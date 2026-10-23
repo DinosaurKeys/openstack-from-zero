@@ -94,7 +94,7 @@ def main(argv=None):
         raise RuntimeError('Run as joe in an interactive terminal on R2d2; do not prefix this script with sudo')
     if not args.apply:
         print('Preview: install Chrony if absent; let APT replace systemd-timesyncd; enable Chrony; verify synchronization.')
-        print('No system change made. Read chapter 1.3d, then use --apply.')
+        print('No system change made. Read Chapter G, then use --apply.')
         return 0
     os.umask(0o077)
     if REPORTS.is_symlink():

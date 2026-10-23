@@ -1,4 +1,4 @@
-# 1.6 — Create the three Cinder LVM pools
+# Chapter J — Create the three Cinder LVM pools
 
 [Phase 1](README.md) · [Previous: reviewed disk inspection](05-cinder-storage.md#5-reviewed-inspection-result)
 

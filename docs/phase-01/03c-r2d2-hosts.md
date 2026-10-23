@@ -1,4 +1,4 @@
-# 1.3c — Resolve node names on R2d2
+# Chapter F — Resolve node names on R2d2
 
 [Phase 1](README.md) · [Previous: SSH keys](03b-ssh-keys.md)
 
