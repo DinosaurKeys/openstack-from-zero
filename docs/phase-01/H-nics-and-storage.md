@@ -1,6 +1,6 @@
 # Chapter H — Prepare the USB NICs
 
-[Phase 1](README.md) · [Previous: SSH access](03-access-check.md) · [Next: Cinder disk](05-cinder-storage.md)
+[Phase 1](README.md) · [Previous: SSH access](C-access-check.md) · [Next: Cinder disk](I-cinder-storage.md)
 
 **Status: complete.** The full procedure remains visible for study or a rebuild. The reviewed result and lesson follow the steps.
 
@@ -114,6 +114,6 @@ Netplan documents rollback caveats. If SSH is lost or restoration needs review, 
 
 Local fixture checks passed for configuration preservation, rejection, restoration, repeat runs and wrapper behavior. They do not substitute for the real Netplan and hardware checks in your run.
 
-**Next:** [Chapter I — Inspect the Cinder disk](05-cinder-storage.md).
+**Next:** [Chapter I — Inspect the Cinder disk](I-cinder-storage.md).
 
 References: [Netplan configuration](https://netplan.readthedocs.io/en/stable/netplan-yaml/) · [Netplan timed trial and caveats](https://netplan.readthedocs.io/en/stable/netplan-try/) · [Kolla external NICs](https://docs.openstack.org/kolla-ansible/2026.1/reference/networking/neutron.html#network-interfaces).

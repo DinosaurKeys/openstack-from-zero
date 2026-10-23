@@ -1,6 +1,6 @@
 # Chapter C — Check access from R2d2
 
-[Phase 1](README.md) · [Previous: Ubuntu nodes](02-ubuntu-nodes.md) · [Next: keys, time and names](03a-access-state.md)
+[Phase 1](README.md) · [Previous: Ubuntu nodes](B-ubuntu-nodes.md) · [Next: keys, time and names](D-access-state.md)
 
 **Status: complete.** Your report ends with **`NODE_IDENTITY_CHECKS_PASSED`**. The full procedure remains visible for study or a rebuild.
 
@@ -75,7 +75,7 @@ Sudo, disk health, permission to erase a disk and full OpenStack readiness are s
 
 All three use `enp0s31f6` for management, with configured gateway and DNS `192.168.0.1`. Their reports and R2d2's report show `NTPSynchronized=yes`.
 
-NIC identities are recorded in [Chapter H](04-nics-and-storage.md). Node3's storage candidate is recorded in [Chapter I](05-cinder-storage.md). The full private report stays outside Git.
+NIC identities are recorded in [Chapter H](H-nics-and-storage.md). Node3's storage candidate is recorded in [Chapter I](I-cinder-storage.md). The full private report stays outside Git.
 
 ## 5. Short lecture — what your result means
 
@@ -83,4 +83,4 @@ Ping showed that the addresses respond. SSH has now authenticated your account a
 
 The three nodes expose a CPU virtualization flag and `/dev/kvm`. That is useful evidence for the planned computes; running a VM is a later test. R2d2 is the administration VM and does not need to run the cloud's VMs.
 
-**Next:** [Chapter D — Check SSH keys, time and host names](03a-access-state.md).
+**Next:** [Chapter D — Check SSH keys, time and host names](D-access-state.md).

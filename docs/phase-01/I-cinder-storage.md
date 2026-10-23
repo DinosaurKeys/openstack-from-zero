@@ -1,6 +1,6 @@
 # Chapter I — Prepare Cinder storage
 
-[Phase 1](README.md) · [Previous: USB NIC result and lesson](04-nics-and-storage.md)
+[Phase 1](README.md) · [Previous: USB NIC result and lesson](H-nics-and-storage.md)
 
 **Storage step: inspect the SATA disks on node1, node2 and node3.** We review one combined report before preparing any Cinder storage pools.
 
@@ -10,7 +10,7 @@ A Cinder volume is a virtual disk you can attach to a VM. Before assigning physi
 
 ![All three nodes: existing Ubuntu on NVMe and separate SATA disks for planned local Cinder pools](../images/storage-layout.svg)
 
-Each node has its own SATA disk and its own Cinder LVM pool. Pool creation is now verified in [Chapter J](06-cinder-lvm.md#6-reviewed-creation-result). Cinder services and VM volumes are still future work; the original inspection result below describes the disks before preparation.
+Each node has its own SATA disk and its own Cinder LVM pool. Pool creation is now verified in [Chapter J](J-cinder-lvm.md#6-reviewed-creation-result). Cinder services and VM volumes are still future work; the original inspection result below describes the disks before preparation.
 
 ## 1. Which disk and why?
 
@@ -135,7 +135,7 @@ Ubuntu's disks are separate: the NVMe disk contains partitions and the existing 
 
 In LVM terminology, a **physical volume (PV)** is a disk or partition prepared for LVM. A **volume group (VG)** combines that space into a pool. **Logical volumes (LVs)** are virtual disks allocated from the pool.
 
-The intended next preparation would create one SATA-backed pool on each node. Those would be three separate local pools, with no automatic replication between them. The provisioning script and its Kolla requirement are now explained in **[Chapter J — Create the three Cinder LVM pools](06-cinder-lvm.md)**. Read its pending decision before applying. All inspection commands above remain available for rebuilding.
+The intended next preparation would create one SATA-backed pool on each node. Those would be three separate local pools, with no automatic replication between them. The provisioning script and its Kolla requirement are now explained in **[Chapter J — Create the three Cinder LVM pools](J-cinder-lvm.md)**. Read its pending decision before applying. All inspection commands above remain available for rebuilding.
 
 The intended layout uses a separate local LVM pool on each storage node. These pools do not automatically replicate volumes between nodes. Before provisioning, we must validate the Kolla configuration for separate LVM backends; the Kolla guide flags limitations in multi-controller configurations. Keep Kolla prechecks enabled. Volume access from both computes is tested in the first-VM phase.
 

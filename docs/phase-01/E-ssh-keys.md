@@ -1,6 +1,6 @@
 # Chapter E — Create SSH keys and copy the public key
 
-[Phase 1](README.md) · [Previous: inspect the existing setup](03a-access-state.md)
+[Phase 1](README.md) · [Previous: inspect the existing setup](D-access-state.md)
 
 **Goal:** let `joe` on R2d2 log in to all three nodes using a dedicated SSH key.
 
@@ -55,7 +55,7 @@ git pull --ff-only
 bash scripts/phase1-ssh-keys.sh --user joe --apply
 ```
 
-Normal host-key verification stays enabled. The node host identities must already be trusted from [Chapter C](03-access-check.md).
+Normal host-key verification stays enabled. The node host identities must already be trusted from [Chapter C](C-access-check.md).
 
 ## 5. Check and return the result
 
@@ -112,6 +112,6 @@ The key passphrase unlocks your private-key file locally. It is different from t
 
 Your agent reported a **14,400-second lifetime: four hours**. That is the lifetime of its loaded key, not the key files or the public-key entries on the nodes. When the loaded key expires, the files remain valid; a later login using the explicit `-i` command may ask for the key passphrase again.
 
-**Checkpoint complete.** Keep the steps above for reference. Joe has now authorized **[the next step: node names on R2d2](03c-r2d2-hosts.md)**.
+**Checkpoint complete.** Keep the steps above for reference. Joe has now authorized **[the next step: node names on R2d2](F-r2d2-hosts.md)**.
 
 References: [OpenSSH key generation](https://man.openbsd.org/ssh-keygen) · [Public-key installation](https://manpages.debian.org/bookworm/openssh-client/ssh-copy-id.1.en.html) · [SSH agent key loading](https://man.openbsd.org/ssh-add).

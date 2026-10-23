@@ -47,6 +47,6 @@ Chapters use letters: **Chapter A, Chapter B, Chapter C**, and so on. Phase 1 ru
 
 R2d2 is installed: Ubuntu 24.04.5 LTS on VMware, hostname `r2d2`, account `joe`, interface `ens33`. Its observed DHCP address is `192.168.162.131/24`. All three node addresses replied to its pings.
 
-The combined SSH inspection passed on all three nodes: Ubuntu 24.04, correct hostnames, management IPs and login as `joe`. Their configured gateway and DNS are `192.168.0.1`; R2d2 uses `192.168.162.2`. USB preparation also passed on all three, preserving management access. The NIC result and short lesson are in [Chapter H](phase-01/04-nics-and-storage.md); the separate Cinder disk step is [Chapter I](phase-01/05-cinder-storage.md).
+The combined SSH inspection passed on all three nodes: Ubuntu 24.04, correct hostnames, management IPs and login as `joe`. Their configured gateway and DNS are `192.168.0.1`; R2d2 uses `192.168.162.2`. USB preparation also passed on all three, preserving management access. The NIC result and short lesson are in [Chapter H](phase-01/H-nics-and-storage.md); the separate Cinder disk step is [Chapter I](phase-01/I-cinder-storage.md).
 
 The nodes share an untagged mini switch and TP-Link home router. Home DHCP allocates `.2–.150`. The initial cloud-address proposal is API VIP `.151` and external pool `.152–.199`, preserving nodes `.200–.202`. Current execution instructions stay in [Phase 1](phase-01/README.md).

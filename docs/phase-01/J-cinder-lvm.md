@@ -1,6 +1,6 @@
 # Chapter J — Create the three Cinder LVM pools
 
-[Phase 1](README.md) · [Previous: reviewed disk inspection](05-cinder-storage.md#5-reviewed-inspection-result)
+[Phase 1](README.md) · [Previous: reviewed disk inspection](I-cinder-storage.md#5-reviewed-inspection-result)
 
 **Goal:** create one empty `cinder-volumes` storage pool on each node's reviewed SATA disk.
 

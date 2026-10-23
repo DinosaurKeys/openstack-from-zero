@@ -1,6 +1,6 @@
 # Chapter B — Install the Ubuntu nodes
 
-[Phase 1](README.md) · [Previous: R2d2](01-r2d2.md)
+[Phase 1](README.md) · [Previous: R2d2](A-r2d2.md)
 
 **Purpose:** give each node a clean operating system and a known management connection.
 

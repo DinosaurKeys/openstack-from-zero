@@ -27,7 +27,7 @@ Build this fresh course in DinosaurKeys/openstack-from-zero. Read the relevant p
 
 ## Teaching and execution
 - One phase at a time, with short chapters, diagrams and clear finish checks.
-- Joe's chapter-label preference: use Chapter A, Chapter B, Chapter C and so on within every phase. Phase 1 runs A–J; Phase 2 restarts at A. Phase numbers and numbered execution steps remain. Update headings, index labels and cross-references consistently; preserve file URLs, all commands, explanations and completed results. This change does not authorize starting Phase 2.
+- Joe's chapter-label preference: use Chapter A, Chapter B, Chapter C and so on within every phase. Phase 1 runs A–J; Phase 2 restarts at A. Phase numbers and numbered execution steps remain. Update headings, index labels and cross-references consistently; preserve all commands, explanations and completed results. Joe also requested letter-prefixed Markdown filenames: A-r2d2.md through J-cinder-lvm.md in Phase 1, and letter-prefixed chapter files in Phase 2. Update every repository link when renaming these files. This change does not authorize starting Phase 2.
 - Retain completed procedures, command blocks and explanations visibly for study. Ask Joe before deleting, shortening or hiding teaching material.
 - Inspect available repository evidence before asking Joe to remember earlier work. Ask before proceeding to new configuration work; do not assume consent beyond the agreed step.
 - Before a command, explain purpose, execution machine, inputs, changes and output.

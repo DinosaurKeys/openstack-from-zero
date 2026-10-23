@@ -1,6 +1,6 @@
 # Chapter A — Install R2d2
 
-[Phase 1](README.md) · [Next: Ubuntu nodes](02-ubuntu-nodes.md)
+[Phase 1](README.md) · [Next: Ubuntu nodes](B-ubuntu-nodes.md)
 
 **Status: complete.** Confirmed from your terminal output on 22 October 2026.
 
@@ -29,7 +29,7 @@ You can sign in at the R2d2 VM console. The following table records the result f
 | IPv4 address | `192.168.162.131/24`, assigned by DHCP |
 | Reachability | Ping replies from `192.168.0.200`, `.201` and `.202` |
 
-The exact VMware product is not established by `hostnamectl`. The subsequent [SSH inspection](03-access-check.md) passed on all three nodes. R2d2's configured gateway and DNS are `192.168.162.2`.
+The exact VMware product is not established by `hostnamectl`. The subsequent [SSH inspection](C-access-check.md) passed on all three nodes. R2d2's configured gateway and DNS are `192.168.162.2`.
 
 ## Short lecture — what your result means
 

@@ -1,6 +1,6 @@
 # Chapter G — Install Chrony on R2d2
 
-[Phase 1](README.md) · [Previous: node names](03c-r2d2-hosts.md)
+[Phase 1](README.md) · [Previous: node names](F-r2d2-hosts.md)
 
 **Goal:** use Chrony to keep R2d2's clock synchronized.
 
