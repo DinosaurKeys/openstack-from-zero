@@ -4,7 +4,7 @@
 
 **Goal:** check that the files on R2d2 still match the three nodes before installation.
 
-**Status: preparation checks passed and reviewed.** R2d2 CA trust is verified. Windows 11 Chrome import is confirmed; Linux Firefox certificate location/import remain pending. The complete run procedure stays below for rebuilding. Horizon remains enabled in the plan so Joe can learn through its web dashboard.
+**Status: preparation checks passed and reviewed.** R2d2 CA trust is verified. Windows 11 Chrome and Linux Firefox imports are user-confirmed. Phase 2 preparation is complete for those chosen browsers. The complete run procedure stays below for rebuilding. Horizon remains enabled in the plan so Joe can learn through its web dashboard.
 
 ## 1. Purpose
 
@@ -91,7 +91,7 @@ A different CA already installed under our trust filename requires a separate re
 
 Joe confirmed **Chrome and Firefox on Windows and Linux**, accessed from outside R2d2. R2d2 itself is currently accessed using the **VMware console**.
 
-Read [F — Browser certificate guide](F-browser-certificates.md). It covers both browsers without assuming a Linux distribution. The Windows 11 host reaches R2d2 at `192.168.162.131:22` through VMnet8; [the Windows transfer steps are now published](F-browser-certificates.md#windows-11-laptop--confirmed-route-ready-to-run-transfer). R2d2's checks passed. Joe reported the Windows verification marker and confirmed the Chrome import. For Linux Firefox, [use its separate guide](F-linux-firefox.md); the local file location and transfer route are still unconfirmed.
+Read [F — Browser certificate guide](F-browser-certificates.md). It covers both browsers without assuming a Linux distribution. The Windows 11 host reaches R2d2 at `192.168.162.131:22` through VMnet8; [the Windows transfer steps are now published](F-browser-certificates.md#windows-11-laptop--confirmed-route-ready-to-run-transfer). R2d2's checks passed. Joe reported the Windows verification marker and confirmed the Chrome import. Joe also confirmed completing [the separate Linux Firefox guide](F-linux-firefox.md). Its exact local file path and transfer route were not supplied and are not inferred.
 
 No Horizon connection test is expected yet: the VIP, HTTPS listener and dashboard will be deployed in Phase 3.
 
@@ -101,10 +101,10 @@ No Horizon connection test is expected yet: the VIP, HTTPS listener and dashboar
 - [x] Review the reported virtualization, NIC, storage, clock and VIP observations.
 - [x] Verify R2d2 CA trust.
 - [x] Public CA copied to Windows; Chrome import confirmed by Joe.
-- [ ] Locate/transfer the public CA and confirm import into Linux Firefox, as requested.
+- [x] Linux Firefox setup reported complete by Joe; import user-confirmed.
 - [ ] Agree on Phase 3 before running bootstrap or deployment.
 
-**Development verification:** ten regression tests cover read-only probes, wrong-node rejection, ARP packet handling, certificate/configuration preservation, CA mismatch, private-file guards and trust destination protection. Real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5 inventory parsing, playbook syntax, ad-hoc argument parsing and OpenSSL certificate verification also passed in an isolated development folder. These development checks are separate from Joe's live results below. Windows Chrome import is user-confirmed; Linux Firefox import and live Horizon HTTPS remain pending.
+**Development verification:** ten regression tests cover read-only probes, wrong-node rejection, ARP packet handling, certificate/configuration preservation, CA mismatch, private-file guards and trust destination protection. Real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5 inventory parsing, playbook syntax, ad-hoc argument parsing and OpenSSL certificate verification also passed in an isolated development folder. These development checks are separate from Joe's live results below. Windows Chrome and Linux Firefox imports are user-confirmed. Live Horizon HTTPS remains pending deployment.
 
 ## 7. Reviewed result
 
@@ -127,7 +127,7 @@ RESULT: R2D2_CA_TRUST_READY (offline certificate verification; browser trust is 
 | Planned VIP | No active conflict observed from any node during the bounded LAN probes. Silent/offline devices cannot be excluded. |
 | R2d2 trust | Public CA installed; the saved server certificate verified successfully against Ubuntu's system trust bundle. |
 
-No node configuration or storage contents were changed. The Windows host's TCP route to R2d2 is now confirmed. Joe subsequently reported the Windows certificate verification marker and confirmed the Chrome import. Linux Firefox certificate location/import and live Horizon HTTPS remain pending.
+No node configuration or storage contents were changed. The Windows host's TCP route to R2d2 is now confirmed. Joe subsequently reported the Windows certificate verification marker and confirmed the Chrome import. Joe then confirmed completing Linux Firefox setup. Both chosen browser imports are user-confirmed; live Horizon HTTPS remains pending deployment.
 
 ## 8. Short lecture — after review
 
@@ -135,7 +135,7 @@ No node configuration or storage contents were changed. The Windows host's TCP r
 
 **The pool is ready; a cloud volume does not exist yet.** One PV means the selected SATA disk backs the pool. Zero LVs means Cinder has not created any volumes in it.
 
-**Certificate trust is local.** R2d2 now recognizes our lab CA. Joe has confirmed the import in Chrome on Windows 11. Firefox on Linux still needs its own confirmed import. Trusting a certificate does not make the future dashboard reachable.
+**Certificate trust is local.** R2d2 now recognizes our lab CA. Joe has confirmed the import in Chrome on Windows 11. Joe has also confirmed completing the Firefox import on Linux. Trusting a certificate does not make the future dashboard reachable.
 
 **Syntax is only one checkpoint.** We checked that the playbook can be read, not that OpenStack is deployed. Phase 3 must prepare host dependencies, run full Kolla prechecks and then deploy and test the services. We agree on that work before starting it.
 

@@ -17,4 +17,4 @@ Each chapter follows **purpose → explain the script → publish → Joe pulls 
 
 The selected versions, three-node roles, NIC mappings, independent Cinder LVM pools and HTTPS plan stay as agreed in Phase 2. We do not recreate the disks, passwords or certificates.
 
-**Current action:** finish the requested [Linux Firefox preparation](../phase-02/F-linux-firefox.md), then review Chapter A's exact scope before a runnable implementation. Publishing this draft does not start bootstrap or deployment.
+**Current action:** Phase 2 and the chosen Windows Chrome/Linux Firefox imports are complete (browser imports user-confirmed). Review Chapter A's scope before its runnable implementation. Publishing this draft does not start bootstrap or deployment.

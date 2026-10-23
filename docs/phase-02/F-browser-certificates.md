@@ -4,14 +4,14 @@
 
 **Purpose:** let your browser recognize the lab's HTTPS certificate when Horizon is deployed.
 
-**Current checkpoint:** Joe confirmed the public CA import into **Chrome on Windows 11**. The certificate was copied to `C:\Users\joe\lab-root.crt`, and Joe reported the Step 4 verification marker. Linux Firefox is next; its local certificate location is not yet known. Live Horizon HTTPS has not been tested.
+**Current checkpoint:** Joe confirmed the public CA import into **Chrome on Windows 11**. The certificate was copied to `C:\Users\joe\lab-root.crt`, and Joe reported the Step 4 verification marker. Joe subsequently confirmed completing Linux Firefox setup. The chosen browser imports are user-confirmed. The Linux path, distribution and transfer route were not supplied; they are not inferred. Live Horizon HTTPS has not been tested.
 
 ## Choose your browser path
 
 | Where you are working | What to follow |
 |---|---|
 | **Windows 11 — Chrome** | **Import confirmed by Joe.** Keep the Windows steps below for rebuilding; no repeat is needed now. |
-| **Linux — Firefox** | **[Follow this separate Linux Firefox guide](F-linux-firefox.md). Start with locating the certificate.** |
+| **Linux — Firefox** | **Import confirmed by Joe.** [The separate Linux Firefox guide](F-linux-firefox.md) remains available for rebuilding. |
 | Windows — Firefox | Section D below, if you later choose to use it. Import is unconfirmed. |
 | Linux — Chrome | Section C below, if you later choose to use it. Import is unconfirmed. |
 
@@ -143,7 +143,7 @@ Record which combinations you completed:
 | Browser computer | Chrome CA imported | Firefox CA imported |
 |---|---|---|
 | Windows | **Import confirmed by Joe** | Unconfirmed — optional |
-| Linux | Unconfirmed — optional | Pending — requested next |
+| Linux | Unconfirmed — optional | **Import confirmed by Joe** |
 
 **After Phase 3 deploys Horizon**, we will test `https://192.168.0.151` from the chosen browser computers. We will confirm network reachability, certificate validity and the Horizon login page then. Keep certificate verification enabled; no warning bypass is part of this procedure.
 

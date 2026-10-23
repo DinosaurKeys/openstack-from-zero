@@ -4,7 +4,7 @@
 
 **Goal:** let Firefox on your Linux computer recognize the lab CA.
 
-**Current step:** locate `lab-root.crt` on that Linux computer. Joe is not sure whether it has been copied there. The Windows copy and Chrome import are already complete; they do not place a file on a separate Linux computer.
+**Status: Joe confirmed completing this Linux Firefox procedure.** The Windows Chrome import is also user-confirmed. The steps below remain for study and rebuilding. The Linux computer's exact path, distribution and transfer route were not reported and are not assumed. Live Horizon HTTPS is still pending deployment.
 
 ## A. Where to work
 
@@ -19,7 +19,7 @@ The Linux computer's name, distribution and transfer route are not yet confirmed
 3. If you find it, return its **full path**. If multiple files appear, return the paths before choosing one.
 4. If it is not found, stop and tell me **which Linux computer runs Firefox**. We will confirm a way to copy the public file there.
 
-**Stop here for the current checkpoint.** Verification and import below apply after we know which local file you have.
+**On a rebuild, stop here if the local file is not yet known.** Verification and import below apply after you have located and checked the correct file. Joe has already reported completing the current setup.
 
 The source public certificate remains on R2d2 at:
 
@@ -67,6 +67,8 @@ Upper/lowercase and colon separators do not change the value. Stop if it differs
 Use **Authorities**, not the **Your Certificates** tab. If labels differ, return the Firefox version and visible options before choosing a different action.
 
 ## E. Finish check
+
+**Current lab: Joe reported the procedure completed, so the Firefox import is recorded as user-confirmed.** This is not an independent browser inspection or live HTTPS test. The checklist below remains for a future rebuild.
 
 - [ ] Correct Linux computer and local certificate path confirmed.
 - [ ] Local certificate fingerprint matches the reviewed lab CA.

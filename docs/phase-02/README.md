@@ -4,7 +4,7 @@
 
 **Goal:** prepare R2d2 with the tools and reviewed configuration needed to install OpenStack in Phase 3.
 
-**Current: Chapter F's preparation checks and R2d2 CA trust passed and are reviewed.** Chapters A–E are completed and reviewed. The Windows host's port-22 route to R2d2 is confirmed, and its transfer steps are published. Joe confirmed Chrome import on Windows 11. [Linux Firefox setup](F-linux-firefox.md) is pending its local certificate location. Phase 3 has a [draft plan for review](../phase-03/README.md); execution has not started. We review one actual result before making the next configuration change.
+**Complete: management preparation and the chosen browser imports.** Chapter F's preparation checks and R2d2 CA trust passed and are reviewed. Chapters A–E are completed and reviewed. The Windows host's port-22 route to R2d2 is confirmed, and its transfer steps are published. Joe confirmed Chrome import on Windows 11. Joe also confirmed completing [Linux Firefox setup](F-linux-firefox.md). Phase 3 has a [draft plan for review](../phase-03/README.md); execution has not started. We review one actual result before making the next configuration change.
 
 ![R2d2 manages the three-node lab; installer tools and cloud services are planned](../images/lab-layout.svg)
 
@@ -36,6 +36,6 @@ Read [Chapter A's reviewed result and short lesson](A-check-r2d2.md#5-reviewed-r
 - [x] Network, storage and service configuration is reviewed; secrets stay private.
 - [x] Ansible access and configuration validation pass.
 - [x] Public CA copied to Windows; Chrome import confirmed by Joe.
-- [ ] Linux Firefox certificate location and import confirmed, as requested.
+- [x] Linux Firefox setup reported complete by Joe; import user-confirmed.
 
 **Phase 3 boundary:** installing node dependencies with Kolla bootstrap, running full Kolla prechecks and deploying OpenStack happen in Phase 3. This phase prepares the management environment and configuration.

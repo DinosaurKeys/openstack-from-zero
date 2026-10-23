@@ -16,7 +16,7 @@ Kolla calls this preparation **bootstrap**. It prepares hosts; deploying OpenSta
 - The private inventory assigns node1, node2 and node3 as controller, network, compute and storage hosts.
 - Chapter F's live identity, NIC, clock, storage and local configuration checks passed.
 - Each existing Cinder pool has one confirmed SATA PV and zero LVs.
-- R2d2 CA trust passed; Windows Chrome import is user-confirmed. Requested Linux Firefox preparation is still pending.
+- R2d2 CA trust passed. Windows Chrome and Linux Firefox imports are user-confirmed; live Horizon HTTPS remains a deployment-stage check.
 
 ## 3. Proposed steps
 
@@ -57,3 +57,12 @@ The finished version will include the explained script, exact command and privat
 After the actual run, explain which host components were prepared and why they are needed for OpenStack containers. Preserve the commands so this chapter can be followed on a rebuild.
 
 [Official Kolla 2026.2 quick-start — deployment order](https://docs.openstack.org/kolla-ansible/2026.2/user/quickstart)
+
+
+## Next review checkpoint
+
+The installed development copy of the `openstack.kolla` collection's `baremetal` role was inspected. It imports host-file and journal configuration, package and container-engine roles, SDK support and libvirt/AppArmor preparation. It also contains conditional firewall changes. This confirms that bootstrap needs an explained change review; it is not merely installing one application.
+
+This is source inspection of the development copy, not proof of the exact current node state or a completed review of every effective option on R2d2. The next implementation must check the collection used by the existing lab environment and publish the concrete changes before Joe runs it.
+
+**Proposed next deliverable:** one tested Chapter A wrapper and a simple guide for preparing all three nodes from R2d2, with one private combined report. Ask Joe before moving from this draft to that configuration-changing procedure. Full prechecks and deployment stay in later chapters.
