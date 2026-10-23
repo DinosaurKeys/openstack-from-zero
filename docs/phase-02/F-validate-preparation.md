@@ -91,7 +91,7 @@ A different CA already installed under our trust filename requires a separate re
 
 Joe confirmed **Chrome and Firefox on Windows and Linux**, accessed from outside R2d2. R2d2 itself is currently accessed using the **VMware console**.
 
-Read [F — Browser certificate guide](F-browser-certificates.md). It covers both browsers without assuming a Linux distribution. The transfer route from R2d2 to those computers is still pending; no guessed NAT address or file-copy command is provided. **Run the R2d2 checks first.** After report review, confirm the transfer route before importing on the browser computers.
+Read [F — Browser certificate guide](F-browser-certificates.md). It covers both browsers without assuming a Linux distribution. The Windows 11 host reaches R2d2 at `192.168.162.131:22` through VMnet8; [the Windows transfer steps are now published](F-browser-certificates.md#windows-11-laptop--confirmed-route-ready-to-run-transfer). R2d2's checks passed. Authenticated copy, fingerprint verification and browser import remain pending. A separate Linux computer's route is still unconfirmed.
 
 No Horizon connection test is expected yet: the VIP, HTTPS listener and dashboard will be deployed in Phase 3.
 
@@ -126,7 +126,7 @@ RESULT: R2D2_CA_TRUST_READY (offline certificate verification; browser trust is 
 | Planned VIP | No active conflict observed from any node during the bounded LAN probes. Silent/offline devices cannot be excluded. |
 | R2d2 trust | Public CA installed; the saved server certificate verified successfully against Ubuntu's system trust bundle. |
 
-No node configuration or storage contents were changed. Browser trust, the certificate-transfer route and live Horizon HTTPS remain pending.
+No node configuration or storage contents were changed. The Windows host's TCP route to R2d2 is now confirmed. Authenticated certificate copy, browser trust and live Horizon HTTPS remain pending; a separate Linux computer's route is not yet confirmed.
 
 ## 8. Short lecture — after review
 

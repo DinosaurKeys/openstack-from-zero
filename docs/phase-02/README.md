@@ -4,7 +4,7 @@
 
 **Goal:** prepare R2d2 with the tools and reviewed configuration needed to install OpenStack in Phase 3.
 
-**Current: Chapter F's preparation checks and R2d2 CA trust passed and are reviewed.** Chapters A–E are completed and reviewed. Browser certificate transfer/import remain pending; Phase 3 has not started. We review one actual result before making the next configuration change.
+**Current: Chapter F's preparation checks and R2d2 CA trust passed and are reviewed.** Chapters A–E are completed and reviewed. The Windows host's port-22 route to R2d2 is confirmed, and its transfer steps are published. Authenticated certificate transfer/import remain pending; Phase 3 has not started. We review one actual result before making the next configuration change.
 
 ![R2d2 manages the three-node lab; installer tools and cloud services are planned](../images/lab-layout.svg)
 

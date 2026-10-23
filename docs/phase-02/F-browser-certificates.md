@@ -4,7 +4,7 @@
 
 **Purpose:** let your browser recognize the lab's HTTPS certificate when Horizon is deployed.
 
-**Current checkpoint:** Joe uses Chrome and Firefox on Windows and Linux. R2d2 is accessed through the VMware console. The public-certificate transfer route is not yet confirmed. These import steps are prepared for use **after the certificate file has been transferred and verified**. Live Horizon validation comes after deployment.
+**Current checkpoint:** Joe uses Chrome and Firefox on Windows and Linux. R2d2 runs in VMware Workstation on Joe's Windows 11 laptop. Windows-to-R2d2 TCP port 22 reachability is confirmed over VMnet8; authenticated file transfer and browser import are still pending. These import steps are prepared for use **after the certificate file has been transferred and verified**. Live Horizon validation comes after deployment.
 
 ## A. Understand the file
 
@@ -19,10 +19,60 @@ Trusting the CA means the browser accepts valid website certificates signed by i
 
 ## B. Transfer and verify the public certificate
 
-1. Finish Chapter F's R2d2 validation and return its report.
-2. Confirm a file-transfer route from R2d2 to your Windows/Linux computer. We have not established SSH access from those computers. The old NAT address is not assumed to be reachable.
-3. Through that confirmed route, copy **only** the complete `lab-root.crt` file identified above. Keep that filename. Do not upload the private folder or private keys to GitHub.
+1. Chapter F's R2d2 validation and CA trust passed and were reviewed.
+2. Use the confirmed Windows route below to copy the public certificate. A route from a separate Linux computer is not yet confirmed.
+3. Copy **only** the complete `lab-root.crt` file identified above. Keep that filename. Do not upload the private folder or private keys to GitHub.
 4. Verify the certificate fingerprint on the receiving computer before importing it.
+
+### Windows 11 laptop — confirmed route, ready-to-run transfer
+
+The observed route is Windows VMnet8 `192.168.162.1` → R2d2 `192.168.162.131:22`. Joe's PowerShell test returned `TcpTestSucceeded: True`. R2d2's SSH socket is active and port 22 is listening. This confirms reachability, not a completed login or transfer. The VM address is DHCP; reconfirm it on a future rebuild.
+
+**Step 1 — identify R2d2, in its VMware console.** This reads the public SSH host-key fingerprint. It changes nothing:
+
+```bash
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+Keep the displayed `SHA256:...` fingerprint visible. It identifies the SSH server, and is separate from the lab CA certificate fingerprint below.
+
+**Step 2 — check the Windows copy tool, in PowerShell.** This only locates the program:
+
+```powershell
+Get-Command scp -ErrorAction Stop
+```
+
+Continue if it displays the `scp` application. If it is unavailable, return that output before installing anything.
+
+**Step 3 — copy one public file, in Windows PowerShell.** These commands save it directly in your Windows user folder, regardless of the current `C:\\Windows\\System32` prompt. They stop if that destination already exists, so nothing is overwritten.
+
+```powershell
+$labCaFile = Join-Path $env:USERPROFILE 'lab-root.crt'
+if (Test-Path -LiteralPath $labCaFile) { throw "Destination already exists: $labCaFile. Stop and review it." }
+scp -o HostKeyAlgorithms=ssh-ed25519 joe@192.168.162.131:/home/joe/openstack-from-zero/private/phase2/kolla/certificates/ca/lab-root.crt "$labCaFile"
+```
+
+On a first connection, compare the SSH prompt's `SHA256:...` fingerprint with Step 1. Enter `yes` **only when they match**. This saves R2d2's public host identity in Windows' SSH known-hosts file. If the fingerprint differs or a changed-host warning appears, stop and return the message.
+
+If a password is requested, use **joe's Ubuntu login password on R2d2**. It is not your Windows password or the passphrase for the separate R2d2-to-nodes key. Password input is not displayed. This procedure does not copy that private SSH key.
+
+If `scp` reports an error, return it before proceeding. A successful copy normally displays `100%`.
+
+**Step 4 — verify the received certificate, in the same Windows PowerShell window.** These commands read the received file, compare its certificate SHA256 fingerprint to the reviewed lab CA and stop on a mismatch. They do not import trust:
+
+```powershell
+$labCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($labCaFile)
+$labFingerprint = $labCertificate.GetCertHashString([System.Security.Cryptography.HashAlgorithmName]::SHA256)
+$labFingerprint
+if ($labFingerprint -ne '278A4E6A84B761F954B9BBF1F8051C3560B63F0EB073EFC9E95D8D1C69DF3CBB') { throw 'Certificate fingerprint mismatch. Stop before importing.' }
+Write-Output "CA_CERTIFICATE_VERIFIED: $labCaFile"
+```
+
+Return the copy result and `CA_CERTIFICATE_VERIFIED` line for review. Chrome/Firefox imports in Sections C and D use this file. In a file picker, `%USERPROFILE%\\lab-root.crt` locates it.
+
+For a fresh rebuild, use the new reviewed CA fingerprint in Step 4. For a separate Linux computer, confirm its route before choosing a transfer command.
+
+### Certificate fingerprint checks for study or a separately transferred file
 
 **On a Linux browser computer with OpenSSL:** run this in the folder containing the downloaded public certificate. It reads the certificate and prints its SHA256 identity; it changes nothing.
 
@@ -92,3 +142,5 @@ A CA certificate is a public identity for an issuer. Importing it tells this bro
 - [Chrome certificate-manager interface labels](https://chromium.googlesource.com/chromium/src/+/lkgr/chrome/app/certificate_manager.grdp)
 - [Mozilla: certificate trust settings and manual import](https://wiki.mozilla.org/CA/Changing_Trust_Settings)
 - [Mozilla: operating-system CA integration](https://support.mozilla.org/en-US/kb/setting-certificate-authorities-firefox)
+
+- [Microsoft: OpenSSH key-management and file-transfer tools](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement)
