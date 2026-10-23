@@ -11,7 +11,7 @@ Build and understand your OpenStack lab, deploy an application, and monitor it. 
 | Machine | Address | Planned job |
 |---|---|---|
 | R2d2 | 192.168.162.131/24 — DHCP on the NAT network | Management: Git, Ansible, Kolla-Ansible and later Terraform |
-| node1 | 192.168.0.200 | Controller and local Cinder LVM storage |
+| node1 | 192.168.0.200 | Controller, compute and local Cinder LVM storage |
 | node2 | 192.168.0.201 | Controller, compute and local Cinder LVM storage |
 | node3 | 192.168.0.202 | Controller, compute and local Cinder LVM storage |
 

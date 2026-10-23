@@ -42,11 +42,11 @@ def preserve_write(path, text):
     path.chmod(0o600)
 
 
-def render_inventory(template):
+def render_inventory(template, computes=None):
     groups = {
         'control': '\n'.join(f'{name} ansible_host={ip}' for name, ip in NODES.items()),
         'network': '\n'.join(NODES),
-        'compute': 'node2\nnode3',
+        'compute': '\n'.join(NODES if computes is None else computes),
         'monitoring': '# Placement deferred to the monitoring phase.',
         'storage': '\n'.join(NODES),
         'deployment': 'localhost ansible_connection=local ansible_python_interpreter=' + str(ENV/'bin/python'),
@@ -73,7 +73,7 @@ def hosts_under(data, group):
 
 def validate_inventory(data):
     three = set(NODES)
-    expected = {'control': three, 'network': three, 'compute': {'node2', 'node3'},
+    expected = {'control': three, 'network': three, 'compute': three,
                 'storage': three, 'baremetal': three, 'deployment': {'localhost'},
                 'cinder-volume': three, 'cinder-volume-lvm': three, 'monitoring': set()}
     for group, hosts in expected.items():
@@ -176,17 +176,57 @@ def execute(log, transcript=None):
     log('No packages, services, network, disks, SSH keys or sudo policy changed.')
 
 
+def add_node1_compute(log):
+    env = tools.tool_environment()
+    folder = REPO/'private/phase2'
+    private_dir(folder)
+    inventory = folder/'inventory.ini'
+    template = (ENV/'share/kolla-ansible/ansible/inventory/multinode').read_text()
+    desired = render_inventory(template)
+    previous = render_inventory(template, computes=('node2', 'node3'))
+    if inventory.is_symlink() or not inventory.is_file():
+        raise RuntimeError('Expected the existing private inventory from Chapter D')
+    original = inventory.read_text()
+    if original not in (previous, desired):
+        raise RuntimeError('Inventory has other edits; preserved without overwrite')
+    if original == desired:
+        validate_inventory(inventory_data(env, inventory, log))
+        log('Compute already includes node1, node2 and node3; no file change needed.')
+    else:
+        fd, candidate_name = tempfile.mkstemp(prefix='inventory-candidate-', suffix='.ini', dir=folder)
+        candidate = Path(candidate_name)
+        try:
+            with os.fdopen(fd, 'w') as output:
+                output.write(desired)
+            validate_inventory(inventory_data(env, candidate, log))
+            fd, backup_name = tempfile.mkstemp(prefix='inventory-before-add-node1-', suffix='.ini', dir=folder)
+            with os.fdopen(fd, 'w') as backup:
+                backup.write(original)
+            log('Private backup: ' + backup_name)
+            if inventory.is_symlink() or inventory.read_text() != original:
+                raise RuntimeError('Inventory changed during validation; left unchanged')
+            os.replace(candidate, inventory)
+        finally:
+            if candidate.exists():
+                candidate.unlink()
+    log('compute: node1, node2, node3')
+    log('RESULT: COMPUTE_ROLES_UPDATED')
+    log('Local inventory only; no SSH, sudo, packages or running services changed.')
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--apply', action='store_true', help='write private inventory and perform explained access checks')
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--add-node1-compute', action='store_true', help='back up and update only the known earlier inventory; no node connections')
+    modes.add_argument('--apply', action='store_true', help='write private inventory and perform explained access checks')
     args = parser.parse_args(argv)
     tools.guard()
-    if not args.apply:
-        print('PLAN ONLY: control/network/storage=node1,node2,node3; compute=node2,node3.')
+    if not args.apply and not args.add_node1_compute:
+        print('PLAN ONLY: control/network/storage=node1,node2,node3; compute=node1,node2,node3.')
         print('Use existing joe SSH key. Write private inventory; check identities, Python and sudo per node.')
         print('No changes made. Read Phase 2 Chapter D before --apply.')
         return 0
-    if not sys.stdin.isatty():
+    if args.apply and not sys.stdin.isatty():
         raise RuntimeError('Use an interactive terminal for SSH-key and sudo prompts')
     os.umask(0o077)
     reports = REPO/'reports'
@@ -199,8 +239,12 @@ def main(argv=None):
         log('Phase 2 — Chapter D: private inventory + node identity, Python and sudo checks')
         log('Ansible prompt/task output stays in terminal; per-node exit status and checkpoints are recorded.')
         try:
-            transcript = Path(filename).with_suffix('.ansible.log')
-            execute(log, transcript)
+            if args.add_node1_compute:
+                log('Mode: add node1 compute in the existing inventory; local validation only.')
+                add_node1_compute(log)
+            else:
+                transcript = Path(filename).with_suffix('.ansible.log')
+                execute(log, transcript)
             status = 0
         except (OSError, RuntimeError, ValueError, KeyError, subprocess.CalledProcessError, subprocess.TimeoutExpired, KeyboardInterrupt) as error:
             log('Stopped: '+str(error)); log('RESULT: INVENTORY_ACCESS_NEEDS_REVIEW')

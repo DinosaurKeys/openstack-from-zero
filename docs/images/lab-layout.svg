@@ -38,7 +38,7 @@
   <rect x="746" y="417" width="336" height="214" rx="14" class="card"/>
   <text x="62" y="453" class="head">node1</text>
   <text x="62" y="481" class="body blue">192.168.0.200</text>
-  <text x="62" y="519" class="body">Controller</text>
+  <text x="62" y="519" class="body">Controller + compute</text>
   <rect x="59" y="538" width="294" height="40" rx="7" fill="#e5f3ec"/>
   <text x="71" y="564" class="small green">SATA: empty LVM pool verified</text>
   <text x="62" y="606" class="small">Ubuntu Server 24.04 LTS</text>

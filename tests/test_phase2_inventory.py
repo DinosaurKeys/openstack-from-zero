@@ -11,7 +11,7 @@ class InventoryTests(unittest.TestCase):
  def test_template_child_groups_preserved_and_roles_substituted(self):
   result=step.render_inventory(TEMPLATE)
   self.assertIn('[custom:children]\ncontrol',result)
-  self.assertIn('[compute]\nnode2\nnode3\n',result)
+  self.assertIn('[compute]\nnode1\nnode2\nnode3\n',result)
   self.assertIn('[network]\nnode1\nnode2\nnode3\n',result)
   self.assertNotIn('placeholder',result)
   self.assertIn('StrictHostKeyChecking=yes',result)
@@ -47,11 +47,32 @@ class InventoryTests(unittest.TestCase):
   data={'_meta':{'hostvars':{name:{'ansible_host':ip,'ansible_user':'joe','ansible_ssh_private_key_file':str(step.KEY),'ansible_python_interpreter':'/usr/bin/python3'} for name,ip in step.NODES.items()}}}
   for g in ('control','network','storage','baremetal','cinder-volume','cinder-volume-lvm'):
    data[g]={'hosts':list(step.NODES)}
-  data.update(compute={'hosts':['node2','node3']},deployment={'hosts':['localhost']},all={'hosts':list(step.NODES)+['localhost']})
+  data.update(compute={'hosts':list(step.NODES)},deployment={'hosts':['localhost']},all={'hosts':list(step.NODES)+['localhost']})
   step.validate_inventory(data)
-  data['compute']['hosts'].append('node1')
+  data['compute']['hosts'].remove('node1')
   with self.assertRaises(RuntimeError):step.validate_inventory(data)
-  data['compute']['hosts'].remove('node1');data['_meta']['hostvars']['node1']['ansible_host']='192.168.0.99'
+  data['compute']['hosts'].append('node1');data['_meta']['hostvars']['node1']['ansible_host']='192.168.0.99'
   with self.assertRaises(RuntimeError):step.validate_inventory(data)
+
+ def test_known_two_compute_inventory_migrates_with_backup_and_is_idempotent(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);env=root/'venv';template=env/'share/kolla-ansible/ansible/inventory/multinode';template.parent.mkdir(parents=True);template.write_text(TEMPLATE)
+   folder=root/'private/phase2';folder.mkdir(parents=True);inventory=folder/'inventory.ini'
+   old=step.render_inventory(TEMPLATE,computes=('node2','node3')).replace(str(step.ENV),str(env));inventory.write_text(old)
+   with patch.object(step,'REPO',root),patch.object(step,'ENV',env),patch.object(step,'inventory_data',return_value={}),patch.object(step,'validate_inventory'):
+    lines=[];step.add_node1_compute(lines.append)
+    self.assertEqual(inventory.read_text(),step.render_inventory(TEMPLATE))
+    backups=list(folder.glob('inventory-before-add-node1-*.ini'));self.assertEqual(len(backups),1);self.assertEqual(backups[0].read_text(),old)
+    step.add_node1_compute(lines.append);self.assertEqual(len(list(folder.glob('inventory-before-add-node1-*.ini'))),1)
+    inventory.write_text(old+'# manual edit')
+    with self.assertRaises(RuntimeError):step.add_node1_compute(lines.append)
+    self.assertEqual(inventory.read_text(),old+'# manual edit')
+ def test_candidate_validation_failure_leaves_original_inventory(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);env=root/'venv';template=env/'share/kolla-ansible/ansible/inventory/multinode';template.parent.mkdir(parents=True);template.write_text(TEMPLATE)
+   folder=root/'private/phase2';folder.mkdir(parents=True);p=folder/'inventory.ini';old=step.render_inventory(TEMPLATE,computes=('node2','node3')).replace(str(step.ENV),str(env));p.write_text(old)
+   with patch.object(step,'REPO',root),patch.object(step,'ENV',env),patch.object(step,'inventory_data',side_effect=RuntimeError('invalid')):
+    with self.assertRaises(RuntimeError):step.add_node1_compute(lambda s:None)
+   self.assertEqual(p.read_text(),old);self.assertEqual(list(folder.glob('inventory-before-*')),[])
 
 if __name__=='__main__':unittest.main()
