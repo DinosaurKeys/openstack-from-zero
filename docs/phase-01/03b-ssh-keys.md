@@ -112,6 +112,6 @@ The key passphrase unlocks your private-key file locally. It is different from t
 
 Your agent reported a **14,400-second lifetime: four hours**. That is the lifetime of its loaded key, not the key files or the public-key entries on the nodes. When the loaded key expires, the files remain valid; a later login using the explicit `-i` command may ask for the key passphrase again.
 
-**Checkpoint complete.** Keep the steps above for reference. The next configuration change will be agreed with Joe before proceeding.
+**Checkpoint complete.** Keep the steps above for reference. Joe has now authorized **[the next step: node names on R2d2](03c-r2d2-hosts.md)**.
 
 References: [OpenSSH key generation](https://man.openbsd.org/ssh-keygen) · [Public-key installation](https://manpages.debian.org/bookworm/openssh-client/ssh-copy-id.1.en.html) · [SSH agent key loading](https://man.openbsd.org/ssh-add).
