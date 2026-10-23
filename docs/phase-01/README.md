@@ -40,4 +40,4 @@ Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint r
 - [x] Current SATA identities, existing use and health evidence reviewed on all three nodes.
 - [x] Approved SATA disks back the intended Cinder LVM pools, separately from Ubuntu.
 
-**Latest completed checkpoint:** [Chapter J — three LVM pools created and verified](J-cinder-lvm.md#6-reviewed-creation-result). Read the lesson and use the optional read-only command to view a pool. Phase 2 will be agreed before proceeding.
+**Latest completed checkpoint:** [Chapter J — three LVM pools created and verified](J-cinder-lvm.md#6-reviewed-creation-result). Read the lesson and use the optional read-only command to view a pool. Joe has approved starting **[Phase 2 — Management environment](../phase-02/README.md)**. Its **[Chapter A — Check R2d2](../phase-02/A-check-r2d2.md)** is the current read-only step; every Phase 1 procedure remains available above.

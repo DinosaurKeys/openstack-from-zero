@@ -11,9 +11,9 @@ Build and understand your OpenStack lab, deploy an application, and monitor it. 
 | Machine | Address | Planned job |
 |---|---|---|
 | R2d2 | 192.168.162.131/24 — DHCP on the NAT network | Management: Git, Ansible, Kolla-Ansible and later Terraform |
-| node1 | 192.168.0.200 | Controller |
-| node2 | 192.168.0.201 | Controller and compute |
-| node3 | 192.168.0.202 | Controller, compute and planned Cinder LVM storage |
+| node1 | 192.168.0.200 | Controller and local Cinder LVM storage |
+| node2 | 192.168.0.201 | Controller, compute and local Cinder LVM storage |
+| node3 | 192.168.0.202 | Controller, compute and local Cinder LVM storage |
 
 Nodes use Ubuntu Server 24.04 LTS. Each uses its built-in NIC for management and its USB NIC for external VM traffic.
 
@@ -24,7 +24,7 @@ A **controller** manages cloud requests. A **compute** runs VMs. **Cinder LVM** 
 | Phase | Finished when |
 |---|---|
 | 1. Prerequisites | Ubuntu and SSH access work; actual network/disk details are reviewed and the remaining host preparation is verified |
-| 2. Management environment | R2d2 has the selected installer tools and reviewed configuration |
+| [2. Management environment](phase-02/README.md) | R2d2 has the selected installer tools and reviewed configuration |
 | 3. Install OpenStack | Deployment, prechecks and cloud service/API checks pass |
 | 4. First VM | VM access and a volume data test pass; the working setup is reproduced with Terraform |
 | 5. Deploy an app | Application works and retains its database data |
