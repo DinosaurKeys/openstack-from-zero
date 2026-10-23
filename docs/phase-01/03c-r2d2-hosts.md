@@ -4,7 +4,7 @@
 
 **Goal:** let R2d2 find each node by its name, such as `node1`.
 
-**Status: ready for Joe to run.** The live result is pending. Keep this procedure for rebuilding too.
+**Status: complete.** Joe's report from 2026-10-23 ends with `R2D2_HOSTS_READY`. The complete procedure remains below for study and rebuilding.
 
 ## 1. Purpose
 
@@ -64,8 +64,28 @@ RESULT: R2D2_HOSTS_READY
 
 The script prints the private report's exact path and a `cat` command. Run that printed command and send back the report. **Stop here for review before the next configuration step.**
 
-## 5. Short lecture — after review
+## 5. Reviewed result
 
-The short lesson will be added here after Joe's actual result is reviewed. The procedure above will stay visible.
+| Check | Result from Joe's run |
+|---|---|
+| node1 | Resolved to `192.168.0.200` |
+| node2 | Resolved to `192.168.0.201` |
+| node3 | Resolved to `192.168.0.202` |
+| Existing entries | localhost, `127.0.1.1 r2d2` and IPv6 lines preserved |
+| Backup | Original hosts file saved privately on R2d2 |
+
+The final marker was **`RESULT: R2D2_HOSTS_READY`**. This run changed only R2d2's hosts file. No node connection was made.
+
+## 6. Short lecture — what your result means
+
+R2d2 now has a local address-book entry for each node. Software using the system's name lookup can ask for `node1` and receive `192.168.0.200`.
+
+The script used `getent ahostsv4` to check that system lookup returned the expected IPv4 address for every node. It verified name resolution; this run did not test a new SSH connection.
+
+The hosts file answers “which IP belongs to this name?” Your SSH key answers “may joe log in?” These are separate jobs.
+
+These entries apply only on R2d2. They do not create DNS records on the router or teach other machines how to find R2d2.
+
+**Checkpoint complete.** Keep the full steps above. The next configuration step will be agreed with Joe before proceeding.
 
 References: [Linux hosts file](https://man7.org/linux/man-pages/man5/hosts.5.html) · [getent name lookups](https://man7.org/linux/man-pages/man1/getent.1.html).

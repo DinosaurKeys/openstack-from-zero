@@ -17,11 +17,11 @@ Each chapter includes its purpose, script link, commands to run, expected result
 | [1.3 — Check access from R2d2](03-access-check.md) | Complete — SSH inspection passed on all three | [Run access check](03-access-check.md#2-run-the-access-check-on-r2d2) |
 | [1.3a — Check keys, time and host names](03a-access-state.md) | Complete — actual state reviewed | [Read inspection and result](03a-access-state.md) |
 | [1.3b — Create SSH keys and copy the public key](03b-ssh-keys.md) | Complete — fresh key-only login passed on all three | [Setup, result and lesson](03b-ssh-keys.md) |
-| [1.3c — Resolve node names on R2d2](03c-r2d2-hosts.md) | **Current — authorized; live result pending** | [Explain and run hosts script](03c-r2d2-hosts.md) |
+| [1.3c — Resolve node names on R2d2](03c-r2d2-hosts.md) | Complete — all three node names resolve correctly | [Explain and run hosts script](03c-r2d2-hosts.md) |
 | [1.4 — Prepare the USB NICs](04-nics-and-storage.md) | Complete — all three links and fresh SSH passed | [Run NIC script](04-nics-and-storage.md#3-run-on-r2d2) |
 | [1.5 — Prepare Cinder storage](05-cinder-storage.md) | Pending — return after reviewing keys, time and names | [Run storage inspection](05-cinder-storage.md#3-run-on-r2d2) |
 
-Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint remains complete. The SSH/time/name inspection is also reviewed. SSH-key setup now ends with **`SSH_KEYS_READY for all`**. Its reviewed result and short lesson remain available. **Current step: [1.3c — node names on R2d2](03c-r2d2-hosts.md).**
+Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint remains complete. The SSH/time/name inspection is also reviewed. SSH-key setup now ends with **`SSH_KEYS_READY for all`**. Its reviewed result and short lesson remain available. **Node-name setup is also complete:** [1.3c — reviewed result and lesson](03c-r2d2-hosts.md#5-reviewed-result). The next configuration step awaits agreement.
 
 ## Phase 1 finish check
 
@@ -33,7 +33,7 @@ Your network report ends with **`USB_NETWORK_READY for all`**. That checkpoint r
 - [x] NIC identities and configured gateway/DNS are recorded.
 - [x] Same untagged switch/LAN confirmed; TP-Link home DHCP pool is `.2–.150`.
 - [x] Saved provider-NIC configuration works and preserves management access on all three nodes.
-- [ ] R2d2 resolves node1, node2 and node3 to their confirmed management IPs.
+- [x] R2d2 resolves node1, node2 and node3 to their confirmed management IPs.
 - [ ] The reviewed node3 SATA disk backs the Cinder volume group, separately from Ubuntu.
 
-**Latest completed checkpoint:** [1.3b — SSH-key result and lesson](03b-ssh-keys.md#7-reviewed-result). **Next authorized step:** [1.3c — resolve node names on R2d2](03c-r2d2-hosts.md); run it and return the report.
+**Latest completed checkpoint:** [1.3c — node-name result and lesson](03c-r2d2-hosts.md#5-reviewed-result). The next configuration step will be agreed before proceeding.
