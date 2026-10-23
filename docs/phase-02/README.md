@@ -13,8 +13,8 @@
 | Chapter | Purpose | Status |
 |---|---|---|
 | [Chapter A — Check R2d2](A-check-r2d2.md) | Collect current resources, Python and tool/package information | **Complete — result and short lesson published** |
-| [Chapter B — Select compatible versions](B-select-versions.md) | Agree on the OpenStack, Kolla-Ansible and Ansible versions | Next — version selection pending |
-| [Chapter C — Install management tools](C-install-tools.md) | Build an isolated Python environment on R2d2 | Draft — versions and installation plan pending |
+| [Chapter B — Select compatible versions](B-select-versions.md) | Agree on the OpenStack, Kolla-Ansible and Ansible versions | **Current — compatibility proposal ready; agreement pending** |
+| [Chapter C — Install management tools](C-install-tools.md) | Build an isolated Python environment on R2d2 | Draft — proposed versions/path await agreement |
 | [Chapter D — Create the inventory](D-create-inventory.md) | List machines, roles and connection settings | Draft — tools must be installed first |
 | [Chapter E — Configure the lab](E-configure-lab.md) | Prepare network, storage and service settings | Draft — remaining values need confirmation |
 | [Chapter F — Validate preparation](F-validate-preparation.md) | Review access, inventory and configuration before installation | Draft — previous chapters must pass |
