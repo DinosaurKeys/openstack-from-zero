@@ -74,6 +74,7 @@ class InstallTests(unittest.TestCase):
             self.assertTrue((step.ENV/'installed-ansible-collections.json').is_file())
             self.assertIn('ANSIBLE_COLLECTIONS_PATH=',(step.ENV/'activate-lab.sh').read_text())
             self.assertIn('export LC_ALL=C.UTF-8 LANG=C.UTF-8', (step.ENV/'activate-lab.sh').read_text())
+            self.assertIn('export ANSIBLE_CONFIG=/home/joe/venvs/kolla/chapter-c-ansible.cfg', (step.ENV/'activate-lab.sh').read_text())
             for args,_ in runner.calls:
                 self.assertNotIn('ssh',args); self.assertNotIn('bootstrap-servers',args); self.assertNotIn('deploy',args)
             # Rerun preserves unrelated files and reuses only our marked environment.
@@ -100,6 +101,18 @@ class InstallTests(unittest.TestCase):
             'import locale; print(locale.getlocale()[1])'],
             env=env, text=True, capture_output=True, check=True)
         self.assertEqual(result.stdout.strip().lower().replace('-', ''), 'utf8')
+
+    def test_dedicated_config_is_minimal_idempotent_and_preserves_unknown_content(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(step, 'ENV', Path(d)):
+            step.prepare_ansible_config()
+            path = Path(d) / 'chapter-c-ansible.cfg'
+            self.assertEqual(path.read_text(), '# Managed by openstack-from-zero Chapter C\n[defaults]\n')
+            self.assertEqual(step.tool_environment()['ANSIBLE_CONFIG'], str(path))
+            step.prepare_ansible_config()
+            path.write_text('existing user config')
+            with self.assertRaisesRegex(RuntimeError, 'left unchanged'):
+                step.prepare_ansible_config()
+            self.assertEqual(path.read_text(), 'existing user config')
 
     def test_wrong_versions_source_or_environment_are_rejected(self):
         observed={'kolla':'23.0.0','ansible':'2.21.5','commit':step.COMMIT,'prefix':str(step.ENV)}

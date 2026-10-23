@@ -42,6 +42,8 @@ APT prerequisites: `git python3-dev libffi-dev gcc libssl-dev libdbus-glib-1-dev
 
 All Python package installation runs **as joe inside the virtual environment**. Ansible collections go under `/home/joe/venvs/kolla/collections`. Existing collections elsewhere are not the target of this installation. Kolla's collection requirements include a stable-branch dependency; the script records the resolved collection versions, but does not claim a complete offline rebuild archive.
 
+The script creates `chapter-c-ansible.cfg` inside the tool environment, containing a comment and an empty `[defaults]` section. This gives Ansible a valid `.cfg` file without selecting an unrelated configuration. It checks Ansible startup and the selected configuration before downloading collections. An unexpected existing file at that path is preserved and stops the run.
+
 No SSH connection, node package installation, Docker setup or deployment is part of this script. It does not create `/etc/kolla`, an inventory or passwords.
 
 ### Password and confirmation prompts
@@ -78,7 +80,7 @@ source /home/joe/venvs/kolla/activate-lab.sh
 
 The helper is created at the final successful installation step. Wait for `R2D2_TOOLS_READY` before using it. The standard Python activation file is under `bin/activate`; the `activate-lab.sh` command above also selects our lab settings.
 
-The helper activates the Python environment, selects a UTF-8 locale, its collection folder and Ansible working folder, and uses an empty Ansible configuration (`/dev/null`) so an unrelated existing `ansible.cfg` is not picked up. Later inventory commands will supply their settings explicitly. A new terminal needs this activation again. The installation script uses absolute tool paths and does not need prior activation.
+The helper activates the Python environment, selects a UTF-8 locale, its collection folder and Ansible working folder, and uses a dedicated minimal Ansible configuration (`/home/joe/venvs/kolla/chapter-c-ansible.cfg`) so an unrelated existing `ansible.cfg` is not picked up. Later inventory commands will supply their settings explicitly. A new terminal needs this activation again. The installation script uses absolute tool paths and does not need prior activation.
 
 To leave the tools in that terminal:
 
@@ -115,3 +117,5 @@ Local validation uses simulated commands and temporary folders. It covers preser
 The lesson will explain the created environment and how to use its tools after installation succeeds.
 
 [Next planned chapter: create the inventory](D-create-inventory.md).
+
+Publication check on 2026-10-23: real Ansible Core 2.21.5 and Kolla-Ansible 23.0.0 passed startup/configuration checks, downloaded all required collections, returned a valid collection list and passed `pip check` in an isolated development environment. Nine local regression tests also passed. This verifies the tool/collection procedure here; R2d2's installation report is still pending.

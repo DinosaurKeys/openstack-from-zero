@@ -56,10 +56,20 @@ def tool_environment():
     # These variables affect this process's children, not Ubuntu's saved locale.
     env.update(LC_ALL='C.UTF-8', LANG='C.UTF-8',
                PATH=str(ENV / 'bin') + ':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-               ANSIBLE_CONFIG='/dev/null', ANSIBLE_HOME=str(ENV / 'ansible-home'),
+               ANSIBLE_CONFIG=str(ENV / 'chapter-c-ansible.cfg'), ANSIBLE_HOME=str(ENV / 'ansible-home'),
                ANSIBLE_COLLECTIONS_PATH=str(ENV / 'collections'),
                PYTHONDONTWRITEBYTECODE='1')
     return env
+
+
+def prepare_ansible_config():
+    path = ENV / 'chapter-c-ansible.cfg'
+    content = '# Managed by openstack-from-zero Chapter C\n[defaults]\n'
+    if path.is_symlink() or (path.exists() and path.read_text() != content):
+        raise RuntimeError('Unexpected Chapter C Ansible config; left unchanged')
+    if not path.exists():
+        with path.open('x') as output:
+            output.write(content)
 
 
 class Runner:
@@ -119,9 +129,12 @@ print(json.dumps({'kolla':k.version,'ansible':m.version('ansible-core'),'prefix'
     observed = json.loads(run.run([ENV / 'bin/python', '-c', code]).strip())
     verify_versions(observed)
     run.run([*pip, 'check'])
-    log('6. Download Kolla Ansible collections into the dedicated environment (no node tasks).')
-    run.run([ENV / 'bin/kolla-ansible', 'install-deps'])
+    log('6. Check the dedicated Ansible config, then download collections (no node tasks).')
+    prepare_ansible_config()
     run.run([ENV / 'bin/ansible', '--version'])
+    run.run([ENV / 'bin/ansible-config', 'dump', '--only-changed'])
+    log('Collection downloads may take several minutes; output appears when the command finishes.')
+    run.run([ENV / 'bin/kolla-ansible', 'install-deps'])
     run.run([ENV / 'bin/kolla-ansible', '--version'])
     collections = json.loads(run.run([ENV / 'bin/ansible-galaxy', 'collection', 'list',
                                      '-p', ENV / 'collections', '--format', 'json']))
@@ -139,7 +152,7 @@ print(json.dumps({'kolla':k.version,'ansible':m.version('ansible-core'),'prefix'
               'export LC_ALL=C.UTF-8 LANG=C.UTF-8\n'
               'export ANSIBLE_COLLECTIONS_PATH=/home/joe/venvs/kolla/collections\n'
               'export ANSIBLE_HOME=/home/joe/venvs/kolla/ansible-home\n'
-              'export ANSIBLE_CONFIG=/dev/null\n')
+              'export ANSIBLE_CONFIG=/home/joe/venvs/kolla/chapter-c-ansible.cfg\n')
     (ENV / 'activate-lab.sh').write_text(helper)
     log('RESULT: R2D2_TOOLS_READY')
     log('OpenStack series 2026.2 selected; no OpenStack services deployed.')
