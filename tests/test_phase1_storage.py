@@ -9,31 +9,44 @@ import os
 from pathlib import Path
 import pty
 import shutil
+import shlex
 import stat
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('storage_node', ROOT / 'scripts/phase1-storage-node.py')
 storage = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(storage)
-IDENTITY = {'blockdevices': [{'path': '/dev/sda', 'type': 'disk', 'size': storage.SIZE,
-                              'model': 'KINGSTON SA400S3', 'serial': storage.SERIAL}]}
+IDENTITY = {'blockdevices': [{'path': '/dev/sda', 'type': 'disk', 'size': 240057409536,
+                              'model': 'KINGSTON SA400S3', 'serial': '50026B768317883A', 'tran': 'sata'}]}
 
 
 class StorageEvidenceTests(unittest.TestCase):
     def test_changed_identity_refused(self):
-        storage.verify_identity(Path('/dev/sda'), IDENTITY)
+        storage.verify_identity(Path('/dev/sda'), IDENTITY, IDENTITY['blockdevices'][0])
         for field, value in (('serial', 'another-disk'), ('size', 1),
                              ('type', 'part'), ('path', '/dev/nvme0n1')):
             with self.subTest(field=field):
                 changed = copy.deepcopy(IDENTITY)
                 changed['blockdevices'][0][field] = value
                 with self.assertRaises(RuntimeError):
-                    storage.verify_identity(Path('/dev/sda'), changed)
+                    storage.verify_identity(Path('/dev/sda'), changed, IDENTITY['blockdevices'][0])
+
+    def test_discovery_reads_all_sata_and_excludes_nvme_and_usb(self):
+        rows = [IDENTITY['blockdevices'][0],
+                {'path': '/dev/sdb', 'type': 'disk', 'size': 1000, 'serial': 'disk2', 'tran': 'sata'},
+                {'path': '/dev/nvme0n1', 'type': 'disk', 'size': 1000, 'serial': 'os', 'tran': 'nvme'},
+                {'path': '/dev/sdc', 'type': 'disk', 'size': 1000, 'serial': 'usb', 'tran': 'usb'}]
+        self.assertEqual([d['path'] for d in storage.discover_sata({'blockdevices': rows})], ['/dev/sda', '/dev/sdb'])
+        for value in ({'blockdevices': rows[2:]}, {'blockdevices': [{**rows[0], 'serial': None}]},
+                      {'blockdevices': [{**rows[0], 'size': 0}]}):
+            with self.assertRaises(RuntimeError):
+                storage.discover_sata(value)
 
     def test_wrong_node_stops_before_disk_commands(self):
         with patch.object(storage.os, 'geteuid', return_value=0), \
@@ -41,6 +54,27 @@ class StorageEvidenceTests(unittest.TestCase):
                 patch.object(storage, 'run') as command, contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(storage.main(), 1)
             command.assert_not_called()
+
+    def test_each_expected_node_uses_its_current_discovered_identity(self):
+        for index in (1, 2, 3):
+            node = 'node' + str(index)
+            disk = {**IDENTITY['blockdevices'][0], 'serial': 'current-serial-' + str(index),
+                    'size': 1000000 * index, 'model': 'Current observed model'}
+            facts = {'blockdevices': [disk]}
+            alias = Mock()
+            alias.resolve.return_value = Path('/dev/sda')
+            with self.subTest(node=node), patch.object(storage.os, 'geteuid', return_value=0), \
+                 patch.object(storage.socket, 'gethostname', return_value=node), \
+                 patch.object(storage.Path, 'read_text', return_value='ID=ubuntu\nVERSION_ID="24.04"\n'), \
+                 patch.object(storage.Path, 'resolve', lambda value, **kwargs: value), \
+                 patch.object(storage.Path, 'stat', return_value=SimpleNamespace(st_mode=stat.S_IFBLK)), \
+                 patch.object(storage.Path, 'glob', return_value=[alias]), \
+                 patch.object(storage, 'checked_json', side_effect=[facts, facts]), \
+                 patch.object(storage, 'collect', return_value=0) as collect, \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(storage.main(node), 0)
+                collect.assert_called_once_with(Path('/dev/sda'))
+            self.assertIn('current-serial-' + str(index), output.getvalue())
 
     def test_collection_uses_inspection_commands_and_preserves_failures(self):
         for smart_status in (0, 8):
@@ -50,7 +84,7 @@ class StorageEvidenceTests(unittest.TestCase):
                 calls.append(args)
                 if args[0] == 'lsblk':
                     value = {'blockdevices': [{'path': '/dev/sda', 'kname': 'sda', 'type': 'disk',
-                                              'size': storage.SIZE, 'fstype': None, 'mountpoints': [None]}]}
+                                              'size': 240057409536, 'fstype': None, 'mountpoints': [None]}]}
                     return subprocess.CompletedProcess(args, 0, json.dumps(value), '')
                 return subprocess.CompletedProcess(args, smart_status if args[0] == 'smartctl' else 0,
                                                    'fixture evidence', '')
@@ -81,9 +115,11 @@ class StorageEvidenceTests(unittest.TestCase):
 
 FAKE_SSH = '''#!/usr/bin/env python3
 import os, pathlib, sys
-pathlib.Path(os.environ['STORAGE_FIXTURE_CALLS']).write_text(sys.argv[-2]+'\\n'+sys.argv[-1])
+with pathlib.Path(os.environ['STORAGE_FIXTURE_CALLS']).open('a') as output:
+    output.write(sys.argv[-2]+'\\n'+sys.argv[-1]+'\\n')
 import json
-pathlib.Path(os.environ['STORAGE_FIXTURE_ARGV']).write_text(json.dumps(sys.argv[1:]))
+with pathlib.Path(os.environ['STORAGE_FIXTURE_ARGV']).open('a') as output:
+    output.write(json.dumps(sys.argv[1:])+'\\n')
 print('fixture storage evidence')
 sys.exit(int(os.environ.get('STORAGE_FIXTURE_STATUS', '0')))
 '''
@@ -119,14 +155,20 @@ class StorageWrapperTests(unittest.TestCase):
             os.close(slave)
         return result, call_file.read_text() if call_file.exists() else ''
 
-    def test_one_node_private_report_and_no_apply_mode(self):
+    def test_all_nodes_one_private_report_and_no_apply_mode(self):
         with tempfile.TemporaryDirectory() as root:
             result, call = self.exercise(root, ['--user', 'joe'])
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertTrue(call.startswith('joe@192.168.0.202\nsudo /usr/bin/python3 '))
+            self.assertTrue(call.startswith('joe@192.168.0.200\nsudo /usr/bin/python3 '))
+            args = [json.loads(line) for line in (Path(root) / 'ssh-argv.json').read_text().splitlines()]
+            self.assertEqual([a[-2] for a in args], ['joe@192.168.0.200', 'joe@192.168.0.201', 'joe@192.168.0.202'])
+            for index, entry in enumerate(args, 1):
+                bootstrap = shlex.split(entry[-1])[-1]
+                self.assertIn('scope["main"](\'node'+str(index)+'\')', bootstrap)
             self.assertIn('RESULT: STORAGE_INSPECTION_COLLECTED', result.stdout)
             report = next((Path(root) / 'reports').glob('*.txt'))
             self.assertEqual(stat.S_IMODE(report.stat().st_mode), 0o600)
+            self.assertIn('Node result: node3 COLLECTED', report.read_text())
         with tempfile.TemporaryDirectory() as root:
             result, call = self.exercise(root, ['--apply'])
             self.assertEqual(result.returncode, 2)
@@ -138,6 +180,7 @@ class StorageWrapperTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertNotIn('RESULT: STORAGE_INSPECTION_COLLECTED', result.stdout)
             self.assertIn('RESULT: STORAGE_INSPECTION_NEEDS_REVIEW', result.stdout)
+            self.assertIn('Node: node3 (192.168.0.202)', result.stdout)
         with tempfile.TemporaryDirectory() as root:
             result, call = self.exercise(root, ['--user', 'joe;false'])
             self.assertEqual(result.returncode, 2)
@@ -147,7 +190,7 @@ class StorageWrapperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             result, call = self.exercise(root, identity='regular')
             self.assertEqual(result.returncode, 0, result.stdout)
-            args = json.loads((Path(root) / 'ssh-argv.json').read_text())
+            args = json.loads((Path(root) / 'ssh-argv.json').read_text().splitlines()[0])
             self.assertEqual(args[args.index('-i') + 1], str(Path(root) / 'home/.ssh/openstack-from-zero'))
             self.assertIn('IdentitiesOnly=yes', args)
             self.assertNotIn('fixture identity', call)
@@ -156,6 +199,18 @@ class StorageWrapperTests(unittest.TestCase):
     def test_symlinked_project_key_stops_before_connection(self):
         with tempfile.TemporaryDirectory() as root:
             result, call = self.exercise(root, identity='symlink')
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(call, '')
+
+    def test_single_node_selection_and_invalid_node(self):
+        with tempfile.TemporaryDirectory() as root:
+            result, call = self.exercise(root, ['--node', 'node2'])
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertTrue(call.startswith('joe@192.168.0.201\n'))
+            self.assertNotIn('joe@192.168.0.200', call)
+            self.assertNotIn('joe@192.168.0.202', call)
+        with tempfile.TemporaryDirectory() as root:
+            result, call = self.exercise(root, ['--node', 'all;false'])
             self.assertEqual(result.returncode, 2)
             self.assertEqual(call, '')
 

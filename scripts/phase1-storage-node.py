@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Privileged, read-only evidence for the known node3 SATA disk. No apply mode."""
+"""Privileged, read-only discovery and inspection of SATA disks. No apply mode."""
 
 import datetime as dt
 import json
@@ -10,11 +10,6 @@ import socket
 import stat
 import subprocess
 import sys
-
-
-TARGET = Path('/dev/disk/by-id/ata-KINGSTON_SA400S37240G_50026B768317883A')
-SERIAL = '50026B768317883A'
-SIZE = 240057409536
 
 
 def run(args):
@@ -29,15 +24,30 @@ def checked_json(args):
     return json.loads(result.stdout)
 
 
-def verify_identity(device, facts):
+def verify_identity(device, facts, expected):
     rows = facts.get('blockdevices', [])
     if len(rows) != 1:
         raise RuntimeError('Expected exactly one target disk')
     disk = rows[0]
     if (disk.get('path') != str(device) or disk.get('type') != 'disk'
-            or (disk.get('serial') or '').strip() != SERIAL or int(disk.get('size', -1)) != SIZE):
-        raise RuntimeError('Disk identity differs from the reviewed node3 SATA candidate: ' + json.dumps(disk))
+            or (disk.get('serial') or '').strip() != (expected.get('serial') or '').strip()
+            or int(disk.get('size', -1)) != int(expected['size'])
+            or disk.get('model') != expected.get('model') or disk.get('tran') != expected.get('tran')):
+        raise RuntimeError('Disk identity changed during this inspection: ' + json.dumps(disk))
     return disk
+
+
+def discover_sata(facts):
+    """Use observed transport, not an assumed /dev/sda name or old serial."""
+    disks = [row for row in facts.get('blockdevices', [])
+             if row.get('type') == 'disk' and row.get('tran') in {'sata', 'ata'}]
+    if not disks:
+        raise RuntimeError('No SATA disk identified by lsblk transport; review inventory instead of guessing')
+    for disk in disks:
+        if (not disk.get('path') or not (disk.get('serial') or '').strip()
+                or int(disk.get('size', 0)) <= 0):
+            raise RuntimeError('SATA identity is incomplete; review inventory')
+    return disks
 
 
 def flatten(rows, parent=None):
@@ -104,24 +114,36 @@ def collect(device):
     return 0 if complete else 1
 
 
-def main():
+def main(expected_node='node3'):
     try:
         if os.geteuid() != 0:
             raise RuntimeError('Run this helper through the R2d2 wrapper and sudo')
-        if socket.gethostname().split('.')[0].lower() != 'node3':
-            raise RuntimeError('Expected node3; refusing another machine')
+        if expected_node not in {'node1', 'node2', 'node3'}:
+            raise RuntimeError('Expected an explicitly selected lab node')
+        if socket.gethostname().split('.')[0].lower() != expected_node:
+            raise RuntimeError('Expected ' + expected_node + '; refusing another machine')
         release = dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
         if release.get('ID', '').strip('"') != 'ubuntu' or release.get('VERSION_ID', '').strip('"') != '24.04':
             raise RuntimeError('Expected Ubuntu 24.04')
-        device = TARGET.resolve(strict=True)
-        if not stat.S_ISBLK(device.stat().st_mode):
-            raise RuntimeError('Stable disk identifier does not point to a block device')
-        identity = verify_identity(device, checked_json(['lsblk', '--json', '--bytes', '--nodeps', '--output',
-                                                        'PATH,TYPE,SIZE,MODEL,SERIAL', str(device)]))
+        print('Node identity: ' + expected_node)
         print('UTC: ' + dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'))
-        print('Target: ' + str(TARGET) + '\nResolved: ' + str(device))
-        print('Identity matched: ' + json.dumps(identity))
-        return collect(device)
+        inventory = checked_json(['lsblk', '--json', '--bytes', '--nodeps', '--output',
+                                  'PATH,TYPE,TRAN,SIZE,MODEL,SERIAL'])
+        print('Current physical-disk inventory: ' + json.dumps(inventory))
+        disks = discover_sata(inventory)
+        complete = True
+        for disk in disks:
+            device = Path(disk['path']).resolve(strict=True)
+            if not stat.S_ISBLK(device.stat().st_mode):
+                raise RuntimeError('Observed SATA path is not a block device')
+            identity = verify_identity(device, checked_json(['lsblk', '--json', '--bytes', '--nodeps', '--output',
+                                                            'PATH,TYPE,TRAN,SIZE,MODEL,SERIAL', str(device)]), disk)
+            aliases = sorted(str(p) for p in Path('/dev/disk/by-id').glob('*') if p.resolve() == device)
+            print('\nSATA identity observed: ' + json.dumps(identity))
+            print('Stable identifiers: ' + (', '.join(aliases) or '(none found; review)'))
+            complete &= bool(aliases)
+            complete &= collect(device) == 0
+        return 0 if complete else 1
     except (OSError, RuntimeError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
         print('REVIEW: inspection stopped: ' + str(error), file=sys.stderr)
         return 1
