@@ -135,7 +135,7 @@ Ubuntu's disks are separate: the NVMe disk contains partitions and the existing 
 
 In LVM terminology, a **physical volume (PV)** is a disk or partition prepared for LVM. A **volume group (VG)** combines that space into a pool. **Logical volumes (LVs)** are virtual disks allocated from the pool.
 
-The intended next preparation would create one SATA-backed pool on each node. Those would be three separate local pools, with no automatic replication between them. The exact provisioning script and Kolla integration must be explained and agreed before proceeding. All inspection commands above remain available for rebuilding.
+The intended next preparation would create one SATA-backed pool on each node. Those would be three separate local pools, with no automatic replication between them. The provisioning script and its Kolla requirement are now explained in **[1.6 — Create the three Cinder LVM pools](06-cinder-lvm.md)**. Read its pending decision before applying. All inspection commands above remain available for rebuilding.
 
 The intended layout uses a separate local LVM pool on each storage node. These pools do not automatically replicate volumes between nodes. Before provisioning, we must validate the Kolla configuration for separate LVM backends; the Kolla guide flags limitations in multi-controller configurations. Keep Kolla prechecks enabled. Volume access from both computes is tested in the first-VM phase.
 
