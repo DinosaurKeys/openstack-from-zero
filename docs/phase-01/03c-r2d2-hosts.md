@@ -86,6 +86,6 @@ The hosts file answers “which IP belongs to this name?” Your SSH key answers
 
 These entries apply only on R2d2. They do not create DNS records on the router or teach other machines how to find R2d2.
 
-**Checkpoint complete.** Keep the full steps above. The next configuration step will be agreed with Joe before proceeding.
+**Checkpoint complete.** Keep the full steps above. Joe has now authorized **[the next step: Chrony on R2d2](03d-r2d2-chrony.md)**.
 
 References: [Linux hosts file](https://man7.org/linux/man-pages/man5/hosts.5.html) · [getent name lookups](https://man7.org/linux/man-pages/man1/getent.1.html).

@@ -19,4 +19,4 @@ Build a cloud you understand. Deploy an application. Monitor it.
 
 Each step: **purpose → explain the script → run → review the result → short lecture**.
 
-**Current checkpoint:** SSH-key setup passed on all three nodes with fresh key-only logins. Read **[1.3b — the successful result and short lesson](docs/phase-01/03b-ssh-keys.md#7-reviewed-result)**. The complete setup steps remain visible. **[1.3c — node names on R2d2](docs/phase-01/03c-r2d2-hosts.md#5-reviewed-result)** also passed: all three names resolve correctly. Its result and short lesson are published. The next configuration step awaits agreement.
+**Current checkpoint:** SSH-key setup passed on all three nodes with fresh key-only logins. Read **[1.3b — the successful result and short lesson](docs/phase-01/03b-ssh-keys.md#7-reviewed-result)**. The complete setup steps remain visible. **[1.3c — node names on R2d2](docs/phase-01/03c-r2d2-hosts.md#5-reviewed-result)** also passed: all three names resolve correctly. Its result and short lesson are published. **Next: [1.3d — Chrony on R2d2](docs/phase-01/03d-r2d2-chrony.md)**, authorized by Joe and ready to run.
