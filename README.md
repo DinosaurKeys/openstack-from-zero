@@ -19,4 +19,4 @@ Build a cloud you understand. Deploy an application. Monitor it.
 
 Each step: **purpose → explain the script → run → review the result → short lecture**.
 
-**Current checkpoint:** USB preparation passed on all three nodes. Before returning to Cinder storage, run the agreed **[SSH-key, Chrony and hostname inspection](docs/phase-01/03a-access-state.md)** on R2d2. This reads the existing setup and saves one report.
+**Current checkpoint:** the SSH/time/name inspection is reviewed. The nodes already have active Chrony and correct node-name mappings; R2d2 key-only access is not yet confirmed. Continue with **[1.3b — Create SSH keys and copy the public key](docs/phase-01/03b-ssh-keys.md)**. This step is limited to SSH-key access.

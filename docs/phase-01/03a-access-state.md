@@ -2,6 +2,8 @@
 
 [Phase 1](README.md) · [Previous: connection check](03-access-check.md)
 
+**Status: inspection complete.** Joe's report ended with `ACCESS_STATE_COLLECTED`. The procedure below remains available for study.
+
 **Purpose:** find out what already exists on R2d2 and the nodes before creating keys or configuring anything.
 
 ## 1. Understand the check
@@ -57,5 +59,27 @@ The R2d2 address and name answers are observations. The script does not assume a
 ## 5. Review before the next change
 
 Stop after returning the report. We review what exists, add the short lesson from your actual result, and ask before proceeding with configuration changes. The completed SSH and NIC procedures remain available for study.
+
+## Reviewed result from this lab
+
+| Item | Observed result |
+|---|---|
+| Node access | Password login worked on all three; key-only login was not confirmed |
+| R2d2 keys | No regular public-key files found; agent had no loaded identities |
+| Node time | Chrony installed, active and enabled on all three; clocks reported synchronized |
+| R2d2 time | Clock reported synchronized through systemd-timesyncd; Chrony was not installed |
+| Node name lookups | All three nodes resolved node1–node3 to the correct management addresses |
+| R2d2 node lookups | node1–node3 did not resolve |
+| Reverse name lookup | The nodes did not resolve r2d2; no reverse-connectivity requirement was assumed |
+
+## Short lecture — what your report means
+
+A connection by IP does not need a hostname mapping. `/etc/hosts` is each machine's local address book, letting it look up a name such as `node1`.
+
+A synchronized clock does not identify the time service. Your nodes use Chrony; R2d2 currently uses systemd-timesyncd.
+
+Finding no public-key files or loaded keys does not prove no private key exists elsewhere. The next script uses a dedicated filename and checks for existing files before creating its pair.
+
+**Next, authorized by Joe:** [1.3b — Create SSH keys and copy the public key](03b-ssh-keys.md).
 
 References: [OpenSSH authentication and connection options](https://man.openbsd.org/ssh_config) · [Chrony monitoring commands](https://chrony-project.org/doc/4.4/chronyc.html).
