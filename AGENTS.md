@@ -41,3 +41,7 @@ Build this fresh course in DinosaurKeys/openstack-from-zero. Read the relevant p
 - Disk operations require current identity, ownership and mount review plus approval of the exact operation/target. Keep installer prechecks enabled except Joe's explicitly approved Cinder cluster-name-check exception for the independent LVM design.
 - Keep reports, passwords, SSH private keys and Terraform state out of Git.
 - Preserve the user's chosen design unless they ask to change it.
+
+## Latest Phase 2 checkpoint
+
+Joe returned phase2-r2d2-20261023T142210Z-cgyer25u.txt: R2D2_STATE_COLLECTED. R2d2 Ubuntu24.04.5 x86_64; 2 logical CPUs; RAM7.71GiB total/6.40GiB available; home/repo same filesystem38.09GiB total/25.36GiB free. System Python3.12.3, no active venv; venv module present but ensurepip/pip absent in inspected interpreter. Git/SSH available; Ansible/Kolla commands absent from current PATH and distributions absent from inspected interpreter only. Selected development packages and python3-pip/python3-venv absent; three candidate venv folders absent. /etc/kolla paths are absent or inaccessible, not proof no configuration exists. Chapter A collected/reviewed; result and short lesson added while preserving all commands. Chapter B version selection is next and remains pending; do not treat mutable stable-branch source as an exact released installer version. No Phase 2 installation, configuration change or node readiness validation has occurred. Ask before the next installation/configuration scope. Reports remain private; only summarized facts go in Git.

@@ -4,7 +4,7 @@
 
 **Goal:** agree on one compatible set of OpenStack, Kolla-Ansible, Ansible and Python versions.
 
-**Status: draft.** Read the plan; no installation command is ready in this chapter yet.
+**Status: next — version selection pending.** Chapter A's report is reviewed: Ubuntu 24.04.5 LTS and system Python 3.12.3 on R2d2, with no active virtual environment. Read the plan; no installation command is ready in this chapter yet.
 
 ## 1. Purpose
 

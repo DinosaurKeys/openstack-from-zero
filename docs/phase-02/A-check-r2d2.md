@@ -4,7 +4,7 @@
 
 **Goal:** see what is already available on R2d2 before choosing and installing management tools.
 
-**Status: ready to run.** The live report is pending. This chapter collects facts; it does not install OpenStack.
+**Status: collection and review complete.** Joe's report returned `R2D2_STATE_COLLECTED` on 2026-10-23 at 14:22:10 UTC. The original procedure stays below for rebuilding. This chapter collects facts; it does not install OpenStack.
 
 ## 1. Purpose
 
@@ -54,8 +54,34 @@ This means the requested facts were collected, not that the installer is ready. 
 
 Use the exact `cat` command printed at the end and send back the report. **Stop here before installing tools.** We review it, then agree on Chapter B's version selection.
 
-## 5. Short lecture — after review
+## 5. Reviewed result
 
-The short lesson will be added after Joe's actual report is reviewed. All commands above will remain visible.
+Joe returned `phase2-r2d2-20261023T142210Z-cgyer25u.txt`.
+
+| Item | Observed result |
+|---|---|
+| Machine | R2d2, Ubuntu 24.04.5 LTS, x86_64 |
+| Resources | 2 logical CPUs; 7.71 GiB total RAM, 6.40 GiB available at collection |
+| Filesystem | 38.09 GiB total; 25.36 GiB free for both home and repository (the same filesystem) |
+| Python | System Python 3.12.3; no active virtual environment |
+| Python environment support | `venv` module found; `ensurepip` and `pip` not found in the inspected interpreter |
+| Existing tools | Git and SSH available; Ansible/Kolla commands not found on the current PATH |
+| Potential Ubuntu prerequisites | Git/Python installed; the inspected development packages, `python3-pip` and `python3-venv` were absent |
+| Known environment folders | The three inspected candidate folders were not present |
+| Kolla configuration paths | `/etc/kolla`, `globals.yml` and `passwords.yml` were not present or inaccessible; contents were not read |
+
+**Checkpoint: collection complete.** This records the starting point for the version and installation plan. It does not establish node readiness or approve installation. Missing packages are expected observations; they do not require a troubleshooting step here.
+
+The next chapter will check compatible releases before deciding which packages to install. Existing SSH keys, node networks and LVM pools do not need to be recreated.
+
+## 6. Short lecture — after review
+
+**Python** runs the management software. **pip** installs Python packages. A **virtual environment** is a separate folder for those tools and their dependencies, keeping them separate from Ubuntu's system Python.
+
+The `venv` module being visible does not mean everything needed to create a working environment is installed: this report also shows missing `ensurepip` and the Ubuntu `python3-venv` package. Chapter C will cover the prerequisites after versions are agreed.
+
+**Ansible** carries out administrative tasks on the nodes. **Kolla-Ansible** supplies the OpenStack deployment tasks. We choose compatible versions in Chapter B, then install the agreed tools on R2d2 in Chapter C.
+
+No further command is needed for this completed inspection.
 
 [Next planned chapter: select compatible versions](B-select-versions.md).
