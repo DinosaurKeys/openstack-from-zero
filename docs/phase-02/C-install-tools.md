@@ -4,7 +4,7 @@
 
 **Goal:** install the agreed management tools in an isolated Python environment on R2d2.
 
-**Status: ready for Joe to run; live installation report pending.** Joe agreed to Chapter B's version set and environment location. The script has local simulated-command checks; R2d2's actual installation must still be verified.
+**Status: completed and reviewed.** Joe's successful report returned `R2D2_TOOLS_READY`, and he confirmed activation with the `(kolla)` prompt. Joe agreed to Chapter B's version set and environment location. The script has local simulated-command checks; R2d2's successful report has now supplied the live installation evidence.
 
 ## 1. Purpose
 
@@ -114,8 +114,20 @@ Local validation uses simulated commands and temporary folders. It covers preser
 
 ## 5. Short lecture — after review
 
-The lesson will explain the created environment and how to use its tools after installation succeeds.
+### Reviewed result
+
+- Kolla-Ansible **23.0.0** matches source commit `4b493ef36ace2b90257ecf94feb00e2c6e8014c9`.
+- Ansible Core **2.21.5** runs with Python **3.12.3** in `/home/joe/venvs/kolla`.
+- `pip check` passed; all required collections and one dependency collection were listed.
+- Private dependency records and `activate-lab.sh` were saved.
+- Joe sourced the helper successfully; his terminal displayed `(kolla)`.
+
+### Short lesson
+
+**Installation** puts the tools and libraries on disk. **Activation** selects them and their settings for the current terminal; opening a new terminal needs activation again. Ansible **collections** are bundles of reusable automation tasks that Kolla uses later.
+
+The tools are ready on R2d2. OpenStack services have not been installed. Keep the procedure above for rebuilding; no need to reinstall these tools before Chapter D.
 
 [Next planned chapter: create the inventory](D-create-inventory.md).
 
-Publication check on 2026-10-23: real Ansible Core 2.21.5 and Kolla-Ansible 23.0.0 passed startup/configuration checks, downloaded all required collections, returned a valid collection list and passed `pip check` in an isolated development environment. Nine local regression tests also passed. This verifies the tool/collection procedure here; R2d2's installation report is still pending.
+Publication check on 2026-10-23: real Ansible Core 2.21.5 and Kolla-Ansible 23.0.0 passed startup/configuration checks, downloaded all required collections, returned a valid collection list and passed `pip check` in an isolated development environment. Nine local regression tests also passed. This verifies the tool/collection procedure here; R2d2's later successful report is reviewed above.
