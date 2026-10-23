@@ -4,7 +4,7 @@
 
 **Goal:** agree on one compatible set of OpenStack, Kolla-Ansible, Ansible and Python versions.
 
-**Status: compatibility proposal ready; Joe's agreement pending.** Chapter A's report is reviewed: Ubuntu 24.04.5 LTS and system Python 3.12.3 on R2d2, with no active virtual environment. Read the plan; no installation command is ready in this chapter yet.
+**Status: version set and environment path agreed by Joe on 2026-10-23.** Chapter A's report is reviewed: Ubuntu 24.04.5 LTS and system Python 3.12.3 on R2d2, with no active virtual environment. Read the plan; no installation command is ready in this chapter yet.
 
 ## 1. Purpose
 
@@ -21,7 +21,7 @@ These tools work together. Installing arbitrary versions separately can produce 
 
 ## 3. Reviewed compatibility proposal
 
-Checked on **2026-10-23** against official release records and the released Kolla source. These are **proposed versions**, not installed tools.
+Checked on **2026-10-23** against official release records and the released Kolla source. Joe has agreed to the version set below. These are **selected versions**, not yet confirmed installed tools.
 
 | Component | Proposal | Reason |
 |---|---|---|
@@ -67,7 +67,7 @@ The script will show the APT plan before installation. Then it will create the p
 
 System-wide `python3-pip` is not needed for this plan: pip will run inside the virtual environment. No node connections, Docker installation, inventory/configuration creation, password generation or deployment belong to this R2d2 tool-installation step. Internet access will be required for downloads.
 
-**Decision requested:** use the version set above and `/home/joe/venvs/kolla`, then prepare Chapter C's explained script. No installation command is published yet.
+**Decision recorded:** Joe agreed to this version set and `/home/joe/venvs/kolla`. [Chapter C](C-install-tools.md) now contains the explained installation script and run commands.
 
 ### Evidence
 
@@ -87,11 +87,11 @@ This is a documentation/review step. It needs no lab mutation script. The chosen
 
 ## 5. Finish check
 
-The table above records the proposed components and compatibility evidence. Joe's agreement is **pending**. Earlier use of 2026.1 documentation for the storage design is a source review, not a claim that this release is installed on R2d2.
+The table above records the proposed components and compatibility evidence. Joe's agreement is **recorded**; Chapter C's actual installation report is pending. Earlier use of 2026.1 documentation for the storage design is a source review, not a claim that this release is installed on R2d2.
 
 ## 6. Short lecture — after agreement
 
-The lesson will explain why these particular versions work together after the selection is agreed.
+Ubuntu provides the Python runtime. Ansible Core supplies the automation engine; Kolla-Ansible supplies OpenStack's deployment tasks. The selected Ansible version fits Kolla's allowed range and runs on your Python 3.12. Selecting versions establishes the plan; Chapter C verifies the actual installed tools.
 
 References to consult: [Kolla release selector and support matrix](https://docs.openstack.org/kolla-ansible/latest/user/support-matrix.html) · [Kolla installation sequence](https://docs.openstack.org/kolla-ansible/latest/user/quickstart.html). Use the matching release selector when making the final choice.
 
