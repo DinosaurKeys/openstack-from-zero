@@ -4,22 +4,22 @@
 
 **Goal:** create one empty `cinder-volumes` storage pool on each node's reviewed SATA disk.
 
-**Status: guide and scripts prepared; no live pool creation yet.** Read section 1 before running. The inspection is complete; all previous commands remain available in Chapter 1.5.
+**Status: Joe approved independent LVM pools with an empty cluster name and the explained cluster-check exception. Ready for Joe to run; live pool creation is pending.** Read the purpose and script explanation before running. The inspection is complete; all previous commands remain available in Chapter 1.5.
 
-## 1. Kolla decision before proceeding
+## 1. Agreed Kolla design
 
 The reviewed Kolla-Ansible **2026.1** documentation supports LVM volume groups on storage nodes. Its default Cinder check also requires a cluster name when the inventory has multiple `cinder-volume` hosts. However, Cinder's LVM driver does not support active/active clustering, and Cinder rejects a cluster name with that driver.
 
-Three independent local LVM backends need the documented exception to **that Cinder cluster check**, with the Cinder cluster name left empty. The proposed later deployment settings are:
+Three independent local LVM backends need the documented exception to **that Cinder cluster check**, with the Cinder cluster name left empty. The agreed later deployment settings are:
 
 ```yaml
 cinder_cluster_name: ""
 cinder_cluster_skip_precheck: true
 ```
 
-These settings would not enable replication. The exception skips the Cinder cluster-name check; it does not disable the LVM volume-group check or all Kolla prechecks. It is still a change to the project's existing rule that installer prechecks stay enabled, so **Joe's approval is pending**. The scripts below do not set either variable or deploy OpenStack.
+These settings do not enable replication. The exception skips the Cinder cluster-name check; it does not disable the LVM volume-group check or all Kolla prechecks. **Joe approved this specific exception and the independent-pool design.** The scripts below prepare disk pools only; these Kolla settings will be applied in the later deployment-configuration chapter.
 
-**For now: do not run the apply command in section 4.** Settle this deployment decision first. The read-only plan command remains available for inspecting exactly what the script would do.
+**The pool-creation step is now authorized.** Read sections 2 and 3, then run the apply command in section 4 on R2d2. The optional read-only plan command remains available.
 
 This source review uses 2026.1 as a reference. The deployment release on rebuilt R2d2 has not been established; its installed code and rendered inventory/configuration must be checked in the management-environment phase before deployment. No working three-node Cinder deployment is claimed here.
 
@@ -74,7 +74,7 @@ bash scripts/phase1-lvm.sh --user joe --node all
 
 Expected plan marker: `RESULT: LVM_PLAN_READY for all`.
 
-**After the section 1 decision is approved**, the pool-creation command is:
+**Joe has approved the section 1 decision.** To create the three pools now, run:
 
 ```bash
 bash scripts/phase1-lvm.sh --user joe --node all --apply
