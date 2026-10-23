@@ -4,7 +4,7 @@
 
 **Goal:** use Chrony to keep R2d2's clock synchronized.
 
-**Status: ready for Joe to run.** Installation and live verification are pending. Keep these steps for rebuilding too.
+**Status: complete.** Joe's report from 2026-10-23 ends with `R2D2_CHRONY_READY`. The full installation steps remain below for study and rebuilding.
 
 ## 1. Purpose
 
@@ -69,8 +69,31 @@ RESULT: R2D2_CHRONY_READY
 
 It prints the private report's path and its exact `cat` command. Run that printed command and send back the output. **Stop here for review before the next configuration step.**
 
-## 6. Short lecture — after review
+## 6. Reviewed result
 
-The short lesson will be added after Joe's actual installation result is reviewed. These setup steps will remain visible.
+| Check | Result from Joe's run |
+|---|---|
+| Installation | Chrony 4.5 installed, with the `tzdata-legacy` dependency |
+| Previous time client | `systemd-timesyncd` package removed; service inactive |
+| Chrony service | Active and enabled for boot |
+| Synchronization wait | Passed on the second check |
+| Tracking | `Leap status : Normal` |
+| Selected source | `^* 185.125.190.56` in this report |
+| System clock | `timedatectl` reports synchronized |
+| Timezone | Remains `Etc/UTC` |
+
+The final marker was **`RESULT: R2D2_CHRONY_READY`**. This run worked only on R2d2. No node connection was made.
+
+## 7. Short lecture — what your result means
+
+Chrony now runs in the background, comparing R2d2's clock with network time sources and correcting it. Enabling the service means it is configured to start on future boots; this run did not perform a reboot test.
+
+In the sources table, `^*` marks the selected server and `^+` marks a source combined with it. A `^-` source is not being combined; that symbol alone is not a failure. The selected server can change later.
+
+`Leap status : Normal` and the successful wait confirm initial synchronization. This first snapshot does not prove long-term clock accuracy. The script checks remaining clock correction below 0.1 second; it does not impose a frequency-skew limit.
+
+The former time client was replaced, so Chrony now handles this job. R2d2 was not configured as a time server for the nodes.
+
+**Checkpoint complete.** Keep all setup commands above. The next step will be agreed with Joe before proceeding.
 
 References: [Ubuntu Chrony installation](https://ubuntu.com/server/docs/how-to/networking/serve-ntp-with-chrony/) · [Ubuntu 24.04 chronyc commands](https://manpages.ubuntu.com/manpages/noble/man1/chronyc.1.html).
