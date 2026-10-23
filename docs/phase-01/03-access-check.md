@@ -1,6 +1,6 @@
 # 1.3 — Check access from R2d2
 
-[Phase 1](README.md) · [Previous: Ubuntu nodes](02-ubuntu-nodes.md) · [Next: USB NICs](04-nics-and-storage.md)
+[Phase 1](README.md) · [Previous: Ubuntu nodes](02-ubuntu-nodes.md) · [Next: keys, time and names](03a-access-state.md)
 
 **Status: complete.** Your report ends with **`NODE_IDENTITY_CHECKS_PASSED`**. The full procedure remains visible for study or a rebuild.
 
@@ -83,4 +83,4 @@ Ping showed that the addresses respond. SSH has now authenticated your account a
 
 The three nodes expose a CPU virtualization flag and `/dev/kvm`. That is useful evidence for the planned computes; running a VM is a later test. R2d2 is the administration VM and does not need to run the cloud's VMs.
 
-**Next:** [1.4 — Prepare the USB NICs](04-nics-and-storage.md).
+**Next:** [1.3a — Check SSH keys, time and host names](03a-access-state.md).

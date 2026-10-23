@@ -19,4 +19,4 @@ Build a cloud you understand. Deploy an application. Monitor it.
 
 Each step: **purpose → explain the script → run → review the result → short lecture**.
 
-**Current checkpoint:** USB preparation passed on all three nodes: 1 Gb/s full duplex, no USB host addresses, management preserved, and fresh SSH connections passed. Continue with **[1.5 — Inspect the Cinder disk](docs/phase-01/05-cinder-storage.md)** before preparing node3's storage pool.
+**Current checkpoint:** USB preparation passed on all three nodes. Before returning to Cinder storage, run the agreed **[SSH-key, Chrony and hostname inspection](docs/phase-01/03a-access-state.md)** on R2d2. This reads the existing setup and saves one report.

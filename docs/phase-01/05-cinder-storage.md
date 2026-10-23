@@ -2,7 +2,9 @@
 
 [Phase 1](README.md) · [Previous: USB NIC result and lesson](04-nics-and-storage.md)
 
-**Current step: inspect node3's SATA disk.** We review this report before creating the `cinder-volumes` storage pool.
+**Storage step: inspect node3's SATA disk.** We review this report before creating the `cinder-volumes` storage pool.
+
+For the current lab, first complete and review [1.3a — SSH keys, time and host names](03a-access-state.md), then return to these storage steps.
 
 ![Ubuntu uses NVMe; the separate SATA disk is planned for Cinder volumes](../images/storage-layout.svg)
 
