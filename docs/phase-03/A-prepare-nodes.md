@@ -2,7 +2,7 @@
 
 [Phase 3](README.md) · [Previous phase](../phase-02/README.md)
 
-**Status: ready to run — live result pending.** Joe approved standard Kolla host preparation, including disabling UFW if installed and removing the listed host packages if present.
+**Status: complete — live bootstrap result reviewed.** Joe approved standard Kolla host preparation, including disabling UFW if installed and removing the listed host packages if present.
 
 ## 1. Purpose
 
@@ -94,13 +94,48 @@ For a deliberate fresh rebuild with a new CA, use the newly reviewed fingerprint
 
 - [x] Standard bootstrap scope agreed; concrete changes published for reading before execution.
 - [x] Wrapper tested locally and published.
-- [ ] Joe's run completed on all three nodes.
-- [ ] Required host services and existing management access verified.
-- [ ] Combined report reviewed before Chapter B.
+- [x] Joe's run completed on all three nodes.
+- [x] Docker service/API, fresh node access and the recorded host checks passed.
+- [x] Combined report reviewed; Chapter B is next.
 
-## 7. Short lecture — after result review
+## 7. Reviewed live result
 
-After the actual run, explain which host components were prepared and why they are needed for OpenStack containers. Preserve the commands so this chapter can be followed on a rebuild.
+Joe returned `phase3-bootstrap-20261025T211810Z-ruwwkpji.txt`, ending:
+
+```text
+NODE_BOOTSTRAP_READY node1
+NODE_BOOTSTRAP_READY node2
+NODE_BOOTSTRAP_READY node3
+RESULT: HOST_BOOTSTRAP_READY for all
+```
+
+| Node | Kolla task recap | Post-check result |
+|---|---|---|
+| node1 | ok=46, changed=16, unreachable=0, failed=0, skipped=27 | Ready |
+| node2 | ok=46, changed=16, unreachable=0, failed=0, skipped=27 | Ready |
+| node3 | ok=46, changed=16, unreachable=0, failed=0, skipped=27 | Ready |
+
+All three report Docker **29.9.2**, active and enabled, with successful Python Docker SDK API contact. Expected packages, Docker network options, name resolution and `kolla.target` checks passed. UFW reports inactive.
+
+Among the explicitly tracked packages, each node gained `docker-ce`, `docker-ce-cli`, `containerd.io`, `python3-docker` and `python3-pip`; `open-iscsi` was removed. The other listed removal targets were absent afterward; the before/after package snapshots do not show them being removed during this run. The snapshot is a selected package inventory, not an exhaustive APT transaction log.
+
+Kolla added its managed hosts block, configured Docker's repository and daemon, configured the containerd path selected by the engine, and prepared the Kolla host files. Existing earlier node-name entries remain in `/etc/hosts`.
+
+The recorded Netplan, SSH and Chrony configuration hashes, management DNS and Chrony active state match before/after on every node. Successful Phase 2 readiness assertions also ran before and after bootstrap, including NIC, synchronized-clock and empty Cinder pool checks.
+
+This completes host preparation. Full Kolla prechecks, service deployment, live Horizon HTTPS and guest/volume tests have not run.
+
+## 8. Short lecture — after result review
+
+**Docker is the container engine.** Its successful API response means Ansible's Python support can communicate with the running engine on each node. That is a useful host-preparation check; it does not mean OpenStack services exist yet.
+
+**Some tasks needed changes; others did not.** The report shows required host changes while already satisfied requirements returned `ok`. A skipped task was excluded by its conditions. The recap counts tasks, not individual packages or files.
+
+**Host packages and cloud services are separate.** The old host `open-iscsi` package was removed as approved. That does not delete the existing LVM storage pools; their readiness checks passed. The selected OpenStack storage services are deployed later.
+
+**Next is the deployment gate.** Chapter B will run the full Kolla prechecks against the prepared hosts before we deploy OpenStack. We review that result before Chapter C.
+
+All run commands and the host-change guide remain above for study and rebuilding.
 
 [Official Kolla 2026.2 quick-start — deployment order](https://docs.openstack.org/kolla-ansible/2026.2/user/quickstart)
 
@@ -109,4 +144,4 @@ After the actual run, explain which host components were prepared and why they a
 
 Nine regression tests passed: default-plan isolation, explicit configuration paths, source-drift rejection, all-node preflight ordering, per-node password privacy, readiness checks and early stopping. With real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5, both check playbooks passed syntax checks, the actual bootstrap CLI parsed its task list, and the per-host password lookup selected the correct simulated value. Pinned Git source matched the tested host playbook and common/Nova settings.
 
-These checks did not perform a live Ubuntu APT/Docker installation or SSH/sudo run against Joe's nodes. The lab's actual result remains pending. This chapter does not claim that full Kolla prechecks, live Horizon HTTPS or deployment have passed.
+These checks did not perform a live Ubuntu APT/Docker installation or SSH/sudo run against Joe's nodes. Joe's actual bootstrap result is reviewed above. This chapter does not claim that full Kolla prechecks, live Horizon HTTPS or deployment have passed.
