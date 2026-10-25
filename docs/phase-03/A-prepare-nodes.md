@@ -2,7 +2,7 @@
 
 [Phase 3](README.md) · [Previous phase](../phase-02/README.md)
 
-**Status: draft for review. No script or command to run yet.**
+**Status: ready to run — live result pending.** Joe approved standard Kolla host preparation, including disabling UFW if installed and removing the listed host packages if present.
 
 ## 1. Purpose
 
@@ -30,24 +30,70 @@ Kolla calls this preparation **bootstrap**. It prepares hosts; deploying OpenSta
 
 The selected release and public quick-start establish the order: host bootstrap, full prechecks, then service deployment. The public quick-start uses example paths; our eventual wrapper must use the already prepared lab paths.
 
-## 4. Script explanation — to be completed before publication as runnable
+## 4. Understand the wrapper
 
-The eventual wrapper will run from **R2d2 as joe** and target **node1, node2 and node3** through the existing Ansible inventory.
+[phase3-bootstrap.py](../../scripts/phase3-bootstrap.py) calls Kolla's existing bootstrap automation. It does not replace Kolla's installation tasks.
 
-This is a **configuration-changing step**. The exact bootstrap changes and their validation must be reviewed before the runnable script is published. We have not approved guessed firewall, time-service, SSH or network changes. Package/service changes can affect running workloads; this remains an undeployed lab, but current host state still needs checking.
+| Question | Answer |
+|---|---|
+| **Purpose** | Prepare the hosts to run OpenStack containers. |
+| **Scope** | node1, node2 and node3. Install/configure Docker and supporting packages; apply the explained standard host settings. |
+| **Inputs** | Existing private inventory, `globals.yml`, `passwords.yml`, per-node USB settings and reviewed certificates from Phase 2. |
+| **Result** | One private combined report with before/after observations and Kolla task output. Verify each node before moving to Chapter B. |
 
-No disk erasure, PV/VG recreation, credential regeneration or certificate rotation is part of this plan.
+**Read [the host-change table](A-host-changes.md) before execution.** It explains packages, removals, UFW, hosts-file/cloud-init handling, Docker configuration and the conditional libvirt AppArmor adjustment. This is host preparation; full prechecks and OpenStack service deployment follow later.
 
-## 5. Download and run — pending
+The wrapper checks the existing private files and all three nodes **before any bootstrap starts**. It stops on source drift or recorded existing container/VM/iSCSI workloads instead of guessing that a host can be changed.
 
-There are no Chapter A execution commands yet. A draft is not a request to run raw Kolla commands copied from external documentation.
+It reuses `joe`, your SSH key and your existing configuration. Your independent `cinder-volumes` pools are verified, not recreated. No credential or certificate regeneration is included.
 
-The finished version will include the explained script, exact command and private report location. No bootstrap, full Kolla prechecks or deployment has run under this draft.
+## 5. Download and run
+
+**Where:** R2d2, logged in as joe. Read Section 4 and the linked change table first.
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/phase3-bootstrap.py --apply
+```
+
+The script automatically uses `/home/joe/venvs/kolla`. It works whether your prompt currently shows `(kolla)` or not; no extra activation command is needed.
+
+| Prompt | What to enter |
+|---|---|
+| Existing SSH-key passphrase, if requested | The passphrase that unlocks your R2d2-to-nodes key. |
+| `Joe sudo password on node1:` | Joe's sudo password on node1. |
+| Equivalent prompt for node2/node3 | The password for that named node; they need not be identical. |
+
+Passwords are not displayed or saved in reports. The wrapper holds them in memory for its child processes, then exits after the checks.
+
+While it runs, Kolla shows task output. `ok` means the requested task state was already satisfied, `changed` means a change was reported, and `skipped` means a condition excluded a task. Some tasks gather observations; those results are not an installation by themselves.
+
+Running without `--apply` only prints the plan. It does not contact the nodes or change anything.
+
+### Return the report
+
+At the end, the script prints its exact report path and the `cat` command to read it. Run that printed command and return the report.
+
+Expected successful checkpoint:
+
+```text
+NODE_BOOTSTRAP_READY node1
+NODE_BOOTSTRAP_READY node2
+NODE_BOOTSTRAP_READY node3
+RESULT: HOST_BOOTSTRAP_READY for all
+```
+
+The post-checks verify Docker's service/API, expected packages, host-name resolution, NICs, clock and empty Cinder pools. They compare recorded protected configuration and management DNS observations.
+
+If it reports `HOST_BOOTSTRAP_NEEDS_REVIEW`, return the report before another command. Earlier Kolla tasks may already have changed hosts; the wrapper does not perform automatic rollback or rerun the whole bootstrap. Completed reports stay private under `reports/`.
+
+For a deliberate fresh rebuild with a new CA, use the newly reviewed fingerprint through `--expected-ca`, as explained in [Phase 2 Chapter F](../phase-02/F-validate-preparation.md#rebuilding-later).
 
 ## 6. Finish check — future result
 
-- [ ] Exact bootstrap changes reviewed and agreed.
-- [ ] Wrapper tested and published.
+- [x] Standard bootstrap scope agreed; concrete changes published for reading before execution.
+- [x] Wrapper tested locally and published.
 - [ ] Joe's run completed on all three nodes.
 - [ ] Required host services and existing management access verified.
 - [ ] Combined report reviewed before Chapter B.
@@ -59,10 +105,8 @@ After the actual run, explain which host components were prepared and why they a
 [Official Kolla 2026.2 quick-start — deployment order](https://docs.openstack.org/kolla-ansible/2026.2/user/quickstart)
 
 
-## Next review checkpoint
+## Development verification
 
-The installed development copy of the `openstack.kolla` collection's `baremetal` role was inspected. It imports host-file and journal configuration, package and container-engine roles, SDK support and libvirt/AppArmor preparation. It also contains conditional firewall changes. This confirms that bootstrap needs an explained change review; it is not merely installing one application.
+Nine regression tests passed: default-plan isolation, explicit configuration paths, source-drift rejection, all-node preflight ordering, per-node password privacy, readiness checks and early stopping. With real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5, both check playbooks passed syntax checks, the actual bootstrap CLI parsed its task list, and the per-host password lookup selected the correct simulated value. Pinned Git source matched the tested host playbook and common/Nova settings.
 
-This is source inspection of the development copy, not proof of the exact current node state or a completed review of every effective option on R2d2. The next implementation must check the collection used by the existing lab environment and publish the concrete changes before Joe runs it.
-
-**Proposed next deliverable:** one tested Chapter A wrapper and a simple guide for preparing all three nodes from R2d2, with one private combined report. Ask Joe before moving from this draft to that configuration-changing procedure. Full prechecks and deployment stay in later chapters.
+These checks did not perform a live Ubuntu APT/Docker installation or SSH/sudo run against Joe's nodes. The lab's actual result remains pending. This chapter does not claim that full Kolla prechecks, live Horizon HTTPS or deployment have passed.
