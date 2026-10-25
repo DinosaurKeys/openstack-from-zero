@@ -2,7 +2,7 @@
 
 Build a cloud you understand. Deploy an application. Monitor it.
 
-**Current: [Phase 3 — Chapter A passed on all three nodes](docs/phase-03/A-prepare-nodes.md#7-reviewed-live-result). Docker and its API checks passed. [Chapter B — full Kolla prechecks](docs/phase-03/B-full-prechecks.md) is ready to run; its live result is pending.**
+**Current: [Phase 3 — Chapter A passed on all three nodes](docs/phase-03/A-prepare-nodes.md#7-reviewed-live-result). Docker and its API checks passed. [Chapter B — full Kolla prechecks](docs/phase-03/B-full-prechecks.md) includes the required local ProxySQL certificate-preparation step. Complete that step, then run the checks; a successful full precheck result is still pending.**
 
 **Completed: [Phase 2 — Management environment](docs/phase-02/README.md). [Chapter A is reviewed](docs/phase-02/A-check-r2d2.md#5-reviewed-result); [Chapter B's versions are agreed](docs/phase-02/B-select-versions.md); Chapter C's installation/activation is complete; Chapter D's inventory/access checks are complete; [Chapter E's preparation is reviewed](docs/phase-02/E-configure-lab.md#reviewed-result); [Chapter F's preparation checks passed](docs/phase-02/F-validate-preparation.md#7-reviewed-result); Windows Chrome and Linux Firefox imports are user-confirmed. Phase 3 began with [Chapter A's retained run guide](docs/phase-03/A-prepare-nodes.md). Read [Chapter F — Validate preparation](docs/phase-02/F-validate-preparation.md).**
 

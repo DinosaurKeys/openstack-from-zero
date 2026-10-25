@@ -40,6 +40,38 @@ The wrapper supplies no `--skip-tags`, selected-task shortcut or automatic check
 
 ## 3. Download and run
 
+### Local database TLS files on R2d2
+
+**Purpose:** provide the CA, certificate and key filenames that ProxySQL expects for the already enabled database frontend TLS. They are separate files from the API `haproxy*.pem` files.
+
+The normal Chapter E preparation now includes them. On an existing lab, this local-only command verifies the reviewed CA and reuses the existing certificate/key:
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/phase3-db-tls.py --apply
+```
+
+It prepares only these three files under `private/phase2/kolla/certificates/`:
+
+| Filename | Verified original reused |
+|---|---|
+| `proxysql-ca.pem` | `ca/lab-root.crt` |
+| `proxysql-cert.pem` | `server.crt` |
+| `proxysql-key.pem` | `private/server.key` |
+
+The key stays private on R2d2 with mode `0600`. There are no node connections, sudo/password prompts, package installations, new certificates or TLS-setting changes. Existing different files stop for review rather than being overwritten. The command prints a private preparation report.
+
+Continue only when it prints:
+
+```text
+RESULT: PROXYSQL_TLS_READY
+```
+
+Your existing Windows Chrome and Linux Firefox CA imports remain valid because the CA is unchanged.
+
+### Run full prechecks after local preparation
+
 **On R2d2, logged in as joe:**
 
 ```bash
@@ -89,6 +121,7 @@ Keep the full report and private files off GitHub. We publish the reviewed summa
 - [x] Chapter A's live bootstrap result reviewed.
 - [x] Default lab image-source acceptance agreed.
 - [x] Wrapper tested locally and published.
+- [ ] Local ProxySQL TLS files verified and ready.
 - [ ] Full precheck result from Joe's lab reviewed.
 - [ ] Agree on Chapter C before deployment.
 
@@ -105,3 +138,6 @@ Eight regression tests passed for plan isolation, exact precheck command scope, 
 These local tests did not execute full remote prechecks on Joe's nodes. Their live result remains pending.
 
 [Official Kolla deployment order](https://docs.openstack.org/kolla-ansible/2026.2/user/quickstart) · [Pinned registry check](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/prechecks/tasks/registry_checks.yml)
+
+
+**TLS preparation verification:** six additional tests cover the missing-file completion, original identity/configuration preservation, repeated runs, conflict/symlink refusal, fingerprint rejection and early layout validation. Together with the affected existing suites, 39 tests passed. In an isolated folder, OpenSSL verified the ProxySQL certificate chain and VIP; the pinned release's CA-check path and all three deployment copy-source paths resolved to the prepared files. Existing credentials and original certificate/key files were unchanged. This is not a claim that the lab's full remote prechecks have passed.

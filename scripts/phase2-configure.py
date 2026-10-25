@@ -192,6 +192,45 @@ def verify_certificates(folder):
     return ca.fingerprint(hashes.SHA256()).hex()
 
 
+PROXYSQL_FILES = {'proxysql-ca.pem': 'ca/lab-root.crt',
+                 'proxysql-cert.pem': 'server.crt',
+                 'proxysql-key.pem': 'private/server.key'}
+
+
+def verify_proxysql_certificates(folder):
+    for target, source in PROXYSQL_FILES.items():
+        path = folder/target
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError('ProxySQL TLS files are incomplete; complete Chapter B certificate preparation first')
+        if path.stat().st_uid != os.getuid() or path.stat().st_mode & 0o077:
+            raise RuntimeError('ProxySQL TLS file ownership/permissions require review; contents withheld')
+        if path.read_bytes() != (folder/source).read_bytes():
+            raise RuntimeError('ProxySQL TLS files differ from the verified lab certificate set; preserved')
+
+
+def ensure_proxysql_certificates(folder):
+    # Same internal/external/database VIP: mirror the pinned release's own
+    # certificates role, without issuing or rotating any certificate/key.
+    verify_certificates(folder)
+    for parent in [folder, *folder.parents]:
+        if parent.is_symlink():
+            raise RuntimeError('Refuse symlinked certificate path')
+    values = {folder/target: (folder/source).read_bytes()
+              for target, source in PROXYSQL_FILES.items()}
+    # Inspect every destination before creating any; never replace a conflict.
+    for path, content in values.items():
+        if path.is_symlink() or (path.exists() and
+                (not path.is_file() or path.stat().st_uid != os.getuid() or path.read_bytes() != content)):
+            raise RuntimeError('Existing ProxySQL TLS destination differs; preserved: '+path.name)
+    for path, content in values.items():
+        if not path.exists():
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as output:
+                output.write(content)
+        path.chmod(0o600)
+    verify_proxysql_certificates(folder)
+
+
 def prepare(log):
     env = tools.tool_environment()
     config = REPO/'private/phase2/kolla'
@@ -216,7 +255,9 @@ def prepare(log):
         verify_certificates(staging)
         os.rename(staging, certs)
     fingerprint = verify_certificates(certs)
+    ensure_proxysql_certificates(certs)
     log('PASS certificate chain, keys and VIP SAN verified. CA SHA256: '+fingerprint)
+    log('PASS ProxySQL CA/certificate/key files prepared privately from the same verified set.')
     parsed = inventory_step.inventory_data(env, inventory, log)
     inventory_step.validate_inventory(parsed)
     for node, nic in USB.items():

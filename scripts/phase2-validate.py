@@ -67,6 +67,7 @@ def local_checks(log, env, expected_ca):
     fingerprint = config_step.verify_certificates(config/'certificates')
     if fingerprint != expected_ca:
         raise RuntimeError('CA fingerprint differs from the reviewed Chapter E fingerprint; no trust changes made')
+    config_step.verify_proxysql_certificates(config/'certificates')
     log('PASS tool versions, all-three-node roles, globals, NIC mapping and credential completeness.')
     log('PASS approved independent-LVM exception only; empty cluster name retained.')
     log('PASS certificate keys, validity, chain and VIP SAN. Public CA SHA256: '+fingerprint)

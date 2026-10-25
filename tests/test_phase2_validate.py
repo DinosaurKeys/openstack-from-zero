@@ -57,7 +57,7 @@ class ValidationTests(unittest.TestCase):
    files={config/step.config_step.MARKER:json.dumps(step.config_step.MARK),config/'globals.yml':yaml.safe_dump(step.config_step.settings(config)),config/'lab-network-plan.json':json.dumps(step.config_step.network_plan()),config/'passwords.yml':'keystone_admin_password: PRIVATE_SENTINEL\ndocker_registry_password: null\n',config.parent/'inventory.ini':'fixture'}
    for n,nic in step.config_step.USB.items():files[config.parent/'host_vars'/f'{n}.yml']=yaml.safe_dump({'neutron_external_interface':nic})
    for p,v in files.items():p.parent.mkdir(parents=True,exist_ok=True);p.write_text(v);p.chmod(0o600)
-   (config/'certificates').mkdir();step.config_step.make_certificates(config/'certificates');fingerprint=step.config_step.verify_certificates(config/'certificates')
+   (config/'certificates').mkdir();step.config_step.make_certificates(config/'certificates');step.config_step.ensure_proxysql_certificates(config/'certificates');fingerprint=step.config_step.verify_certificates(config/'certificates')
    inventory_template=env/'share/kolla-ansible/ansible/inventory/multinode';inventory_template.parent.mkdir(parents=True);inventory_template.write_text('fixture')
    parsed={'_meta':{'hostvars':{n:{'neutron_external_interface':nic} for n,nic in step.config_step.USB.items()}}}
    before={p:p.read_bytes() for p in root.rglob('*') if p.is_file()};lines=[]

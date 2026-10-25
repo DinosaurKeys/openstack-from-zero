@@ -73,7 +73,7 @@ Everything below is on **R2d2**, under `~/openstack-from-zero/private/phase2/`:
 | `host_vars/node1.yml`, `node2.yml`, `node3.yml` | Each node's external USB NIC name |
 | `kolla/lab-network-plan.json` | Record the reserved VIP and future VM address pool |
 | `kolla/passwords.yml` | Generated service passwords and internal service keys |
-| `kolla/certificates/` | Private lab CA, API certificate and private keys |
+| `kolla/certificates/` | Private lab CA, API certificate, ProxySQL TLS files and private keys |
 
 The configuration stays in the project's private folder rather than replacing an unknown `/etc/kolla` setup on R2d2. Later Kolla commands must use this configuration directory explicitly with `--configdir`. Service configuration on the nodes is created only during later deployment.
 
@@ -88,9 +88,21 @@ Kolla's `kolla-genpwd` generates OpenStack's service credentials automatically. 
 A **certificate authority (CA)** is a certificate issuer. This script creates a private lab CA and uses it to sign the API certificate. The certificate includes the VIP as an IP address, so no invented DNS name is needed.
 
 - `certificates/ca/lab-root.crt` is the **public CA certificate** that clients will need to trust.
-- `certificates/private/` and the `haproxy*.pem` files contain **private keys** and must stay private.
+- `certificates/private/`, the `haproxy*.pem` files and `certificates/proxysql-key.pem` contain **private keys** and must stay private.
 - The API certificate lasts one year; the CA lasts ten years. Renewal is not automatic.
-- HTTPS here covers client access to the API load balancer. API backend TLS stays at the release's disabled default; this does not claim every internal connection is encrypted.
+- HTTPS covers client access to the API load balancer. With internal API TLS and ProxySQL enabled, this release also enables database client-to-ProxySQL TLS by default. API backend TLS and ProxySQL-to-MariaDB backend TLS remain disabled under the existing backend setting; this does not claim every internal connection is encrypted.
+
+The same internal/external VIP lets ProxySQL reuse the verified server identity, as Kolla's certificate-generation role does. The script prepares these additional files in `kolla/certificates/`:
+
+| Required ProxySQL filename | Existing source copied privately |
+|---|---|
+| `proxysql-ca.pem` | `ca/lab-root.crt` |
+| `proxysql-cert.pem` | `server.crt` |
+| `proxysql-key.pem` | `private/server.key` |
+
+These are copies of the existing verified files, not a new CA or a new key pair. Conflicting existing destinations are preserved and stop preparation. Matching files are reused with private permissions.
+
+For an existing lab whose API certificates are already prepared, [Chapter B's local certificate step](../phase-03/B-full-prechecks.md#local-database-tls-files-on-r2d2) completes this layout without rerunning all of Chapter E.
 
 The script verifies the certificate signature, key matches, dates and VIP. **It does not yet install CA trust on R2d2 or your browser computer.** Those trust steps must be completed before HTTPS use/deployment checks. A private lab CA is not automatically trusted by browsers.
 
@@ -168,3 +180,5 @@ Chapter F checks the prepared configuration and plans the trust steps before dep
 References: [Kolla 23.0.0 TLS configuration](https://github.com/openstack/kolla-ansible/blob/23.0.0/doc/source/admin/tls.rst) · [Released credential generator](https://github.com/openstack/kolla-ansible/blob/23.0.0/kolla_ansible/cmd/genpwd.py).
 
 [Next planned chapter: validate preparation](F-validate-preparation.md).
+
+[Released ProxySQL certificate layout](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/certificates/tasks/generate.yml) · [Database TLS defaults](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/group_vars/all/common.yml)

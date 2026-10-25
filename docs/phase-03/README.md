@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [Phase 2](../phase-02/README.md)
 
-**Current: Chapter A is complete and its live report is reviewed.** [Chapter B](B-full-prechecks.md) is ready to run, including Joe's approved lab-image acceptance. Its live result is pending; Chapters C–D remain planned.
+**Current: Chapter A is complete and its live report is reviewed.** [Chapter B](B-full-prechecks.md) is ready to run, including Joe's approved lab-image acceptance. Complete its local ProxySQL certificate step before running full prechecks. A successful full precheck result is still pending; Chapters C–D remain planned.
 
 **Goal:** prepare the three hosts, check deployment requirements, install OpenStack and verify access.
 
