@@ -2,9 +2,9 @@
 
 Build a cloud you understand. Deploy an application. Monitor it.
 
-**Current: [Phase 3 — Chapter A passed on all three nodes](docs/phase-03/A-prepare-nodes.md#7-reviewed-live-result). Docker and its API checks passed. Next is Chapter B — full Kolla prechecks, before deployment.**
+**Current: [Phase 3 — Chapter A passed on all three nodes](docs/phase-03/A-prepare-nodes.md#7-reviewed-live-result). Docker and its API checks passed. [Chapter B — full Kolla prechecks](docs/phase-03/B-full-prechecks.md) is ready to run; its live result is pending.**
 
-**Completed: [Phase 2 — Management environment](docs/phase-02/README.md). [Chapter A is reviewed](docs/phase-02/A-check-r2d2.md#5-reviewed-result); [Chapter B's versions are agreed](docs/phase-02/B-select-versions.md); Chapter C's installation/activation is complete; Chapter D's inventory/access checks are complete; [Chapter E's preparation is reviewed](docs/phase-02/E-configure-lab.md#reviewed-result); [Chapter F's preparation checks passed](docs/phase-02/F-validate-preparation.md#7-reviewed-result); Windows Chrome and Linux Firefox imports are user-confirmed. Next is [Phase 3 — Chapter A's runnable guide](docs/phase-03/A-prepare-nodes.md). Read [Chapter F — Validate preparation](docs/phase-02/F-validate-preparation.md).**
+**Completed: [Phase 2 — Management environment](docs/phase-02/README.md). [Chapter A is reviewed](docs/phase-02/A-check-r2d2.md#5-reviewed-result); [Chapter B's versions are agreed](docs/phase-02/B-select-versions.md); Chapter C's installation/activation is complete; Chapter D's inventory/access checks are complete; [Chapter E's preparation is reviewed](docs/phase-02/E-configure-lab.md#reviewed-result); [Chapter F's preparation checks passed](docs/phase-02/F-validate-preparation.md#7-reviewed-result); Windows Chrome and Linux Firefox imports are user-confirmed. Phase 3 began with [Chapter A's retained run guide](docs/phase-03/A-prepare-nodes.md). Read [Chapter F — Validate preparation](docs/phase-02/F-validate-preparation.md).**
 
 **Rebuilding from the beginning? [Phase 1 — Prerequisites](docs/phase-01/README.md)** keeps every completed step and lesson.
 
@@ -14,7 +14,7 @@ Build a cloud you understand. Deploy an application. Monitor it.
 |---|---|---|
 | **1. Prerequisites** | Ubuntu, management access, NIC and disk identification | **[Read Phase 1](docs/phase-01/README.md)** |
 | **2. Management environment** | Prepare Ansible, Kolla-Ansible and their configuration on R2d2 | **[Read Phase 2](docs/phase-02/README.md)** |
-| 3. Install OpenStack | Deploy and check cloud services | [Chapter A — completed and reviewed](docs/phase-03/README.md) |
+| 3. Install OpenStack | Deploy and check cloud services | [Chapter B — ready to run](docs/phase-03/README.md) |
 | 4. First VM | Test VM networking and volumes, then introduce Terraform | Planned |
 | 5. Deploy an app | PostgreSQL, Flask and Nginx | Planned |
 | 6. Monitoring | Prometheus, Grafana and alerts | Planned |

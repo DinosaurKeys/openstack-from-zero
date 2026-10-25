@@ -145,3 +145,6 @@ All run commands and the host-change guide remain above for study and rebuilding
 Nine regression tests passed: default-plan isolation, explicit configuration paths, source-drift rejection, all-node preflight ordering, per-node password privacy, readiness checks and early stopping. With real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5, both check playbooks passed syntax checks, the actual bootstrap CLI parsed its task list, and the per-host password lookup selected the correct simulated value. Pinned Git source matched the tested host playbook and common/Nova settings.
 
 These checks did not perform a live Ubuntu APT/Docker installation or SSH/sudo run against Joe's nodes. Joe's actual bootstrap result is reviewed above. This chapter does not claim that full Kolla prechecks, live Horizon HTTPS or deployment have passed.
+
+
+[Next: Chapter B — Full Kolla prechecks](B-full-prechecks.md). The wrapper is ready to run; its live result is pending. All Chapter A run commands remain above for rebuilding.
