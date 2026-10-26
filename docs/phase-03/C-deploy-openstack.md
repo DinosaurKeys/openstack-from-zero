@@ -2,7 +2,7 @@
 
 [Phase 3](README.md) · [Previous: full prechecks](B-full-prechecks.md)
 
-**Status: prepared for review; live deployment pending.** Chapter B passed on all three nodes. Joe authorized preparing and publishing this chapter. Joe runs the deployment from R2d2 after reviewing the scope below.
+**Status: complete — live deployment observations passed on all three nodes.** The original deployment procedure remains below for study and rebuilding. Continue with [Chapter D — client access](D-client-access.md).
 
 ## 1. Purpose
 
@@ -98,12 +98,30 @@ Keep the report private. It includes detailed Kolla task output and image refere
 
 - [x] Chapter B's live prechecks reviewed: all three nodes passed.
 - [x] Chapter C guide and wrapper prepared and tested locally.
-- [ ] Joe's actual deployment report reviewed.
-- [ ] Continue to Chapter D by agreement.
+- [x] Joe's actual deployment and verification results reviewed.
+- [x] Continue to Chapter D by agreement.
 
 **After the report:** review which services started, where their data lives, how the VIP reaches the services and how the USB NIC joins the virtual network. Keep the run procedure above for rebuilding.
 
 Deployment success is not yet proof of a working VM or volume. **Chapter D** will prepare client access and verify service/API registration, live HTTPS and Horizon access. The first VM, external network and volume tests follow in Phase 4.
+
+### Reviewed live result and short lesson
+
+Joe's `phase3-verify-20261026T130558Z-ypl859mq.txt` reports `OPENSTACK_OBSERVATIONS_PASSED for all`, `passed: true` and no issues. Required containers passed their running/configured health checks; MariaDB is Synced and Primary on all three nodes, with three members and one shared cluster identity. The API VIP was observed on node2 only. Management addresses/routes, USB links and USB-to-`br-ex` membership passed. This is a snapshot, not a failover or guest-traffic test.
+
+Glance uses the approved local file backend and Kolla's first-node placement: `glance_api` belongs on node1. The other two nodes do not need their own copy of that container. The three Cinder pools remain independent.
+
+For a fresh observation of the existing installation, run on R2d2:
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/phase3-verify.py --run
+```
+
+Enter each named node's sudo password, then return the printed short summary. This reads the installed state; it does not deploy services again.
+
+**Lesson:** Kolla runs services in containers, MariaDB shares the service database across the three database members, Keepalived owns one API VIP at a time, and Open vSwitch attaches the USB NICs to `br-ex`. A host IP is not required on those USB NICs. Actual VM networking is configured and tested in Phase 4.
 
 ## Development verification
 
