@@ -1,41 +1,20 @@
-# Phase 2 — Management environment
+# Phase 2 — Management environment and HA configuration
 
-[Home](../../README.md) · [Completed Phase 1](../phase-01/README.md) · [Goal and plan](../00-goal-and-plan.md)
+[Home](../../README.md) · [Phase 1](../phase-01/README.md) · [Architecture](../architecture.md)
 
-**Goal:** prepare R2d2 with the tools and reviewed configuration needed to install OpenStack in Phase 3.
+R2d2 runs the pinned installer tools and stores private inventory, credentials and TLS material. All three nodes are controller/network/compute/storage hosts.
 
-**Complete: management preparation and the chosen browser imports.** Chapter F's preparation checks and R2d2 CA trust passed and are reviewed. Chapters A–E are completed and reviewed. The Windows host's port-22 route to R2d2 is confirmed, and its transfer steps are published. Joe confirmed Chrome import on Windows 11. Joe also confirmed completing [Linux Firefox setup](F-linux-firefox.md). Phase 3 has a [draft plan for review](../phase-03/README.md); execution has not started. We review one actual result before making the next configuration change.
+| Chapter | Purpose |
+|---|---|
+| [A — Check R2d2](A-check-r2d2.md) | Confirm the management machine and connectivity |
+| [B — Select versions](B-select-versions.md) | Kolla-Ansible 23.0.0, OpenStack 2026.2 and Ansible-core 2.21.5 |
+| [C — Install tools](C-install-tools.md) | Prepare the pinned Kolla environment |
+| [D — Create inventory](D-create-inventory.md) | Map all three roles and node access |
+| [E — Configure the lab](E-configure-lab.md) | Explicit API HA, MariaDB and Neutron agent HA; credentials and HTTPS |
+| [F — Validate preparation](F-validate-preparation.md) | Readiness, inventory, source, local TLS and VIP conflict checks |
 
-![R2d2 manages the three-node lab; installer tools and cloud services are planned](../images/lab-layout.svg)
+The explicit HA settings are prepared in E and deployed in **Phase 3 C**. The actual HA virtual router is created in **Phase 4 B**. Private files are never published. Existing matching credentials/certificates are reused; unknown or conflicting settings stop for review.
 
-## Chapters and progress
+For this lab's existing prepared hosts, start with [Fresh installation](../fresh-install.md). That route retains the installed management tools, trusted CA and reviewed inventory instead of reinstalling prerequisites or rotating secrets. The fresh HA configuration/deployment must produce its own reports; previous host preparation does not prove a fresh cloud works.
 
-| Chapter | Purpose | Status |
-|---|---|---|
-| [Chapter A — Check R2d2](A-check-r2d2.md) | Collect current resources, Python and tool/package information | **Complete — result and short lesson published** |
-| [Chapter B — Select compatible versions](B-select-versions.md) | Agree on the OpenStack, Kolla-Ansible and Ansible versions | **Complete — versions and environment path agreed** |
-| [Chapter C — Install management tools](C-install-tools.md) | Build an isolated Python environment on R2d2 | **Complete — installation and activation confirmed** |
-| [Chapter D — Create the inventory](D-create-inventory.md) | List machines, roles and connection settings | **Complete — access and three-compute layout verified** |
-| [Chapter E — Configure the lab](E-configure-lab.md) | Prepare network, storage and service settings | **Complete — private configuration and HTTPS files prepared** |
-| [Chapter F — Validate preparation](F-validate-preparation.md) | Review access, inventory and configuration before installation | Preparation and R2d2 trust passed; Windows Chrome import confirmed; Linux Firefox pending |
-
-## How this phase works
-
-Each executable chapter keeps the same structure: **purpose → explain the script → download and run → review the result → short lecture**. Completed instructions stay visible for study and rebuilding.
-
-The script is checked locally before publication. Local tests use simulated machine/package data; they cannot prove R2d2's actual state or network access. Your report supplies that evidence. Working procedures go in the guide; detailed execution evidence stays in private reports.
-
-Read [Chapter A's reviewed result and short lesson](A-check-r2d2.md#5-reviewed-result), and [Chapter B's agreed version set](B-select-versions.md), read [Chapter C's completed lesson](C-install-tools.md#5-short-lecture--after-review), read [Chapter D's completed inventory guide](D-create-inventory.md), read [Chapter E's reviewed result and lesson](E-configure-lab.md#reviewed-result), then [Chapter F's validation guide](F-validate-preparation.md). The Chapter A commands remain available for a rebuild. The separate browser guide covers Chrome and Firefox on Windows and Linux; transfer and import completion are not assumed.
-
-## Phase 2 finish check
-
-- [x] R2d2's current management environment is collected and reviewed.
-- [x] Compatible versions are agreed and recorded.
-- [x] Management tools are installed in the agreed isolated environment.
-- [x] The inventory assigns all three controller/network/compute/storage hosts correctly.
-- [x] Network, storage and service configuration is reviewed; secrets stay private.
-- [x] Ansible access and configuration validation pass.
-- [x] Public CA copied to Windows; Chrome import confirmed by Joe.
-- [x] Linux Firefox setup reported complete by Joe; import user-confirmed.
-
-**Phase 3 boundary:** installing node dependencies with Kolla bootstrap, running full Kolla prechecks and deploying OpenStack happen in Phase 3. This phase prepares the management environment and configuration.
+[Windows certificate guide](F-browser-certificates.md) · [Linux Firefox guide](F-linux-firefox.md) · [Next: install OpenStack](../phase-03/README.md)
