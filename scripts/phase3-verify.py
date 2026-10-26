@@ -76,6 +76,11 @@ def summarize(records):
         checks = observation.get('checks', {})
         if observation.get('node') != node or observation.get('ready') is not True or not checks or not all(v is True for v in checks.values()):
             issues.append(node+': host/container/network observations need review')
+        if observation.get('error'):
+            issues.append(node+': '+observation['error'])
+        for name, passed in checks.items():
+            if passed is not True:
+                issues.append(node+': failed observation: '+name)
         try:
             databases[node] = database_status(record.get('database', {}))
             for key, expected in EXPECTED.items():
@@ -88,9 +93,13 @@ def summarize(records):
         if len(uuids) != 1 or not all(re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', u) and int(u.replace('-', ''), 16) for u in uuids):
             issues.append('MariaDB nodes do not report one valid shared cluster state UUID')
     owners = [n for n, s in observations.items() if s.get('facts', {}).get('VIP on management interface') is True]
-    if len(owners) != 1:
+    vip_complete = len(observations) == 3 and all(isinstance(s.get('facts', {}).get('VIP on management interface'), bool) for s in observations.values())
+    if not vip_complete:
+        issues.append('VIP ownership unverified: address observations are incomplete')
+    elif len(owners) != 1:
         issues.append('Expected exactly one observed API VIP owner; found '+str(len(owners)))
-    return {'passed': not issues, 'issues': issues, 'database_status': databases, 'vip_owners': owners}
+    return {'passed': not issues, 'issues': issues, 'database_status': databases,
+            'vip_observations_complete': vip_complete, 'vip_owners': owners if vip_complete else None}
 
 
 def execute(log, work):
