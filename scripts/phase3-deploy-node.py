@@ -27,8 +27,14 @@ def container_states():
                 'health':value.get('Health',{}).get('Status','not configured')}
  return states
 
-def healthy(states):
- return set(states)==set(REQUIRED) and all(s['running'] and s['health'] in ('healthy','not configured') for s in states.values())
+def required_containers(node):
+ if node not in NODES:raise RuntimeError('Unknown node for container placement')
+ # Approved local file backend, default "glance" volume: pinned Kolla
+ # group_vars/all/glance.yml selects the first glance-api host (node1).
+ return tuple(name for name in REQUIRED if name!='glance_api' or node=='node1')
+
+def healthy(states,node='node1'):
+ return set(required_containers(node)).issubset(states) and all(s['running'] and s['health'] in ('healthy','not configured') for s in states.values())
 
 def collect(node):
  if os.geteuid()!=0 or os.environ.get('SUDO_USER')!='joe' or socket.gethostname().split('.')[0]!=node:
@@ -56,11 +62,12 @@ def collect_details(node,result):
  deadline=time.monotonic()+120
  while True:
   states=container_states()
-  if healthy(states) or time.monotonic()>=deadline:break
+  if healthy(states,node) or time.monotonic()>=deadline:break
   time.sleep(5)
- checks['selected core containers running and healthchecks passed']=healthy(states)
+ checks['selected core containers running and healthchecks passed']=healthy(states,node)
  facts['containers']=states
- facts['missing required containers']=sorted(set(REQUIRED)-set(states))
+ facts['required containers']=list(required_containers(node))
+ facts['missing required containers']=sorted(set(required_containers(node))-set(states))
  # Query only OVS bridge membership, not the management NIC configuration.
  bridge=run(['docker','exec','openvswitch_vswitchd','ovs-vsctl','port-to-br',usb])
  checks['USB attached to br-ex']=bridge=='br-ex'
