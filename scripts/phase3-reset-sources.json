@@ -1,0 +1,11 @@
+{
+  "share/kolla-ansible/ansible/roles/destroy/defaults/main.yml": "40acbead5905a77e2482d9b4e1055bd868d6d72d71d69deac624525e4bf8722e",
+  "share/kolla-ansible/ansible/roles/destroy/tasks/cleanup_images.yml": "370935c41426f535230795df5587b32a77ed6e11421f09180a767b26b5a2c4e6",
+  "share/kolla-ansible/ansible/roles/destroy/tasks/cleanup_host.yml": "8facb2823dc57758a9aaa83180134b6ddb16be32082e62ee2de967bc77717940",
+  "share/kolla-ansible/ansible/roles/destroy/tasks/validate_docker_execute.yml": "479987afd0cba7119751531a4a40a2a6076d6c624ba880adb848ee09959b1318",
+  "share/kolla-ansible/ansible/roles/destroy/tasks/main.yml": "c70638c79d40ea18f31a0525960fab5e2c58f42dbab2543f16f5852a6dab2afa",
+  "share/kolla-ansible/ansible/roles/destroy/tasks/cleanup_containers.yml": "7131acf037403a18bd0cc3735d9ea73c58bcce3f53a1857fb1baf914b4609a57",
+  "share/kolla-ansible/tools/cleanup-containers": "75fc5a725c536122ae5df97308da853b6f3544be062933ea42c324b0cee9330f",
+  "share/kolla-ansible/tools/cleanup-host": "6b97bda5b4d1951fc55ce80390a7acae2f9c43eb47b8d87f5d47e794e938cf0f",
+  "lib/python3.12/site-packages/kolla_ansible/cli/commands.py": "3e131289395661dec3752ba47dde7564e723ebb791de839436fc8add6cd6270a"
+}
