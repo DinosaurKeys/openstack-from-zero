@@ -1,32 +1,67 @@
-# OpenStack from zero
+# OpenStack from zero — three-node HA lab
 
-Build a cloud you understand. Deploy an application. Monitor it.
+Build OpenStack 2026.2 with Kolla-Ansible 23.0.0 on three Ubuntu 24.04 nodes. Learn each component, run one explained step from R2d2, and review its report before continuing.
 
-**Current: [Phase 4 — Chapter B: create the virtual networks](docs/phase-04/B-create-networks.md). Chapters A and B are complete. The external/private networks and router were created and verified through Neutron. The router is on node1 with external IP 192.168.0.192 and private gateway 10.10.10.1. VM traffic testing remains pending. [Chapter C — prepare the first VM](docs/phase-04/C-prepare-vm.md) is published for Joe to run.**
+**Design:** API Keepalived + HAProxy, three-member MariaDB/Galera, and Neutron virtual-router HA. The course scripts and checks require this design. Deployment and failover results must come from the fresh installation; they are not assumed.
 
-**Completed: [Phase 2 — Management environment](docs/phase-02/README.md). [Chapter A is reviewed](docs/phase-02/A-check-r2d2.md#5-reviewed-result); [Chapter B's versions are agreed](docs/phase-02/B-select-versions.md); Chapter C's installation/activation is complete; Chapter D's inventory/access checks are complete; [Chapter E's preparation is reviewed](docs/phase-02/E-configure-lab.md#reviewed-result); [Chapter F's preparation checks passed](docs/phase-02/F-validate-preparation.md#7-reviewed-result); Windows Chrome and Linux Firefox imports are user-confirmed. Phase 3 began with [Chapter A's retained run guide](docs/phase-03/A-prepare-nodes.md). Read [Chapter F — Validate preparation](docs/phase-02/F-validate-preparation.md).**
+![Three-node HA architecture](docs/images/ha-architecture.svg)
 
-**Rebuilding from the beginning? [Phase 1 — Prerequisites](docs/phase-01/README.md)** keeps every completed step and lesson.
+## Where each HA feature is configured and verified
 
-![Planned lab with R2d2 and three OpenStack nodes](docs/images/lab-layout.svg)
+| Feature | Configure | Install/create | Verify |
+|---|---|---|---|
+| API VIP `192.168.0.151`, Keepalived + HAProxy | [Phase 2 E](docs/phase-02/E-configure-lab.md) | [Phase 3 C](docs/phase-03/C-deploy-openstack.md) | Container/VIP observations in Phase 3 C; HTTPS in D; controlled failover in E |
+| MariaDB/Galera on all three nodes | Phase 2 E and three-node inventory | Phase 3 C | Three Synced/Primary members and shared UUID in Phase 3 C; controlled failover in E |
+| Virtual-router HA | Phase 2 E enables Neutron agent HA | Phase 3 C deploys agents; [Phase 4 B](docs/phase-04/B-create-networks.md) creates the HA router | One active and two standby router agents in Phase 4 B; VM traffic/failover after the first VM works |
 
-| Phase | Goal | Guide |
+Three nodes provide the places to run replicas. Each service still needs its own HA configuration and test.
+
+## Lab
+
+| Machine | Address | Role |
 |---|---|---|
-| **1. Prerequisites** | Ubuntu, management access, NIC and disk identification | **[Read Phase 1](docs/phase-01/README.md)** |
-| **2. Management environment** | Prepare Ansible, Kolla-Ansible and their configuration on R2d2 | **[Read Phase 2](docs/phase-02/README.md)** |
-| 3. Install OpenStack | Deploy and check cloud services | [Chapter D — client access and API verification](docs/phase-03/D-client-access.md) |
-| 4. First VM | Document USB/provider virtual networking, test VM networking and volumes, then introduce Terraform | [Chapter B — create virtual networks](docs/phase-04/B-create-networks.md) |
-| 5. Deploy an app | PostgreSQL, Flask and Nginx | Planned |
-| 6. Monitoring | Prometheus, Grafana and alerts | Planned |
+| R2d2 | Observed `192.168.162.131/24`, VMware NAT/DHCP | Management tools, scripts and private reports |
+| node1 | `192.168.0.200/24` | Controller, network, compute, local Cinder LVM |
+| node2 | `192.168.0.201/24` | Controller, network, compute, local Cinder LVM |
+| node3 | `192.168.0.202/24` | Controller, network, compute, local Cinder LVM |
 
-[Goal and learning method](docs/00-goal-and-plan.md)
+All nodes use `enp0s31f6` for management/API traffic and the VXLAN underlay. Separate per-node USB NICs attach to `br-ex` for external VM traffic. Both NICs share the home switch/LAN; there is no physical network isolation or redundant home switch.
 
-Each step: **purpose → explain the script → run → review the result → short lecture**.
+The reviewed resource snapshot showed four CPU cores and about 15 GiB usable RAM per node, with 6.3/6.6/7.1 GiB available respectively and no active swapping during the short sample. That is initial headroom, not a workload or failure-capacity guarantee. Measure again after adding HA routers and a guest.
 
-**Current checkpoint:** SSH-key setup passed on all three nodes with fresh key-only logins. Read **[Chapter E — the successful result and short lesson](docs/phase-01/E-ssh-keys.md#7-reviewed-result)**. The complete setup steps remain visible. **[Chapter F — node names on R2d2](docs/phase-01/F-r2d2-hosts.md#5-reviewed-result)** also passed: all three names resolve correctly. Its result and short lesson are published. **[Chapter G — Chrony on R2d2](docs/phase-01/G-r2d2-chrony.md#6-reviewed-result)** is also complete: active, enabled and initially synchronized. Its result and short lesson are published. **[Chapter I — SATA inspection result and lesson](docs/phase-01/I-cinder-storage.md#5-reviewed-inspection-result):** collection and review completed on all three nodes. **[Chapter J — LVM pools created and verified](docs/phase-01/J-cinder-lvm.md#6-reviewed-creation-result)** on all three nodes: one SATA PV and zero LVs per pool; Ubuntu/system LVM unchanged. The setup commands, reviewed result, short lesson and read-only viewing command remain available. **Phase 2 is now published:** Chapter A's read-only inspection is complete, with its result and short lesson published. Chapter B's version set and environment path are agreed. Chapter C's installation and activation are confirmed. Chapter D's access checks passed on all nodes. The update to use all three as computes is verified. Chapter E's private configuration, credentials and HTTPS certificate files are prepared and reviewed. Chapter F's live preparation checks passed on all three nodes, and R2d2 CA trust is verified. Its reviewed result and short lesson are published; all run commands remain available. Joe confirmed the Chrome import on Windows 11. [Linux Firefox has a separate guide](docs/phase-02/F-linux-firefox.md); Joe has confirmed completing it. Phase 2 preparation is complete for the chosen browsers. Live Horizon HTTPS remains a later check. [Phase 3 — Chapter A](docs/phase-03/A-prepare-nodes.md) is complete: the Kolla bootstrap and post-checks passed on all three nodes. Its reviewed result and short lesson are published; the full run procedure remains available. Deployment, host/container observations and Chapter D live API/browser access are now complete.
+## Course
 
-**Latest Phase 3 checkpoint:** Chapter C's live observations passed on all three nodes: containers, synchronized three-member MariaDB cluster, management layout and USB bridges. The API VIP was on node2. Glance uses local image storage on node1. [Chapter D](docs/phase-03/D-client-access.md) now prepares local client files and checks HTTPS, API authentication/service registration and the Horizon login page. Chapter D's live report confirms HTTPS authentication, all required service registrations and authenticated API reads, and Joe's screenshot confirms browser login. Phase 4 will document the virtual networking through `br-ex` and the USB NICs before VM traffic is configured and tested; VM, volume and failover tests remain pending.
+| Phase | Guide |
+|---|---|
+| 1 — Host prerequisites | [Ubuntu, access, NICs and reviewed Cinder disks](docs/phase-01/README.md) |
+| 2 — Management environment | [Tools, inventory, HA settings and HTTPS certificates](docs/phase-02/README.md) |
+| 3 — Install OpenStack | [Full prechecks, HA deployment, access and verification](docs/phase-03/README.md) |
+| 4 — Networking and first VM | [HA router, VM ingredients, guest traffic and volumes](docs/phase-04/README.md) |
+| 5 — Application | Planned after the guest and volume checks |
+| 6 — Monitoring | Planned after the application |
 
-**Phase 4:** [Read the two-NIC diagram and network inspection guide](docs/phase-04/A-network-inspection.md). Its live result and short lesson are published. [Chapter B's live result](docs/phase-04/B-create-networks.md#7-finish-check-and-short-lesson) passed: private `10.10.10.0/24`, external pool `.152–.199`, router on node1 with external IP `192.168.0.192`. Both router ports are ACTIVE. [Chapter C](docs/phase-04/C-prepare-vm.md) prepares the Ubuntu image, flavor, guest key and security group; its live result is pending; VM, DNS and failover tests remain pending.
+[Architecture and limits](docs/architecture.md) · [Viewing-command glossary](docs/command-glossary.md) · [Goal and learning plan](docs/00-goal-and-plan.md)
 
-[Lab command glossary — view the router, network agents, MariaDB and other components](docs/command-glossary.md).
+## Fresh installation on the existing prepared hosts
+
+Read the exact destructive scope in [Fresh installation](docs/fresh-install.md). The reset removes OpenStack service data and Cinder logical volumes, retaining Ubuntu, management access, the reviewed SATA PV/VGs, R2d2 tools, CA and credentials. Joe runs it; the assistant does not access the lab.
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/phase3-reset.py
+```
+
+After reviewing that plan and the guide:
+
+```bash
+/usr/bin/python3 scripts/phase3-reset.py --apply
+```
+
+Return the resulting report before prechecks/deployment. The reset does not start installation automatically.
+
+## HA limits
+
+API redundancy, database replication and virtual-router takeover are separate from VM recovery and storage replication. Glance uses node1's local file storage. Cinder uses independent local SATA pools. A failed compute node's VMs are not automatically restarted elsewhere. The shared switch/home router remain common dependencies. These limits are part of the lab design.
+
+Keep `private/`, `reports/`, passwords, cloud profiles, CA private keys and SSH private keys out of Git. Never post credentials in chat.
