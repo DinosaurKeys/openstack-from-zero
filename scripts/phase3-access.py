@@ -30,6 +30,8 @@ API_PATHS = {'image': ('v2/images?limit=1', 'images'),
              'block-storage': ('volumes/detail?limit=1', 'volumes'),
              'placement': ('resource_providers', 'resource_providers')}
 SERVICE_TYPES = {'identity', *API_PATHS}
+SERVICE_PORTS = {'identity': 5000, 'image': 9292, 'compute': 8774,
+                 'network': 9696, 'block-storage': 8776, 'placement': 8780}
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -41,8 +43,8 @@ def safe_url(url, host=VIP):
     p = urllib.parse.urlsplit(url)
     if p.scheme != 'https' or p.hostname != host or p.username or p.password or p.fragment:
         raise RuntimeError('Endpoint must use HTTPS on the approved API VIP')
-    if p.port not in (None, 443, 5000, 9292, 8774, 9696, 8776, 8778):
-        raise RuntimeError('Unexpected service endpoint port')
+    if p.port not in (None, 443, *SERVICE_PORTS.values()):
+        raise RuntimeError('Unexpected service endpoint port: '+str(p.port))
     return url
 
 
