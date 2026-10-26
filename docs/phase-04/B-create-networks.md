@@ -1,76 +1,59 @@
-# Chapter B — Create the virtual networks
+# Chapter B — Create the HA virtual networks
 
-[Phase 4](README.md) · [Previous: inspected network layout](A-network-inspection.md)
+[Phase 4](README.md) · [Previous: inspection](A-network-inspection.md) · [Architecture](../architecture.md)
 
-**Status: complete — live creation report reviewed.** Joe ran this procedure from R2d2. The retained commands below reproduce the agreed procedure; no rerun is needed for this successful checkpoint.
+**Goal:** create the approved networks and one HA virtual router, then verify its reported replica roles. The fresh deployment must supply a successful report; no previous cloud's IDs or active node are reused.
 
-## 1. Which traffic uses each NIC?
+## 1. Addressing and objects
 
-Both NICs connect to the same home switch. We use them for different traffic roles; they are not physically isolated LANs.
-
-| Traffic in this lab | Path |
+| Object | Plan |
 |---|---|
-| R2d2 SSH to nodes; browser/API access to the API VIP | Built-in `enp0s31f6` and the node management addresses |
-| Host package/image downloads; OpenStack database, messaging and service communication | Built-in management NIC |
-| Nova downloads a VM image from Glance | Host/service connection over the management network |
-| Cinder LVM volume traffic between different nodes when volumes are attached later | Host storage connection over the management network in this two-NIC design; actual volume test remains later |
-| Two VMs on the same node and same private network | Local virtual switching; no physical NIC is needed for that VM-to-VM exchange |
-| Two VMs on different nodes on the same private network | VXLAN encapsulation across the configured management IPs `.200/.201/.202`, using the built-in NICs |
-| A VM reaches the home LAN or internet | Private network → virtual router → external/provider network → `br-ex` → USB NIC on the router's node → switch/home router |
-| A LAN client reaches a VM's future floating IP | Switch → router node's USB NIC → `br-ex` → virtual router/NAT → private network → VM; VXLAN over the built-in NIC may also be needed if the VM is elsewhere |
+| `lab-external` | External flat network on `physnet1` → `br-ex` → USB |
+| External subnet | `192.168.0.0/24`; gateway `.1`; allocation pool `.152–.199`; Neutron DHCP off |
+| `lab-private` | VXLAN network; segment/MTU assigned by Neutron and reported |
+| Private subnet | `10.10.10.0/24`; gateway `10.10.10.1`; pool `.2–.254`; DHCP on; DNS `192.168.0.1` |
+| `lab-router` | **HA=true**, non-distributed, IPv4 source NAT enabled; private subnet attached |
+| Router placement | All three L3 agents: exactly one active and two standby |
+| DHCP placement | Two alive/enabled DHCP agents hosting the private network |
 
-The management NIC therefore also carries **encapsulated private VM traffic between nodes**. The USB NIC is the physical external connection for VM traffic. A VM's compute node and its virtual router's node need not be the same.
+The existing home DHCP range is `.2–.150`; API VIP `.151` and host addresses `.200–.202` are outside the cloud allocation pool. The external pool must remain reserved for OpenStack. The script cannot prove every home-LAN address is unused or discover hidden Windows/VPN routes.
 
-These are configured/design paths, not measured VM traffic results. Chapter A confirmed the bridge/tunnel configuration; Chapter D will test a real VM's actual path.
+One external address is allocated to the router's gateway port. The report gives the actual address; it is not placed on a USB host interface. The future VM address is also not predetermined; DHCP service ports can consume private addresses.
 
-## 2. What we create
+## 2. What router HA means
 
-| Object | Exact plan |
+The logical router has replicas on node1, node2 and node3. Neutron's per-router Keepalived/VRRP elects one active replica. Standbys can take over the router addresses after the relevant HA heartbeats are lost. The active node is selected dynamically; API VIP ownership is a separate election.
+
+The script explicitly creates `ha=true`; it does not rely only on a server default. It checks HA roles through `/routers/<ID>/l3-agents`. Three agent records without one active/two standby states do not pass. The hidden HA network/ports created by Neutron are expected additional service objects, not extra user-requested tenant networks.
+
+## 3. Which traffic uses each NIC?
+
+| Traffic | Path |
 |---|---|
-| External network | `lab-external`: flat, external, physical network `physnet1`, using the already deployed `physnet1:br-ex` mapping |
-| External subnet | `lab-external-subnet`: `192.168.0.0/24`; home gateway `192.168.0.1`; pool `192.168.0.152–199`; **Neutron DHCP disabled** |
-| Private network | `lab-private`: VXLAN; Neutron chooses its segment ID |
-| Private subnet | `lab-private-subnet`: `10.10.10.0/24`; virtual gateway `10.10.10.1`; pool `10.10.10.2–254`; DHCP enabled; DNS `192.168.0.1` |
-| Virtual router | `lab-router`: private subnet attached; external gateway on `lab-external`; IPv4 source NAT enabled |
+| SSH, API/Horizon, database/messaging, host/image transfers | Built-in management NIC `enp0s31f6` |
+| Private VM traffic across nodes, including VM to router on another node | VXLAN over management addresses `.200/.201/.202` |
+| Neutron router HA overlay | Hidden HA network over the configured VXLAN underlay |
+| Same-node/same-network VM traffic | Can remain in local virtual switching |
+| VM to home LAN/internet | Private network → active router replica → `br-ex` → that node's USB → switch/home router |
+| LAN client to a future floating IP | Active router node's USB → external network/router NAT → private VM network |
 
-The names are labels for this course. The two networks belong to the existing admin project and are not marked as shared tenant networks in this initial lesson.
+Both physical NICs share the same ordinary home switch/LAN. These roles do not provide independent physical networks. Guest packet flow remains a later test.
 
-**External DHCP stays off** so Neutron does not offer DHCP on your home LAN. The existing home DHCP range remains `.2–.150`. The API VIP `.151` and node management addresses `.200–.202` are outside the OpenStack allocation pool.
+## 4. Changes and guards
 
-One address from `.152–.199` is allocated to the virtual router's external gateway port. The report gives the actual address; do not assume it is always `.152`. That address belongs to a Neutron router port, not the USB host interface. The USB NIC remains unnumbered.
+Run on R2d2 as joe using the existing private HTTPS profile/CA. No node SSH or sudo prompt is needed.
 
-The private DHCP server may itself consume an address from `10.10.10.2–254`. The first VM address is not predetermined. Using the home router as the VM DNS resolver is a configuration choice; successful VM DNS queries will be tested later.
+The script creates two user networks, two subnets and one HA router, attaches the private subnet, and lets Neutron agents realize DHCP, HA replicas, namespaces, ports and NAT. It changes no Netplan/Kolla configuration and creates no VM, floating IP or volume.
 
-### Address and router scope before applying
+Before writes, it checks extensions, all 12 expected agents, conflicting names, overlapping existing subnets, another flat network on physnet1 and visible non-default R2d2 route overlap. It records exact IDs/plan/project/API in `private/phase4/networks.json`. Existing untracked or changed resources are not adopted, deleted or rewritten.
 
-Use the approved private subnet only if it does not overlap home, work or VPN destinations you need to reach. The script checks non-default IPv4 routes visible inside R2d2 and existing Neutron subnets. It cannot enumerate hidden Windows/VPN routes or prove every LAN address is unused. The external pool must remain reserved for OpenStack and outside all other DHCP/manual allocations; this command does not reconfigure your home router or perform an ARP address-availability test.
+It reads back the objects, waits for ACTIVE router ports and one-active/two-standby placement on the three known nodes, and verifies two DHCP agents. Shared HA router interface owners differ from classic router interfaces; the collector accepts the correct HA owner type.
 
-The router is explicitly **legacy, non-distributed and non-HA**, matching the currently inspected routing mode. Neutron schedules it on one of the three live L3 agents; the script reports that host. We do not enable router HA or change global Kolla settings in this chapter. Three controller nodes alone do not make this individual router highly available.
+Confirmed tracked partial runs can resume. An uncertain request persists a pending marker and stops for review instead of repeating creation. Keep the state file. No automatic deletion, rollback, repair or request retry is performed.
 
-## 3. What changes on the lab?
+## 5. Run
 
-The script sends authenticated creation requests to Neutron. Its agents realize the networks, DHCP service, virtual-router interfaces, namespaces and forwarding/NAT state on the selected nodes. Network ports and namespaces can therefore appear as a normal consequence of these API operations.
-
-There is no manual Netplan edit, NIC renaming, host-IP assignment, new `br-mgmt`/veth arrangement, Docker reinstall, Kolla reconfigure or service restart. No VM, floating IP or storage volume is created. Security-group configuration remains a later step.
-
-R2d2 stores the plan and created IDs privately at `private/phase4/networks.json`, plus one report under `reports/`. Keep that state file: it lets the script distinguish its own resources on a later rerun. It contains IDs/addresses, not authentication tokens or passwords, and stays out of Git with the existing private folder.
-
-## 4. How the script avoids overwriting existing work
-
-1. Reuse the pinned tools, existing admin profile, HTTPS CA and reviewed configuration. No node SSH or sudo password is needed.
-2. Check local visible route overlap, Neutron API extensions, existing names/subnets/flat physical networks and all 12 required network agents.
-3. Refuse an existing object with the intended name unless its exact ID is already tracked by this script. Do not adopt, delete or rewrite unrelated resources.
-4. Create two networks, two subnets and the router, recording each returned ID. Attach the private subnet to that router.
-5. Read the objects back, check their properties and wait up to three minutes for both router ports to report ACTIVE. Record the scheduled router host, external IP and actual network MTUs.
-6. Verify the original private deployment inputs stayed unchanged and save the combined result.
-
-A normal later rerun reuses unchanged tracked objects and creates no duplicates. If an API request times out, the outcome may be uncertain: the state records that pending request and the script stops for review instead of repeating it. A confirmed partial run without an uncertain request can continue from the tracked IDs. Do not remove the state file to force a rerun.
-
-No automatic rollback, resource deletion or request retry is performed. Returned API/port status is not a VM packet-flow or failover test.
-
-## 5. Run — on R2d2 as joe
-
-First inspect the plan, which makes no connections or files:
+Inspect the plan first:
 
 ```bash
 cd ~/openstack-from-zero
@@ -78,57 +61,34 @@ git pull --ff-only
 /usr/bin/python3 scripts/phase4-create-networks.py
 ```
 
-After reviewing sections 2 and 3, apply that exact plan:
+Then apply:
 
 ```bash
 /usr/bin/python3 scripts/phase4-create-networks.py --apply
 ```
 
-The script selects the existing Kolla environment and private client profile. No new password prompts are expected. Keep the terminal open until the command returns.
+Default mode makes no connections or changes. Apply obtains a short-lived token in memory and saves one private report. No password/token values are printed.
 
-## 6. Return the result
+## 6. Return and understand the result
 
-Use the exact `cat` command printed at the end and send the report.
-
-Expected success marker:
+Use the printed `cat` command. Expected marker:
 
 ```text
 RESULT: LAB_NETWORKS_CREATED_AND_VERIFIED
 ```
 
-This means the planned objects, their properties, active router ports and scheduled L3 agent passed the script's checks. It does not prove VM internet access, DNS operation or failover.
+The report includes the new resource IDs, actual external router IP, private gateway, network segment/MTUs, router ports, all three router hosting agents/HA roles, and two DHCP hosts. Check the **active** role to identify the current external traffic node. The standby nodes are not separate independent routers.
 
-If it reports `LAB_NETWORKS_NEED_REVIEW`, return the report before rerunning, removing state or changing settings. Some objects may already exist; do not redeploy OpenStack to fix a network-creation checkpoint.
+If it reports `LAB_NETWORKS_NEED_REVIEW`, return the report before rerunning or changing state. Some resources may exist. Do not redeploy OpenStack to fix an unreviewed network checkpoint.
 
-You can also view the result in Horizon: **Project → Network → Networks**, **Routers** and **Network Topology**. View the objects; keep changes in this lesson's script so the tracked plan stays consistent.
+View the current router:
 
-## 7. Finish check and short lesson
+```bash
+/usr/bin/python3 scripts/lab-view.py router
+```
 
-- [x] Chapter A live network inventory reviewed.
-- [x] Chapter B plan, script and local tests prepared.
-- [x] Joe's actual network-creation report reviewed.
-- [ ] Move to image/flavor/key/security-group preparation by agreement.
+Horizon: **Project → Network → Networks**, **Routers**, **Network Topology**.
 
-Joe's report `phase4-create-networks-20261026T151115Z-iu5its4h.txt` ended `LAB_NETWORKS_CREATED_AND_VERIFIED`.
+**Lesson:** API VIP `.151`, a router's allocated external IP, private gateway `10.10.10.1` and a future floating IP belong to different objects. An HA router has one logical identity and multiple replicas. ACTIVE ports and reported HA roles are not proof of guest DNS/internet access or successful takeover. [Controlled tests](../phase-03/E-ha-verification.md) follow a working guest.
 
-| Observed object | Live result |
-|---|---|
-| `lab-external` | Flat network on `physnet1`; MTU 1500 |
-| `lab-private` | VXLAN segment 565; MTU 1450 |
-| `lab-router` | Scheduled on **node1** |
-| Router private port | **10.10.10.1**, ACTIVE |
-| Router external port | **192.168.0.192**, ACTIVE |
-
-The two networks, two subnets, router and attached private interface passed the API/property checks. No VM, floating IP or volume was created.
-
-**Short lesson:** `192.168.0.200` is node1's management address. `192.168.0.151` is the shared API VIP. **`192.168.0.192` belongs to the virtual router's external port**, not to node1's USB host interface. `10.10.10.1` is the private network's router gateway. A future floating IP will be a separate VM NAT mapping.
-
-For a future VM, the configured outbound path is private network → `lab-router` on node1 → `br-ex` → node1 USB `enx00e04c557e58` → home switch/router. If the VM runs on node2 or node3, its private traffic must also reach node1 through VXLAN over the management network. The VM placement and packet path have not yet been tested.
-
-ACTIVE ports confirm Neutron's reported port state. They do not prove DHCP leases, working DNS, internet access or failover. Keep `private/phase4/networks.json`; no rerun is needed now.
-
-## Local validation and scope
-
-Local tests simulate the documented Neutron request/response shapes, exact creation order, tracked reruns, conflicts, address overlap, down agents, active-port checks, uncertain outcomes, private state and restricted write operations. They do not simulate OVS packet forwarding, DHCP leases, a real Neutron server or your home router. Joe's reviewed live report additionally confirms network creation and API/port state. Packet forwarding, guest DHCP/DNS, internet access and failover remain later tests.
-
-[Neutron API reference](https://docs.openstack.org/api-ref/network/v2/) · [OVS self-service architecture](https://docs.openstack.org/neutron/latest/admin/deploy-ovs-selfservice.html) · [Inspected two-NIC diagram](../images/phase4-usb-network.svg)
+[Neutron API](https://docs.openstack.org/api-ref/network/v2/) · [OVS router HA](https://docs.openstack.org/neutron/latest/admin/deploy-ovs-ha-vrrp.html)
