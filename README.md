@@ -2,7 +2,7 @@
 
 Build a cloud you understand. Deploy an application. Monitor it.
 
-**Current: [Phase 4 — Chapter A: understand and inspect the network](docs/phase-04/A-network-inspection.md). The two-NIC diagram and read-only inspection are published; the live network inventory is pending. Phase 3 deployment observations, HTTPS/API checks and Horizon login are complete. No Phase 4 virtual networks or VMs are created by this step.**
+**Current: [Phase 4 — Chapter A: understand and inspect the network](docs/phase-04/A-network-inspection.md). The two-NIC diagram and live inspection are complete: 12 agents are alive/enabled; all three nodes have the expected OVS layout; no Neutron network objects exist yet. Phase 3 deployment observations, HTTPS/API checks and Horizon login are complete. No Phase 4 virtual networks or VMs are created by this step.**
 
 **Completed: [Phase 2 — Management environment](docs/phase-02/README.md). [Chapter A is reviewed](docs/phase-02/A-check-r2d2.md#5-reviewed-result); [Chapter B's versions are agreed](docs/phase-02/B-select-versions.md); Chapter C's installation/activation is complete; Chapter D's inventory/access checks are complete; [Chapter E's preparation is reviewed](docs/phase-02/E-configure-lab.md#reviewed-result); [Chapter F's preparation checks passed](docs/phase-02/F-validate-preparation.md#7-reviewed-result); Windows Chrome and Linux Firefox imports are user-confirmed. Phase 3 began with [Chapter A's retained run guide](docs/phase-03/A-prepare-nodes.md). Read [Chapter F — Validate preparation](docs/phase-02/F-validate-preparation.md).**
 
@@ -27,4 +27,4 @@ Each step: **purpose → explain the script → run → review the result → sh
 
 **Latest Phase 3 checkpoint:** Chapter C's live observations passed on all three nodes: containers, synchronized three-member MariaDB cluster, management layout and USB bridges. The API VIP was on node2. Glance uses local image storage on node1. [Chapter D](docs/phase-03/D-client-access.md) now prepares local client files and checks HTTPS, API authentication/service registration and the Horizon login page. Chapter D's live report confirms HTTPS authentication, all required service registrations and authenticated API reads, and Joe's screenshot confirms browser login. Phase 4 will document the virtual networking through `br-ex` and the USB NICs before VM traffic is configured and tested; VM, volume and failover tests remain pending.
 
-**Phase 4:** [Read the two-NIC diagram and network inspection guide](docs/phase-04/A-network-inspection.md). It collects existing Neutron objects/agents and host OVS configuration before network names, tenant CIDR and creation scope are agreed.
+**Phase 4:** [Read the two-NIC diagram and network inspection guide](docs/phase-04/A-network-inspection.md). Its live result and short lesson are published. Network names, tenant CIDR and creation scope still need agreement before Chapter B.
