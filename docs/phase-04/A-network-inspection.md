@@ -2,7 +2,7 @@
 
 [Phase 4](README.md) · [Previous: verified cloud access](../phase-03/D-client-access.md)
 
-**Status: diagram, guide and read-only collector published. Actual Phase 4 network inventory is pending.**
+**Status: complete — actual host/network inventory reviewed on all three nodes. Network creation remains pending agreement.**
 
 ## 1. Purpose
 
@@ -99,7 +99,7 @@ If it says `NETWORK_INSPECTION_NEEDS_REVIEW`, return the report before changing 
 
 - [x] Phase 3 API access and Horizon login completed.
 - [x] Two-NIC diagram and read-only procedure prepared.
-- [ ] Actual Phase 4 network inspection reviewed.
+- [x] Actual Phase 4 network inspection reviewed.
 - [ ] Network names, tenant CIDR, external allocation details and creation scope agreed before Chapter B implementation.
 
 After the report, identify the difference between a physical NIC, an OVS bridge, a Neutron network, an IP subnet and a virtual router using the actual names in the lab. This is the checkpoint before adding virtual networking.
@@ -107,3 +107,23 @@ After the report, identify the difference between a physical NIC, an OVS bridge,
 **Local validation:** nine regression tests cover plan isolation, authenticated API reads/pagination, configuration and OVS-option filtering, identity guards, partial evidence, all-three-node collection and password privacy. The installed Ansible accepts the generated playbook's syntax and task list. Deployed configuration filenames were checked against the pinned Neutron role. These are development checks; the actual nodes and API inventory remain live checks for Joe's run.
 
 Sources: [Neutron OVS self-service architecture](https://docs.openstack.org/neutron/latest/admin/deploy-ovs-selfservice.html) and pinned Kolla source for [network defaults](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/group_vars/all/neutron.yml) and [OVS-agent bridge mapping](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/neutron/templates/openvswitch_agent.ini.j2). These source examples do not authorize running their installation or network-creation commands at this inspection stage.
+
+### Reviewed live result and short lesson
+
+Joe's `phase4-network-20261026T143723Z-gy6iy0dd.txt` ends `NETWORK_INSPECTION_COLLECTED for all`, with no collection/layout issues. All three host observations are complete. The 12 agents are alive and administratively enabled: DHCP, Metadata, L3 and Open vSwitch on each node. Neutron has zero networks, subnets, routers, ports and floating IPs.
+
+| Observed on all three nodes | Result |
+|---|---|
+| Physical mapping | `physnet1:br-ex` |
+| USB host addresses | None; selected USB NIC attached to `br-ex` |
+| Management | `.200/.201/.202` directly on `enp0s31f6`; default route via `192.168.0.1` |
+| OVS bridges | `br-ex`, `br-int`, `br-tun` |
+| External bridge patch | `phy-br-ex` on `br-ex` ↔ `int-br-ex` on `br-int` |
+| Tunnel bridge patch | `patch-tun` on `br-int` ↔ `patch-int` on `br-tun` |
+| Configured tenant network type | VXLAN |
+| Configured tunnel local IPs | `192.168.0.200`, `.201`, `.202` respectively |
+| Router agent mode | `legacy` |
+| Explicit `l3_ha` option | Absent from the collected server config (`null`); this is not a router-HA test |
+| Network namespaces / VXLAN interfaces | None observed |
+
+**Lesson:** the host switches and their patch ports exist before tenant networks. Configuring a VXLAN local IP does not prove a tunnel or VM traffic has been tested. The USB side connects the future external network to the home LAN; the management side carries the configured tunnel underlay. No virtual router has been created, and no address pool was allocated or verified free by this inspection. Choose the tenant CIDR and creation scope next, by agreement. All run instructions above remain available.
