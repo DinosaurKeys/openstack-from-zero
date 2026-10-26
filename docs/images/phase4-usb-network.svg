@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1060" viewBox="0 0 1080 1060" role="img" aria-labelledby="title desc">
+<title id="title">OpenStack two-NIC network: management and USB provider connection</title>
+<desc id="desc">Both physical NICs connect to the same home switch. The built-in enp0s31f6 holds each node's management address; the USB NIC has no host IP and connects to br-ex. Chapter A will inspect br-int, br-tun, patch ports and tunnel settings. The separate lower panel shows planned VM traffic through a tenant network, virtual router and external provider network. No br-mgmt or veth pair is required for this two-NIC design.</desc>
+<defs>
+ <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="#44647d"/></marker>
+ <style>
+ text{font-family:DejaVu Sans,Arial,sans-serif;fill:#19324a}.title{font-size:28px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:17px}.small{font-size:15px;fill:#4c6475}.box{fill:white;stroke:#bfd0df;stroke-width:2}.line{fill:none;stroke:#44647d;stroke-width:3;marker-end:url(#arrow)}.pending{stroke-dasharray:7 6}.label{font-size:15px;font-weight:700;fill:#1a6c70}
+ </style>
+</defs>
+<rect width="1080" height="1060" rx="18" fill="#f4f8fb"/>
+<text x="40" y="48" class="title">Your two-NIC OpenStack network</text>
+<text x="40" y="78" class="body">Management uses the built-in NIC. External VM traffic uses the USB NIC.</text>
+<rect x="270" y="110" width="540" height="84" rx="12" class="box"/>
+<text x="540" y="144" text-anchor="middle" class="head">Home LAN / same physical switch</text>
+<text x="540" y="174" text-anchor="middle" class="body">192.168.0.0/24 · home router: 192.168.0.1</text>
+<path d="M405 194V225H270V266" class="line"/><path d="M675 194V225H810V266" class="line"/>
+<text x="65" y="250" class="label">MANAGEMENT</text>
+<text x="610" y="250" class="label">USB / PROVIDER</text>
+<rect x="60" y="274" width="420" height="86" rx="12" class="box"/>
+<text x="270" y="309" text-anchor="middle" class="head">Built-in NIC: enp0s31f6</text>
+<text x="270" y="338" text-anchor="middle" class="body">The host IP is on this interface</text>
+<rect x="600" y="274" width="420" height="86" rx="12" class="box"/>
+<text x="810" y="309" text-anchor="middle" class="head">USB NIC: enx…</text>
+<text x="810" y="338" text-anchor="middle" class="body">No host IP · per-node names in guide</text>
+<path d="M270 360V395" class="line"/><path d="M810 360V395" class="line"/>
+<rect x="60" y="403" width="420" height="108" rx="12" class="box"/>
+<text x="270" y="436" text-anchor="middle" class="body">node1: .200 · node2: .201 · node3: .202</text>
+<text x="270" y="465" text-anchor="middle" class="body">API VIP: .151 on one node at a time</text>
+<text x="270" y="490" text-anchor="middle" class="small">Addresses above use 192.168.0.x/24</text>
+<rect x="600" y="403" width="420" height="108" rx="12" class="box"/>
+<text x="810" y="441" text-anchor="middle" class="head">Open vSwitch: br-ex</text>
+<text x="810" y="472" text-anchor="middle" class="body">USB membership passed Phase 3</text>
+<text x="810" y="496" text-anchor="middle" class="small">A bridge can forward frames without a host IP</text>
+<path d="M270 511V543" class="line"/><path d="M810 511V543" class="line pending"/>
+<rect x="60" y="552" width="420" height="84" rx="12" class="box"/>
+<text x="270" y="585" text-anchor="middle" class="head">SSH / API / service traffic</text>
+<text x="270" y="614" text-anchor="middle" class="small">Chapter A also reads actual VXLAN local IPs</text>
+<rect x="600" y="552" width="420" height="84" rx="12" class="box pending"/>
+<text x="810" y="585" text-anchor="middle" class="head">br-int / patch ports / br-tun</text>
+<text x="810" y="614" text-anchor="middle" class="small">Inspect exact live connections in Chapter A</text>
+<line x1="40" y1="668" x2="1040" y2="668" stroke="#bfd0df" stroke-width="2"/>
+<text x="40" y="707" class="head">Future VM traffic — logical path, not a live traffic result</text>
+<text x="40" y="736" class="small">The networks, router, addresses and VM are created in later chapters, after review.</text>
+<rect x="170" y="765" width="740" height="58" rx="10" class="box pending"/>
+<text x="540" y="802" text-anchor="middle" class="head">VM with a private IP</text>
+<path d="M540 823V848" class="line pending"/>
+<rect x="170" y="856" width="740" height="58" rx="10" class="box pending"/>
+<text x="540" y="893" text-anchor="middle" class="head">Tenant network → Neutron virtual router</text>
+<path d="M540 914V939" class="line pending"/>
+<rect x="100" y="947" width="880" height="58" rx="10" class="box pending"/>
+<text x="540" y="984" text-anchor="middle" class="body">External network → br-ex → USB NIC → switch → home LAN/router</text>
+<text x="540" y="1035" text-anchor="middle" class="small">Neutron controls the networking; it is not another bridge in the physical cable path.</text>
+</svg>
