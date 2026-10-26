@@ -4,7 +4,7 @@
 
 ## Goal
 
-Build and understand your OpenStack lab, deploy an application, and monitor it. Automation should make an understood procedure repeatable.
+Build and understand a three-node OpenStack HA lab: API Keepalived/HAProxy, MariaDB/Galera and Neutron virtual-router HA. Then deploy an application and monitor it. Automation should make an understood procedure repeatable.
 
 ## The lab
 
@@ -25,8 +25,8 @@ A **controller** manages cloud requests. A **compute** runs VMs. **Cinder LVM** 
 |---|---|
 | 1. Prerequisites | Ubuntu and SSH access work; actual network/disk details are reviewed and the remaining host preparation is verified |
 | [2. Management environment](phase-02/README.md) | R2d2 has the selected installer tools and reviewed configuration |
-| 3. Install OpenStack | Deployment, prechecks and cloud service/API checks pass |
-| 4. First VM | VM access and a volume data test pass; the working setup is reproduced with Terraform |
+| 3. Install OpenStack | API HA/database cluster/Neutron HA capability deployed; prechecks and cloud service/API checks pass |
+| 4. First VM | HA router placement verified, VM/volume tests pass, controlled failover is tested, then reproduce the workload with Terraform |
 | 5. Deploy an app | Application works and retains its database data |
 | 6. Monitoring | Dashboards show the lab and a test alert works |
 
@@ -42,6 +42,8 @@ A **controller** manages cloud requests. A **compute** runs VMs. **Cinder LVM** 
 Each phase has its own guide. Work through one chapter at a time.
 
 Chapters use letters: **Chapter A, Chapter B, Chapter C**, and so on. Phase 1 runs A–J. Phase 2 starts again at Chapter A. Numbered steps inside each chapter remain in order.
+
+Completed chapters keep their full steps and explanations for study or a future rebuild. We add results and lessons while preserving the procedure.
 
 ## Starting point
 
