@@ -2,7 +2,7 @@
 
 [Phase 4](README.md) · [Previous: inspected network layout](A-network-inspection.md)
 
-**Status: prepared and locally tested; live creation is pending.** Joe approved preparing this addressing plan after Chapter A's report. Joe runs the actual changes from R2d2 after reviewing this guide.
+**Status: complete — live creation report reviewed.** Joe ran this procedure from R2d2. The retained commands below reproduce the agreed procedure; no rerun is needed for this successful checkpoint.
 
 ## 1. Which traffic uses each NIC?
 
@@ -106,13 +106,29 @@ You can also view the result in Horizon: **Project → Network → Networks**, *
 
 - [x] Chapter A live network inventory reviewed.
 - [x] Chapter B plan, script and local tests prepared.
-- [ ] Joe's actual network-creation report reviewed.
+- [x] Joe's actual network-creation report reviewed.
 - [ ] Move to image/flavor/key/security-group preparation by agreement.
 
-After the report, connect each returned address to its owner: host management IP, API VIP, router's external IP, private router gateway and private DHCP allocation. The later floating IP belongs to a VM NAT mapping, not the USB NIC. A VXLAN network is now defined, but real cross-node VM traffic is still a later test.
+Joe's report `phase4-create-networks-20261026T151115Z-iu5its4h.txt` ended `LAB_NETWORKS_CREATED_AND_VERIFIED`.
+
+| Observed object | Live result |
+|---|---|
+| `lab-external` | Flat network on `physnet1`; MTU 1500 |
+| `lab-private` | VXLAN segment 565; MTU 1450 |
+| `lab-router` | Scheduled on **node1** |
+| Router private port | **10.10.10.1**, ACTIVE |
+| Router external port | **192.168.0.192**, ACTIVE |
+
+The two networks, two subnets, router and attached private interface passed the API/property checks. No VM, floating IP or volume was created.
+
+**Short lesson:** `192.168.0.200` is node1's management address. `192.168.0.151` is the shared API VIP. **`192.168.0.192` belongs to the virtual router's external port**, not to node1's USB host interface. `10.10.10.1` is the private network's router gateway. A future floating IP will be a separate VM NAT mapping.
+
+For a future VM, the configured outbound path is private network → `lab-router` on node1 → `br-ex` → node1 USB `enx00e04c557e58` → home switch/router. If the VM runs on node2 or node3, its private traffic must also reach node1 through VXLAN over the management network. The VM placement and packet path have not yet been tested.
+
+ACTIVE ports confirm Neutron's reported port state. They do not prove DHCP leases, working DNS, internet access or failover. Keep `private/phase4/networks.json`; no rerun is needed now.
 
 ## Local validation and scope
 
-Local tests simulate the documented Neutron request/response shapes, exact creation order, tracked reruns, conflicts, address overlap, down agents, active-port checks, uncertain outcomes, private state and restricted write operations. They do not simulate OVS packet forwarding, DHCP leases, a real Neutron server or your home router. The live result remains pending until Joe returns the report.
+Local tests simulate the documented Neutron request/response shapes, exact creation order, tracked reruns, conflicts, address overlap, down agents, active-port checks, uncertain outcomes, private state and restricted write operations. They do not simulate OVS packet forwarding, DHCP leases, a real Neutron server or your home router. Joe's reviewed live report additionally confirms network creation and API/port state. Packet forwarding, guest DHCP/DNS, internet access and failover remain later tests.
 
 [Neutron API reference](https://docs.openstack.org/api-ref/network/v2/) · [OVS self-service architecture](https://docs.openstack.org/neutron/latest/admin/deploy-ovs-selfservice.html) · [Inspected two-NIC diagram](../images/phase4-usb-network.svg)
