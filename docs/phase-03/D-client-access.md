@@ -2,7 +2,7 @@
 
 [Phase 3](README.md) · [Previous: deploy OpenStack](C-deploy-openstack.md)
 
-**Status: prepared and locally tested; Joe's live API result and browser login are pending.** Chapter C's live observations passed on all three nodes.
+**Status: Horizon HTTPS/login-page checks passed from R2d2, and Joe's screenshot confirms a successful admin browser login. The full API verification result is pending.** Chapter C's live observations passed on all three nodes.
 
 ## 1. Purpose
 
@@ -86,7 +86,8 @@ The scripted API pass and your browser login confirmation are two separate finis
 
 - [x] Chapter C's live host/container/network observations reviewed: passed on all three nodes.
 - [ ] Chapter D's actual HTTPS/API report reviewed.
-- [ ] Joe's browser certificate acceptance and successful Horizon login confirmed.
+- [x] Horizon HTTPS certificate and login-page checks passed from R2d2.
+- [x] Joe's screenshot confirms the admin session and loaded dashboard at the API VIP.
 
 After those results, review the lesson: **Keystone checks who you are; its catalog gives clients the service addresses; the token authorizes later API requests; the CA verifies the server. Horizon is a browser client of those APIs.**
 
