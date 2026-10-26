@@ -1,22 +1,19 @@
-# Phase 3 — Install OpenStack
+# Phase 3 — Install OpenStack with HA
 
-[Home](../../README.md) · [Phase 2](../phase-02/README.md)
+[Home](../../README.md) · [HA settings](../phase-02/E-configure-lab.md) · [Architecture](../architecture.md)
 
-**Current: Phase 3 is complete.** Host/container/network observations passed on all three nodes. [Chapter D](D-client-access.md) passed live HTTPS/API checks, and Joe's browser screenshot confirmed admin login.
+**Goal:** deploy the three-node API and database HA services, and the agents that will host HA virtual routers. Fresh-install reports and failover tests remain required.
 
-**Goal:** prepare the three hosts, check deployment requirements, install OpenStack and verify access.
+| Chapter | Purpose |
+|---|---|
+| [A — Prepare the nodes](A-prepare-nodes.md) | Standard Kolla host dependencies; reuse verified preparation on existing hosts |
+| [B — Full Kolla prechecks](B-full-prechecks.md) | Validate the empty, prepared hosts and explicit HA configuration |
+| [C — Deploy OpenStack](C-deploy-openstack.md) | Install API Keepalived/HAProxy, MariaDB/Galera and HA-capable Neutron agents |
+| [D — Client access and API verification](D-client-access.md) | Prepare private client profiles, verify HTTPS/API reads and sign in to Horizon |
+| [E — HA verification](E-ha-verification.md) | Distinguish configuration/replication observations from controlled failover tests |
 
-| Chapter | Purpose | Status |
-|---|---|---|
-| [A — Prepare the nodes](A-prepare-nodes.md) | Review and then prepare the host dependencies Kolla needs | Complete — all three nodes passed |
-| [B — Full Kolla prechecks](B-full-prechecks.md) | Check the prepared hosts before deploying services | Complete — all three nodes passed |
-| [C — Deploy OpenStack](C-deploy-openstack.md) | Deploy the agreed services using the existing private configuration | Complete — live observations passed on all three nodes |
-| [D — Client access and API verification](D-client-access.md) | Prepare local credentials, check HTTPS/APIs and sign in to Horizon | Complete — live HTTPS/API checks and browser login confirmed |
+For an existing deployment, start with the [fresh-install procedure](../fresh-install.md). It empties only the explained OpenStack scope and prepares the same final configuration used by Phase 2 E. No node OS reinstall, disk reprovisioning or CA rotation is required.
 
-Each chapter follows **purpose → explain the script → publish → Joe pulls and runs → review one report → short lecture**. Letters restart at A in this phase.
+API VIP and Galera are created in **Chapter C**. Neutron's router-HA capability is deployed there too, but the actual virtual router is created with `ha=true` in **Phase 4 B**. Keep that distinction clear: installing L3 agents does not create tenant routers.
 
-The selected versions, three-node roles, NIC mappings, independent Cinder LVM pools and HTTPS plan stay as agreed in Phase 2. We do not recreate the disks, passwords or certificates.
-
-**Current checkpoint:** [Chapter D is complete](D-client-access.md#7-finish-check-and-short-lesson). All earlier procedures remain available for rebuilding. Joe authorized [Phase 4 Chapter A — diagram and read-only network inspection](../phase-04/A-network-inspection.md). Its live report is pending; network/VM creation remains a later agreed step.
-
-**Next phase:** document and test the virtual networks that use `br-ex` and the USB NICs: external/provider network, tenant network/subnet, virtual router, floating IP and the actual VM-to-LAN packet path. VM, volume and failover tests remain pending.
+Glance remains on node1's local file storage. Cinder remains three independent local pools. Neither is replicated storage. VM, volume and failover tests are separate checkpoints after deployment/access/network observations pass.
