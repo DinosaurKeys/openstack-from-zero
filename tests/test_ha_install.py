@@ -143,8 +143,11 @@ class HAContractTests(unittest.TestCase):
             bad=copy.deepcopy(agents);bad[0][field]=value
             with self.subTest(field=field,value=value),self.assertRaises(RuntimeError):net.ha_placement(bad)
     def test_pinned_neutron_template_renders_ha_values(self):
+        source_path=ROOT/'build/real-tools-check/share/kolla-ansible/ansible/roles/neutron/templates/neutron.conf.j2'
+        if not source_path.is_file(): source_path=Path(sys.prefix)/'share/kolla-ansible/ansible/roles/neutron/templates/neutron.conf.j2'
+        if not source_path.is_file(): self.skipTest('Pinned Kolla source required for template integration check')
         import jinja2
-        source=(ROOT/'build/real-tools-check/share/kolla-ansible/ansible/roles/neutron/templates/neutron.conf.j2').read_text()
+        source=source_path.read_text()
         block=source[source.index('{% if enable_neutron_agent_ha'):];block=block[:block.index('{% endif %}')+len('{% endif %}')]
         env=jinja2.Environment(undefined=jinja2.StrictUndefined);env.filters['bool']=bool
         values=reset.config_step.settings(Path('/config'))
