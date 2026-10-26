@@ -9,12 +9,12 @@ These commands inspect the lab. They do not create/delete resources or restart s
 | Name | Meaning | Last reviewed value |
 |---|---|---|
 | API VIP | Shared address for Horizon and OpenStack APIs; hosted by one controller at a time | `192.168.0.151` |
-| Virtual router | Software router joining the private and external networks | `lab-router`, scheduled on node1 |
+| Virtual router | Software router joining the private and external networks | `lab-router`, one active and two standby replicas |
 | Router private gateway | The future VM's gateway | `10.10.10.1` |
-| Router external IP | The router port facing the home LAN; used for outbound source NAT | `192.168.0.192` |
+| Router external IP | The router port facing the home LAN; used for outbound source NAT | Allocated during creation; read `lab-view.py router` |
 | Floating IP | An external address mapped to a VM's private address | None created yet |
 
-The router is **not the API VIP**. It has two network sides, like a small router with a LAN and WAN port. This router is explicitly non-HA. Its external address is not a VIP shared by router replicas. Neither router address is assigned to the USB host interface.
+The router is **not the API VIP**. It has private and external sides. In this course it is HA: one active replica owns the forwarding addresses, and standby replicas can take over. Neutron manages per-router Keepalived separately from the API VIP. Neither router address is assigned to the USB host interface.
 
 ## 1. OpenStack objects — run on R2d2 as joe
 
@@ -27,7 +27,7 @@ git pull --ff-only
 
 | What to see | Command | What to read |
 |---|---|---|
-| Router, its ports and hosting agent | `/usr/bin/python3 scripts/lab-view.py router` | Router status, private/external IPs and `hosting_agents` |
+| Router, ports, active and standby agents | `/usr/bin/python3 scripts/lab-view.py router` | Router HA flag, private/external IPs and all `hosting_agents`/`ha_state` values |
 | Network agents | `/usr/bin/python3 scripts/lab-view.py agents` | `alive: true` and `admin_state_up: true`; host and agent role |
 | Networks | `/usr/bin/python3 scripts/lab-view.py networks` | Flat external versus VXLAN private; network MTU |
 | Subnets | `/usr/bin/python3 scripts/lab-view.py subnets` | CIDR, gateway, DHCP, pool and DNS |
@@ -70,21 +70,24 @@ Exit back to R2d2:
 exit
 ```
 
-## 3. See inside lab-router — on node1
+## 3. See inside lab-router
 
-The Chapter B API report placed it on node1. First confirm its current host with `lab-view.py router`. In this legacy non-HA design, Neutron implements a router in a Linux network namespace named `qrouter-<router-ID>`.
-
-After SSH to node1:
+First run `lab-view.py router` on R2d2. Note its **new router ID** and each host's `ha_state`; choose the active host for forwarding-address inspection. SSH to that node using section 2.
 
 ```bash
 sudo ip netns list
-sudo ip netns exec qrouter-268e8f69-cda4-422c-933c-108588bedc8f ip -br address
-sudo ip netns exec qrouter-268e8f69-cda4-422c-933c-108588bedc8f ip -4 route
 ```
 
-The address command should show the private `10.10.10.1` interface and external `192.168.0.192` interface from the reviewed report. This is the command to confirm their realization on the host; its live output has not yet been reviewed. `qr-…` denotes a private router interface; `qg-…` denotes its external gateway interface. Do not expect those addresses on the host USB NIC.
+Find `qrouter-<the-router-ID-from-your-report>`. Replace `ROUTER_ID` below with that actual ID; this is a placeholder, not a literal namespace:
 
-If the namespace is absent or the current API host differs, return the output; do not create a namespace manually. These commands do not send test pings or change routes.
+```bash
+sudo ip netns exec qrouter-ROUTER_ID ip -br address
+sudo ip netns exec qrouter-ROUTER_ID ip -4 route
+```
+
+The active replica should show the private gateway and external IP from the fresh report. Standby replicas can have different address realization; absence of forwarding addresses on a standby is not by itself a failure. `qr-…` is a private router interface, `qg-…` an external gateway interface, and `ha-…` the router HA interface. Namespace/port details must be read from the live host.
+
+If the namespace is absent or the API roles are unknown, return the observations. Do not create namespaces or change routes manually.
 
 ## 4. Check the MariaDB cluster — from R2d2
 
