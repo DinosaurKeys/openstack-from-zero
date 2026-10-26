@@ -36,7 +36,7 @@ def collect(api, what):
         agents = api.get('network', 'v2.0/routers/'+identifier+'/l3-agents').get('agents', [])
         return {'router': {k: router.get(k) for k in ('id', 'name', 'status', 'ha', 'distributed', 'external_gateway_info')},
                 'ports': [{k: p.get(k) for k in ('id', 'device_owner', 'fixed_ips', 'status')} for p in ports if p.get('device_id') == identifier],
-                'hosting_agents': [{k: a.get(k) for k in ('host', 'alive', 'admin_state_up')} for a in agents]}
+                'hosting_agents': [{k: a.get(k) for k in ('host', 'alive', 'admin_state_up', 'ha_state')} for a in agents]}
     service, path, key, fields = QUERIES[what]
     return {key: [{k: obj.get(k) for k in fields} for obj in api.list(service, path, key)]}
 
