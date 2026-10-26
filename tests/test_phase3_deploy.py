@@ -8,7 +8,9 @@ def recap():
  return ''.join('TASK ['+m+' task]\n' for m in ('mariadb :','keystone :','nova-cell :','neutron :','cinder :','horizon :'))+'PLAY RECAP ***\n'+''.join(n+' : ok=100 changed=20 unreachable=0 failed=0 skipped=40 rescued=0 ignored=0\n' for n in step.inv.NODES)
 def state(node,after):
  facts={'protected_config_hashes':{},'management_DNS':'DNS','chrony_active':'active'}
- if after:facts['VIP on management interface']=node=='node2'
+ if after:
+  facts['VIP on management interface']=node=='node2'
+  facts['galera']={'wsrep_cluster_state_uuid':'12345678-1234-1234-1234-123456789abc'}
  return {'node':node,'ready':True,'facts':facts}
 class DeploymentTests(unittest.TestCase):
  def test_plan_has_no_writes_prompts_or_connections(self):
@@ -51,7 +53,7 @@ class DeploymentTests(unittest.TestCase):
     if args[:2]==['docker','inspect']:return 'safe image references'
     raise AssertionError(args)
    states={n:{'running':True,'status':'running','health':'healthy'} for n in node_step.REQUIRED}
-   with patch.object(node_step.os,'geteuid',return_value=0),patch.dict(node_step.os.environ,{'SUDO_USER':'joe'}),patch.object(node_step.socket,'gethostname',return_value='node2'),patch.object(node_step,'Path',side_effect=paths),patch.object(node_step,'run',side_effect=read),patch.object(node_step,'container_states',return_value=states):
+   with patch.object(node_step.os,'geteuid',return_value=0),patch.dict(node_step.os.environ,{'SUDO_USER':'joe'}),patch.object(node_step.socket,'gethostname',return_value='node2'),patch.object(node_step,'Path',side_effect=paths),patch.object(node_step,'run',side_effect=read),patch.object(node_step,'container_states',return_value=states),patch.object(node_step,'ha_configuration',return_value=({},True)),patch.object(node_step,'galera_status',return_value=({},True)):
     result=node_step.collect('node2');self.assertTrue(result['ready']);self.assertTrue(result['facts']['VIP on management interface'])
     # A management-address mismatch must not be treated as successful deployment.
     addresses[0]['addr_info'][0]['local']='192.168.0.209'
