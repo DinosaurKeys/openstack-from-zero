@@ -62,7 +62,7 @@ class VerifyTests(unittest.TestCase):
             if args[0] == 'systemctl': return 'active'
             if args[0] == 'timedatectl': return 'yes'
             raise RuntimeError('Docker OVS fixture failure')
-        with patch.object(node_step.os, 'geteuid', return_value=0), patch.dict(node_step.os.environ, {'SUDO_USER': 'joe'}), patch.object(node_step.socket, 'gethostname', return_value='node2'), patch.object(node_step, 'run', side_effect=read), patch.object(node_step, 'container_states', return_value=states):
+        with patch.object(node_step.os, 'geteuid', return_value=0), patch.dict(node_step.os.environ, {'SUDO_USER': 'joe'}), patch.object(node_step.socket, 'gethostname', return_value='node2'), patch.object(node_step, 'run', side_effect=read), patch.object(node_step, 'container_states', return_value=states), patch.object(node_step, 'ha_configuration', return_value=({}, True)), patch.object(node_step, 'galera_status', return_value=({}, True)):
             result = node_step.collect('node2')
         self.assertFalse(result['ready']); self.assertEqual(result['error'], 'Docker OVS fixture failure')
         self.assertTrue(result['facts']['VIP on management interface'])
