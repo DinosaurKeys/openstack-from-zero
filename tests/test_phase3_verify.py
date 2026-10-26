@@ -10,6 +10,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('verify_test', ROOT/'scripts/phase3-verify.py')
 step = importlib.util.module_from_spec(spec); spec.loader.exec_module(step)
+node_spec = importlib.util.spec_from_file_location('verify_node_test', ROOT/'scripts/phase3-deploy-node.py')
+node_step = importlib.util.module_from_spec(node_spec); node_spec.loader.exec_module(node_step)
 
 
 def records():
@@ -21,6 +23,36 @@ def records():
 
 
 class VerifyTests(unittest.TestCase):
+    def test_unavailable_vip_observations_are_unknown_not_absent(self):
+        r = records(); r['node2']['observation'] = {'node': 'node2', 'ready': False, 'error': 'fixture query failed'}
+        result = step.summarize(r)
+        self.assertFalse(result['passed']); self.assertFalse(result['vip_observations_complete'])
+        self.assertIsNone(result['vip_owners'])
+        self.assertIn('VIP ownership unverified: address observations are incomplete', result['issues'])
+        self.assertIn('node2: fixture query failed', result['issues'])
+
+    def test_docker_failure_retains_vip_and_container_evidence(self):
+        states = {n: {'running': True, 'health': 'healthy'} for n in node_step.REQUIRED}
+        addresses = [{'ifname': 'enp0s31f6', 'addr_info': [{'local': '192.168.0.201', 'prefixlen': 24}, {'local': '192.168.0.151'}]},
+                     {'ifname': 'enx00e04c2c1678', 'address': '00:e0:4c:2c:16:78', 'addr_info': [], 'flags': ['UP', 'LOWER_UP']}]
+        def read(args):
+            if args[:3] == ['ip', '-j', 'address']: return json.dumps(addresses)
+            if args[0] == 'ip': return '[{"dev":"enp0s31f6","gateway":"192.168.0.1"}]'
+            if args[0] == 'systemctl': return 'active'
+            if args[0] == 'timedatectl': return 'yes'
+            raise RuntimeError('Docker OVS fixture failure')
+        with patch.object(node_step.os, 'geteuid', return_value=0), patch.dict(node_step.os.environ, {'SUDO_USER': 'joe'}), patch.object(node_step.socket, 'gethostname', return_value='node2'), patch.object(node_step, 'run', side_effect=read), patch.object(node_step, 'container_states', return_value=states):
+            result = node_step.collect('node2')
+        self.assertFalse(result['ready']); self.assertEqual(result['error'], 'Docker OVS fixture failure')
+        self.assertTrue(result['facts']['VIP on management interface'])
+        self.assertEqual(result['facts']['containers'], states)
+
+    def test_docker_error_identifies_command_and_exit_code(self):
+        from types import SimpleNamespace
+        with patch.object(node_step.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stdout='', stderr='fixture: no such port')):
+            with self.assertRaisesRegex(RuntimeError, 'exit 1.*docker exec.*no such port'):
+                node_step.run(['docker', 'exec', 'openvswitch_vswitchd', 'ovs-vsctl', 'port-to-br', 'fixture0'])
+
     def test_default_has_no_connections_prompts_or_writes(self):
         with patch.object(step, 'execute') as execute, patch.object(step.getpass, 'getpass') as prompt, patch.object(step.tempfile, 'mkstemp') as write, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(step.main([]), 0)
