@@ -2,11 +2,11 @@
 
 [Home](../../README.md) · [Completed Phase 3](../phase-03/README.md)
 
-**Current: Chapter A is published for read-only inspection. Its live report is pending.** No network or VM creation is authorized by this chapter.
+**Current: Chapter A is complete. Its live report confirms all three host layouts, all 12 agents alive/enabled and no existing Neutron network objects.** No network or VM creation is authorized by this chapter.
 
 | Chapter | Goal | Status |
 |---|---|---|
-| [A — Understand and inspect the network](A-network-inspection.md) | Read the two-NIC diagram and collect actual Neutron/OVS state | Published — live inspection pending |
+| [A — Understand and inspect the network](A-network-inspection.md) | Read the two-NIC diagram and collect actual Neutron/OVS state | Complete — live inventory reviewed |
 | B — Create the virtual networks | Agree names, tenant subnet and allocations; create external and tenant networks plus router | Planned after A review and approval |
 | C — Prepare the first VM | Agree image, flavor, key and security-group access | Planned |
 | D — Boot and test VM traffic | Verify the private IP, floating IP and actual USB/LAN path | Planned |
