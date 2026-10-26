@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1060" viewBox="0 0 1080 1060" role="img" aria-labelledby="title desc">
 <title id="title">OpenStack two-NIC network: management and USB provider connection</title>
-<desc id="desc">Both physical NICs connect to the same home switch. The built-in enp0s31f6 holds each node's management address; the USB NIC has no host IP and connects to br-ex. Chapter A confirmed br-int, br-tun, patch ports and configured tunnel local IPs; no VXLAN interfaces were observed. Chapter B created lab-private VXLAN segment565 and lab-external flat physnet1. The router is on node1 with private gateway10.10.10.1 and external IP192.168.0.192, both ports ACTIVE. The lower panel shows the configured future VM path, not tested packets. No br-mgmt or veth pair is required for this two-NIC design.</desc>
+<desc id="desc">Two-NIC HA design. Management addresses and API VIP use enp0s31f6. USB interfaces attach to br-ex without host IPs. Neutron creates one HA virtual router replicated across all three nodes, one active and two standby. Active node and external address are observed after creation.</desc>
 <defs>
  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="#44647d"/></marker>
  <style>
@@ -29,7 +29,7 @@
 <text x="270" y="490" text-anchor="middle" class="small">Addresses above use 192.168.0.x/24</text>
 <rect x="600" y="403" width="420" height="108" rx="12" class="box"/>
 <text x="810" y="441" text-anchor="middle" class="head">Open vSwitch: br-ex</text>
-<text x="810" y="472" text-anchor="middle" class="body">USB membership verified on all three nodes</text>
+<text x="810" y="472" text-anchor="middle" class="body">Selected USB attached to br-ex on each node</text>
 <text x="810" y="496" text-anchor="middle" class="small">A bridge can forward frames without a host IP</text>
 <path d="M270 511V543" class="line"/><path d="M810 511V543" class="line"/>
 <rect x="60" y="552" width="420" height="84" rx="12" class="box"/>
@@ -37,17 +37,17 @@
 <text x="270" y="614" text-anchor="middle" class="small">Configured tunnel IPs: .200 / .201 / .202</text>
 <rect x="600" y="552" width="420" height="84" rx="12" class="box"/>
 <text x="810" y="585" text-anchor="middle" class="head">br-int / patch ports / br-tun</text>
-<text x="810" y="614" text-anchor="middle" class="small">Both OVS patch pairs confirmed in Chapter A</text>
+<text x="810" y="614" text-anchor="middle" class="small">Read actual OVS patch peers in Chapter A</text>
 <line x1="40" y1="668" x2="1040" y2="668" stroke="#bfd0df" stroke-width="2"/>
-<text x="40" y="707" class="head">Chapter B created the networks and router; VM traffic pending</text>
-<text x="40" y="736" class="small">API/port state verified: private MTU 1450; external MTU 1500. No VM exists yet.</text>
+<text x="40" y="707" class="head">HA router design — fresh placement and traffic checks required</text>
+<text x="40" y="736" class="small">Observe actual network MTUs and active/standby roles after network creation.</text>
 <rect x="170" y="765" width="740" height="58" rx="10" class="box pending"/>
 <text x="540" y="802" text-anchor="middle" class="head">VM with a private IP</text>
 <path d="M540 823V848" class="line pending"/>
 <rect x="170" y="856" width="740" height="58" rx="10" class="box"/>
-<text x="540" y="893" text-anchor="middle" class="head">lab-private → lab-router on node1 · gateway 10.10.10.1</text>
+<text x="540" y="893" text-anchor="middle" class="head">lab-private → HA lab-router · gateway 10.10.10.1</text>
 <path d="M540 914V939" class="line pending"/>
 <rect x="100" y="947" width="880" height="58" rx="10" class="box pending"/>
-<text x="540" y="984" text-anchor="middle" class="body">192.168.0.192 → node1 br-ex → node1 USB → home switch/router</text>
-<text x="540" y="1035" text-anchor="middle" class="small">192.168.0.192 belongs to the router port; USB has no host IP. Packet tests remain pending.</text>
+<text x="540" y="984" text-anchor="middle" class="body">Active router replica → its br-ex → its USB → home switch/router</text>
+<text x="540" y="1035" text-anchor="middle" class="small">One active + two standby replicas. External IP belongs to the router, not the USB host interface.</text>
 </svg>
