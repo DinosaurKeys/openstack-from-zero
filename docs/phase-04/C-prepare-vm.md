@@ -2,7 +2,7 @@
 
 [Phase 4](README.md) · [Previous: create networks](B-create-networks.md) · [Viewing commands](../command-glossary.md)
 
-**Status: prepared and locally tested; live preparation is pending.** Chapter B's network objects passed. This chapter prepares the ingredients; Chapter D will create and test the VM.
+**Status: prepared and locally tested; live preparation is pending.** Chapter B must first pass its HA-router and DHCP placement checks for this deployment. This chapter prepares the ingredients; Chapter D will create and test the VM.
 
 ## 1. The four ingredients
 
@@ -81,7 +81,7 @@ In Horizon, view **Project → Compute → Images**, **Key Pairs**, and **Projec
 
 ## 7. Finish check and lesson
 
-- [x] Chapter B live network creation reviewed.
+- [ ] Chapter B fresh HA network/router report reviewed.
 - [x] Chapter C procedure and local tests prepared.
 - [ ] Joe's live preparation report reviewed.
 - [ ] Agree Chapter D VM creation, floating IP and traffic tests.
