@@ -20,7 +20,7 @@ class API:
         self.agents = [{'host': h, 'binary': b, 'alive': True, 'admin_state_up': True}
             for h in ('node1', 'node2', 'node3') for b in ('neutron-openvswitch-agent', 'neutron-l3-agent', 'neutron-dhcp-agent', 'neutron-metadata-agent')]
     def list(self, kind, query=''):
-        if kind == 'extensions': return [{'alias': a} for a in ('router', 'external-net', 'provider', 'agent', 'l3_agent_scheduler', 'l3-ha', 'dvr')]
+        if kind == 'extensions': return [{'alias': a} for a in ('router', 'external-net', 'provider', 'agent', 'l3_agent_scheduler', 'l3-ha', 'dvr', 'dhcp_agent_scheduler')]
         return copy.deepcopy(self.agents if kind == 'agents' else self.objects[kind])
     def write(self, method, path, body, status):
         self.writes.append((method, path, copy.deepcopy(body), status))
@@ -40,7 +40,8 @@ class API:
             return {'id': router_id, 'subnet_id': body['subnet_id'], 'port_id': 'privateport'}
         raise AssertionError((method, path))
     def get(self, path):
-        if path.endswith('/l3-agents'): return {'agents': [{'host': 'node2', 'alive': True, 'admin_state_up': True}]}
+        if path.endswith('/l3-agents'): return {'agents': [{'host': h, 'alive': True, 'admin_state_up': True, 'ha_state': 'active' if h == 'node2' else 'standby'} for h in ('node1','node2','node3')]}
+        if path.endswith('/dhcp-agents'): return {'agents': [{'host': h, 'alive': True, 'admin_state_up': True} for h in ('node1','node2')]}
         kind, ident = path.split('/')
         return {kind[:-1]: copy.deepcopy(next(o for o in self.objects[kind] if o['id'] == ident))}
 
@@ -101,7 +102,7 @@ class CreationTests(unittest.TestCase):
         self.assertEqual([w[1] for w in api.writes[:5]], ['networks', 'subnets', 'networks', 'subnets', 'routers'])
         self.assertEqual(api.writes[-1][0], 'PUT'); self.assertTrue(api.writes[-1][1].endswith('/add_router_interface'))
         self.assertEqual(len(value['ids']), 5); self.assertNotIn('pending', value)
-        self.assertEqual(result['router_host'], 'node2')
+        self.assertEqual(result['router_hosts'][1]['host'], 'node2')
         self.assertEqual(result['router_external_ips'][0]['ip_address'], '192.168.0.152')
         self.assertEqual(len(saved), 12)
 
@@ -112,7 +113,7 @@ class CreationTests(unittest.TestCase):
         self.assertEqual(ext['allocation_pools'], [{'start': '192.168.0.152', 'end': '192.168.0.199'}])
         self.assertEqual(private['gateway_ip'], '10.10.10.1'); self.assertEqual(private['dns_nameservers'], ['192.168.0.1'])
         router = api.objects['routers'][0]
-        self.assertFalse(router['ha']); self.assertFalse(router['distributed'])
+        self.assertTrue(router['ha']); self.assertFalse(router['distributed'])
         self.assertTrue(router['external_gateway_info']['enable_snat'])
 
     def test_rerun_verifies_tracked_resources_and_makes_no_writes(self):
