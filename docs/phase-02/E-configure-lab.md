@@ -4,7 +4,7 @@
 
 **Goal:** prepare the reviewed settings that Kolla will use during installation.
 
-**Status: completed and reviewed.** Joe's report returned `LAB_CONFIG_PREPARED` on 2026-10-23. The setup commands remain below for rebuilding. The three-compute inventory update passed. Joe confirmed the addresses below are free and chose the simple service baseline with HTTPS.
+**Design: three-node HA from the initial configuration.** A successful local preparation report is required; the fresh cloud deployment and failover tests are later checkpoints.
 
 ## 1. Purpose
 
@@ -49,12 +49,27 @@ Read [phase2-configure.py](../../scripts/phase2-configure.py). Run it **on R2d2 
 | Management: `enp0s31f6` | Keep the built-in NIC as the management/API path |
 | Per-node USB NICs | Store each confirmed USB name in inventory host variables for later external VM traffic |
 | Open vSwitch | Retain Kolla 23.0.0's default network implementation |
+| API HA, database cluster, router HA capability | Prepare Keepalived/HAProxy, MariaDB and Neutron agent redundancy |
 | Core services + Horizon | Prepare login, images, networking, VMs and the web dashboard |
 | Cinder LVM | Use the existing independent `cinder-volumes` pools |
 | Heat, Cinder backups, monitoring off | Keep the initial baseline; Terraform and monitoring come in later chapters |
 | HTTPS on the shared VIP | Prepare encrypted dashboard/API entry points for `192.168.0.151` |
 
-The previously approved settings remain:
+The HA settings are explicit:
+
+```yaml
+enable_haproxy: true
+enable_keepalived: true
+enable_mariadb: true
+enable_neutron_agent_ha: true
+enable_neutron_dvr: false
+max_l3_agents_per_router: 3
+dhcp_agents_per_network: 2
+```
+
+The three-node inventory supplies all three MariaDB, load-balancer and network hosts. [Phase 3 C](../phase-03/C-deploy-openstack.md) deploys and checks these services. [Phase 4 B](../phase-04/B-create-networks.md) creates the virtual router with HA enabled and verifies its replicas.
+
+The independent storage settings are:
 
 ```yaml
 cinder_cluster_name: ""
@@ -146,39 +161,3 @@ The successful marker means local settings, credential population, certificate c
 
 Before publication, six regression tests passed. Real Kolla 23.0.0 credential generation, real Ansible 2.21.5 inventory parsing, Kolla playbook syntax checking and OpenSSL certificate-chain/IP verification also passed in an isolated development folder. A second run preserved the generated passwords and keys. No live node or deployed HTTPS test was performed.
 
-### Reviewed result
-
-Joe returned `phase2-config-20261023T185536Z-s1nj1s3p.txt`.
-
-| Check | Observed result |
-|---|---|
-| Cloud settings and network plan | Prepared privately on R2d2 |
-| Three node host-variable files | Prepared; Ansible read each expected external USB NIC |
-| Inventory | Expected three-node role mappings passed |
-| Service credentials | Populated privately; no values included in the report |
-| HTTPS certificate files | Certificate chain, key matches and VIP SAN verified |
-| Final checkpoint | `LAB_CONFIG_PREPARED` |
-
-Public CA SHA-256 fingerprint, recorded for later trust verification:
-
-```text
-278a4e6a84b761f954b9bbf1f8051c3560b63f0eb073efc9e95d8d1c69df3cbb
-```
-
-This is a public certificate fingerprint, not a password or private key. The group-name warnings did not stop inventory parsing; both inventory checks and the final checkpoint passed.
-
-**No IP addresses were assigned, nodes contacted or services deployed by this step.** CA trust installation, active address-conflict checks and live HTTPS verification remain pending. Do not regenerate the credentials or certificates as a default next action.
-
-### Short lecture — after review
-
-`globals.yml` is the cloud's settings sheet. `host_vars` supplies settings that differ by node, such as the USB NIC name. `passwords.yml` holds the services' private credentials.
-
-The API certificate identifies `192.168.0.151`. Our lab CA signs that certificate; a client must trust the CA's **public certificate** to verify the API's identity. Private keys remain on R2d2. Preparing these files does not start a website or make the VIP active.
-
-Chapter F checks the prepared configuration and plans the trust steps before deployment. Three independent LVM backends still do not provide automatic replication.
-
-References: [Kolla 23.0.0 TLS configuration](https://github.com/openstack/kolla-ansible/blob/23.0.0/doc/source/admin/tls.rst) · [Released credential generator](https://github.com/openstack/kolla-ansible/blob/23.0.0/kolla_ansible/cmd/genpwd.py).
-
-[Next planned chapter: validate preparation](F-validate-preparation.md).
-
-[Released ProxySQL certificate layout](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/certificates/tasks/generate.yml) · [Database TLS defaults](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/group_vars/all/common.yml)
