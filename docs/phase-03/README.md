@@ -2,19 +2,19 @@
 
 [Home](../../README.md) · [Phase 2](../phase-02/README.md)
 
-**Current: Chapter A is complete and its live report is reviewed.** [Chapter B](B-full-prechecks.md) is ready to run, including Joe's approved lab-image acceptance. Complete its local ProxySQL certificate step before running full prechecks. A successful full precheck result is still pending; Chapters C–D remain planned.
+**Current: Chapters A and B are complete and their live reports are reviewed.** [Chapter C](C-deploy-openstack.md) is prepared for review: one wrapper runs fresh prechecks, standard Kolla deployment and deployment observations. Joe's live deployment result is pending; Chapter D remains planned.
 
 **Goal:** prepare the three hosts, check deployment requirements, install OpenStack and verify access.
 
 | Chapter | Purpose | Status |
 |---|---|---|
 | [A — Prepare the nodes](A-prepare-nodes.md) | Review and then prepare the host dependencies Kolla needs | Complete — all three nodes passed |
-| [B — Full Kolla prechecks](B-full-prechecks.md) | Check the prepared hosts before deploying services | Ready to run — live result pending |
-| C — Deploy OpenStack | Deploy the agreed services using the existing private configuration | Planned |
+| [B — Full Kolla prechecks](B-full-prechecks.md) | Check the prepared hosts before deploying services | Complete — all three nodes passed |
+| [C — Deploy OpenStack](C-deploy-openstack.md) | Deploy the agreed services using the existing private configuration | Prepared for review — live deployment pending |
 | D — Verify cloud access | Check services, live HTTPS and the Horizon login page | Planned |
 
 Each chapter follows **purpose → explain the script → publish → Joe pulls and runs → review one report → short lecture**. Letters restart at A in this phase.
 
 The selected versions, three-node roles, NIC mappings, independent Cinder LVM pools and HTTPS plan stay as agreed in Phase 2. We do not recreate the disks, passwords or certificates.
 
-**Current action:** Phase 2 and the chosen Windows Chrome/Linux Firefox imports are complete (browser imports user-confirmed). Read [Chapter A's reviewed result and short lesson](A-prepare-nodes.md#7-reviewed-live-result). The original wrapper explanation, host changes and run command remain available. Next, read [Chapter B's explanation and run command](B-full-prechecks.md). The wrapper is published and locally tested; no full precheck result from Joe's lab is claimed yet. Return its report before Chapter C.
+**Current action:** read [Chapter C's scope, script explanation and run procedure](C-deploy-openstack.md). Bootstrap and full prechecks passed on all three nodes; the [Chapter A](A-prepare-nodes.md) and [Chapter B](B-full-prechecks.md) instructions and lessons remain available for rebuilding. No OpenStack deployment or live Horizon HTTPS result is claimed yet.

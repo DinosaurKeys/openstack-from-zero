@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Read-only deployment observations; no ARP probes or empty-VG assertion."""
+import argparse,hashlib,json,os,socket,subprocess,time
+from pathlib import Path
+# Names from the pinned release's service definitions and the all-three-role inventory.
+REQUIRED=('mariadb','proxysql','haproxy','keepalived','rabbitmq','keystone_api','keystone_fernet','keystone_ssh','glance_api',
+ 'placement_api','nova_api','nova_scheduler','nova_conductor','nova_compute','nova_libvirt',
+ 'neutron_server','neutron_openvswitch_agent','neutron_l3_agent','neutron_dhcp_agent',
+ 'openvswitch_db','openvswitch_vswitchd','cinder_api','cinder_scheduler','cinder_volume','horizon')
+NODES={'node1':('192.168.0.200','enx00e04c557e58','00:e0:4c:55:7e:58'),
+ 'node2':('192.168.0.201','enx00e04c2c1678','00:e0:4c:2c:16:78'),
+ 'node3':('192.168.0.202','enx00e04c304688','00:e0:4c:30:46:88')}
+def run(args):
+ p=subprocess.run(args,capture_output=True,text=True,timeout=30)
+ if p.returncode:raise RuntimeError('Read-only command needs review: '+args[0])
+ return p.stdout.strip()
+def container_states():
+ names=set(run(['docker','ps','-a','--format','{{.Names}}']).splitlines())
+ found=[n for n in REQUIRED if n in names]
+ states={}
+ if found:
+  lines=run(['docker','inspect','--format','{{json .State}}',*found]).splitlines()
+  if len(lines)!=len(found):raise RuntimeError('Incomplete container state output')
+  for name,line in zip(found,lines):
+   value=json.loads(line)
+   states[name]={'running':value.get('Running') is True,'status':value.get('Status'),
+                'health':value.get('Health',{}).get('Status','not configured')}
+ return states
+
+def healthy(states):
+ return set(states)==set(REQUIRED) and all(s['running'] and s['health'] in ('healthy','not configured') for s in states.values())
+
+def collect(node):
+ ip,usb,mac=NODES[node]
+ if os.geteuid()!=0 or os.environ.get('SUDO_USER')!='joe' or socket.gethostname().split('.')[0]!=node:
+  raise RuntimeError('Expected node identity and sudo from joe')
+ addresses=json.loads(run(['ip','-j','address','show']))
+ by_name={a['ifname']:a for a in addresses};management=by_name.get('enp0s31f6',{});provider=by_name.get(usb,{})
+ routes=json.loads(run(['ip','-j','-4','route','show','default']))
+ checks={'management IPv4 retained':any(a.get('local')==ip and a.get('prefixlen')==24 for a in management.get('addr_info',[])),
+  'management default route retained':any(r.get('dev')=='enp0s31f6' and r.get('gateway')=='192.168.0.1' for r in routes),
+  'USB MAC retained':provider.get('address','').lower()==mac,
+  'USB has no host addresses':bool(provider) and provider.get('addr_info')==[],
+  'USB link':{'UP','LOWER_UP'}.issubset(provider.get('flags',[])),
+  'Chrony active':run(['systemctl','is-active','chrony'])=='active',
+  'clock synchronized':run(['timedatectl','show','-p','NTPSynchronized','--value'])=='yes'}
+ # Wait only for existing service healthchecks, never restart a service.
+ deadline=time.monotonic()+120
+ while True:
+  states=container_states()
+  if healthy(states) or time.monotonic()>=deadline:break
+  time.sleep(5)
+ checks['selected core containers running and healthchecks passed']=healthy(states)
+ # Query only OVS bridge membership, not the management NIC configuration.
+ bridge=run(['docker','exec','openvswitch_vswitchd','ovs-vsctl','port-to-br',usb])
+ checks['USB attached to br-ex']=bridge=='br-ex'
+ checks['management NIC not attached to br-ex']='enp0s31f6' not in run(['docker','exec','openvswitch_vswitchd','ovs-vsctl','list-ports','br-ex']).splitlines()
+ vip_here=any(a.get('local')=='192.168.0.151' for a in management.get('addr_info',[]))
+ protected=[*Path('/etc/netplan').glob('*.yaml'),Path('/etc/chrony/chrony.conf'),*Path('/etc/chrony').rglob('*.sources'),*Path('/etc/chrony').rglob('*.conf'),Path('/etc/ssh/sshd_config'),*Path('/etc/ssh/sshd_config.d').glob('*.conf')]
+ facts={'containers':states,'VIP on management interface':vip_here,'USB bridge':bridge,
+  'protected_config_hashes':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(set(protected)) if p.is_file()},
+  'management_DNS':run(['resolvectl','dns','enp0s31f6']),'chrony_active':run(['systemctl','is-active','chrony']),
+  'image references':run(['docker','inspect','--format','{{.Name}} {{.Config.Image}} {{.Image}}',*REQUIRED]).splitlines(),
+  'Cinder VGs':json.loads(run(['vgs','--reportformat','json','-o','vg_name,pv_count,lv_count']))['report'][0]['vg']}
+ return {'node':node,'ready':all(checks.values()),'checks':checks,'facts':facts}
+def main():
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--node',required=True,choices=NODES);args=p.parse_args()
+ try:result=collect(args.node)
+ except Exception as e:result={'node':args.node,'ready':False,'error':str(e) if isinstance(e,RuntimeError) else type(e).__name__}
+ print(json.dumps(result))
+if __name__=='__main__':main()

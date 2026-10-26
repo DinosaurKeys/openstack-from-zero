@@ -2,7 +2,7 @@
 
 [Phase 3](README.md) · [Previous: host preparation](A-prepare-nodes.md)
 
-**Status: ready to run — live result pending.** Chapter A passed on all three nodes. Joe approved accepting the default Kolla test-image registry for this learning lab.
+**Status: complete — live report reviewed.** Chapter A passed on all three nodes. Joe approved accepting the default Kolla test-image registry for this learning lab.
 
 ## 1. Purpose
 
@@ -121,9 +121,9 @@ Keep the full report and private files off GitHub. We publish the reviewed summa
 - [x] Chapter A's live bootstrap result reviewed.
 - [x] Default lab image-source acceptance agreed.
 - [x] Wrapper tested locally and published.
-- [ ] Local ProxySQL TLS files verified and ready.
-- [ ] Full precheck result from Joe's lab reviewed.
-- [ ] Agree on Chapter C before deployment.
+- [x] Local ProxySQL TLS files verified and ready.
+- [x] Full precheck result from Joe's lab reviewed.
+- [x] Joe authorized preparing and publishing Chapter C. Actual deployment remains Joe's execution step.
 
 **Limits:** a successful run does not prove image tags can be pulled, service startup, live HTTPS, usable guest acceleration or VM/volume operation. Those need later deployment and functional checks. For an intentional rebuild with a new CA, use the newly reviewed `--expected-ca` fingerprint as in Phase 2 Chapter F.
 
@@ -131,13 +131,29 @@ Keep the full report and private files off GitHub. We publish the reviewed summa
 
 After the actual report, explain which deployment requirements passed and how that differs from Chapter A's host preparation. The run instructions above remain for study and rebuilding.
 
+### Reviewed live result
+
+Joe returned `phase3-prechecks-20261025T223015Z-mvzyf0lp.txt`, ending `KOLLA_PRECHECKS_PASSED for all`.
+
+| Node | Successful tasks | Changed | Unreachable | Failed | Skipped | Rescued / ignored |
+|---|---:|---:|---:|---:|---:|---|
+| node1 | 121 | 0 | 0 | 0 | 155 | 0 / 0 |
+| node2 | 107 | 0 | 0 | 0 | 144 | 0 / 0 |
+| node3 | 107 | 0 | 0 | 0 | 144 | 0 / 0 |
+
+Before/after node observations passed. Recorded host package/configuration observations and private input files were unchanged. Local certificate verification passed with the existing reviewed CA.
+
+**Short lesson:** bootstrap prepared the machines; prechecks checked those machines against the enabled OpenStack services' requirements. This run passed the deployment gate. It did not install OpenStack or prove that a VM can run. Disabled-service tasks can be skipped normally; the final recap above has no failures.
+
+Next: [Chapter C — Deploy OpenStack](C-deploy-openstack.md).
+
 ## Development verification
 
 Eight regression tests passed for plan isolation, exact precheck command scope, source drift, all-node recap validation, host/input preservation, execution ordering, early stopping and password privacy. Real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5 parsed the actual precheck CLI/task list and both observation playbooks; password lookups and the registry-acceptance condition were evaluated with simulated values. Private integration inputs were unchanged. Pinned release source matched the tested site playbook, registry/package checks and load-balancer prechecks.
 
-These local tests did not execute full remote prechecks on Joe's nodes. Their live result remains pending.
+These local tests did not execute full remote prechecks on Joe's nodes. Joe subsequently ran them on the lab; the reviewed result is recorded above.
 
 [Official Kolla deployment order](https://docs.openstack.org/kolla-ansible/2026.2/user/quickstart) · [Pinned registry check](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/prechecks/tasks/registry_checks.yml)
 
 
-**TLS preparation verification:** six additional tests cover the missing-file completion, original identity/configuration preservation, repeated runs, conflict/symlink refusal, fingerprint rejection and early layout validation. Together with the affected existing suites, 39 tests passed. In an isolated folder, OpenSSL verified the ProxySQL certificate chain and VIP; the pinned release's CA-check path and all three deployment copy-source paths resolved to the prepared files. Existing credentials and original certificate/key files were unchanged. This is not a claim that the lab's full remote prechecks have passed.
+**TLS preparation verification:** six additional tests cover the missing-file completion, original identity/configuration preservation, repeated runs, conflict/symlink refusal, fingerprint rejection and early layout validation. Together with the affected existing suites, 39 tests passed. In an isolated folder, OpenSSL verified the ProxySQL certificate chain and VIP; the pinned release's CA-check path and all three deployment copy-source paths resolved to the prepared files. Existing credentials and original certificate/key files were unchanged. That local TLS test is separate from Joe's successful full precheck report reviewed above.
