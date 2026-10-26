@@ -2,7 +2,7 @@
 
 [Phase 3](README.md) · [Previous: deploy OpenStack](C-deploy-openstack.md)
 
-**Status: complete — live HTTPS/API checks passed, and Joe's screenshot confirms a successful admin browser login.** Chapter C's live observations passed on all three nodes.
+**Goal: verify access to the fresh HA deployment.** Complete Chapter C and its database/VIP observations before running these checks.
 
 ## 1. Purpose
 
@@ -84,16 +84,12 @@ The scripted API pass and your browser login confirmation are two separate finis
 
 ## 7. Finish check and short lesson
 
-- [x] Chapter C's live host/container/network observations reviewed: passed on all three nodes.
-- [x] Chapter D's actual HTTPS/API report reviewed.
-- [x] Horizon HTTPS certificate and login-page checks passed from R2d2.
-- [x] Joe's screenshot confirms the admin session and loaded dashboard at the API VIP.
+- [ ] Fresh deployment's host/container/VIP/Galera observations reviewed.
+- [ ] HTTPS authentication, required service registrations and API reads passed.
+- [ ] Horizon login-page certificate/form checks passed.
+- [ ] Joe confirmed an actual browser sign-in and loaded dashboard.
 
-Joe's `phase3-access-20261026T141651Z-f89_jnuf.txt` reports `OPENSTACK_API_ACCESS_PASSED` with no issues. Keystone authentication, all six required public service registrations, authenticated reads from Glance/Nova/Neutron/Cinder/Placement, and Horizon's verified HTTPS login page passed. Browser sign-in was confirmed separately by Joe's admin dashboard screenshot. The script's browser-login field is intentionally not an automated browser sign-in assertion.
-
-The reviewed public endpoints use VIP `192.168.0.151`: Keystone 5000, Glance 9292, Nova 8774/v2.1, Neutron 9696, Cinder 8776/v3 and Placement 8780, all over HTTPS. VM, volume, virtual-network creation and failover remain untested.
-
-Short lesson: **Keystone checks who you are; its catalog gives clients the service addresses; the token authorizes later API requests; the CA verifies the server. Horizon is a browser client of those APIs.**
+The API reads and browser sign-in prove access to this deployment. They do not prove virtual-router takeover, guest boot, volume persistence or database failure recovery. Those are separate tests. The script's browser-login field deliberately leaves the manual sign-in checkpoint for Joe.
 
 ## 8. USB virtual networking — Phase 4
 
