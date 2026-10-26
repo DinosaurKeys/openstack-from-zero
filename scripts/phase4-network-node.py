@@ -18,7 +18,7 @@ CONFIGS = {
     '/etc/kolla/neutron-openvswitch-agent/openvswitch_agent.ini': {'ovs': ['bridge_mappings', 'local_ip', 'datapath_type'],
         'agent': ['tunnel_types', 'enable_distributed_routing'], 'securitygroup': ['firewall_driver']},
     '/etc/kolla/neutron-l3-agent/l3_agent.ini': {'DEFAULT': ['agent_mode']},
-    '/etc/kolla/neutron-server/neutron.conf': {'DEFAULT': ['core_plugin', 'service_plugins', 'l3_ha']}}
+    '/etc/kolla/neutron-server/neutron.conf': {'DEFAULT': ['core_plugin', 'service_plugins', 'l3_ha', 'max_l3_agents_per_router', 'dhcp_agents_per_network']}}
 
 
 def run(argv):
