@@ -4,7 +4,7 @@
 
 **Goal:** tell Ansible which machines belong to this lab and which roles each machine has.
 
-**Status: complete.** All three node-access checks passed, and Joe's 2026-10-23 update returned `COMPUTE_ROLES_UPDATED` with node1, node2 and node3 in the compute group. Chapter C completed successfully with Kolla-Ansible 23.0.0 and Ansible Core 2.21.5.
+**Design:** all three nodes belong to the controller, network, compute and storage roles. This membership supplies the three API, Galera and Neutron HA hosts.
 
 ## 1. Purpose
 
