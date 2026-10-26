@@ -21,7 +21,7 @@ PROFILE = {'auth': {'auth_url': 'https://192.168.0.151:5000', 'username': 'admin
     'project_name': 'admin', 'project_domain_name': 'Default'}, 'region_name': 'RegionOne'}
 URLS = {'identity': 'https://192.168.0.151:5000', 'image': 'https://192.168.0.151:9292',
         'compute': 'https://192.168.0.151:8774/v2.1', 'network': 'https://192.168.0.151:9696',
-        'block-storage': 'https://192.168.0.151:8776/v3', 'placement': 'https://192.168.0.151:8778'}
+        'block-storage': 'https://192.168.0.151:8776/v3', 'placement': 'https://192.168.0.151:8780'}
 
 
 def catalog():
@@ -46,6 +46,23 @@ class FakeClient:
 
 
 class AccessTests(unittest.TestCase):
+    def test_allowed_ports_match_pinned_kolla_service_defaults(self):
+        import yaml
+        base = ROOT/'build/real-tools-check/share/kolla-ansible/ansible/group_vars/all'
+        if not base.is_dir(): self.skipTest('Pinned development source not installed')
+        sources = {'identity': ('keystone', 'keystone_public_listen_port'),
+                   'image': ('glance', 'glance_api_port'), 'compute': ('nova', 'nova_api_port'),
+                   'network': ('neutron', 'neutron_server_port'),
+                   'block-storage': ('cinder', 'cinder_api_port'), 'placement': ('placement', 'placement_api_port')}
+        for kind, (file, key) in sources.items():
+            actual = int(yaml.safe_load((base/(file+'.yml')).read_text())[key])
+            self.assertEqual(step.SERVICE_PORTS[kind], actual, kind)
+            step.safe_url('https://192.168.0.151:'+str(actual))
+
+    def test_placement_uses_8780_and_previous_wrong_port_is_rejected(self):
+        self.assertEqual(step.safe_url('https://192.168.0.151:8780'), URLS['placement'])
+        with self.assertRaisesRegex(RuntimeError, '8778'): step.safe_url('https://192.168.0.151:8778')
+
     @unittest.skipUnless(shutil.which('openssl'), 'OpenSSL required for local TLS fixture')
     def test_real_tls_handshake_accepts_only_trusted_correct_vip_certificate(self):
         with tempfile.TemporaryDirectory() as d:
