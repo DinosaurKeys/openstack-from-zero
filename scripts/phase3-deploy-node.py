@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only deployment observations; no ARP probes or empty-VG assertion."""
-import argparse,hashlib,json,os,shlex,socket,subprocess,time
+import argparse,configparser,hashlib,json,os,shlex,socket,subprocess,time
 from pathlib import Path
 # Names from the pinned release's service definitions and the all-three-role inventory.
 REQUIRED=('mariadb','proxysql','haproxy','keepalived','rabbitmq','keystone_api','keystone_fernet','keystone_ssh','glance_api',
@@ -36,6 +36,26 @@ def required_containers(node):
 def healthy(states,node='node1'):
  return set(required_containers(node)).issubset(states) and all(s['running'] and s['health'] in ('healthy','not configured') for s in states.values())
 
+def ha_configuration():
+ parser=configparser.ConfigParser(interpolation=None)
+ parser.read('/etc/kolla/neutron-server/neutron.conf')
+ expected={'l3_ha':'true','max_l3_agents_per_router':'3','dhcp_agents_per_network':'2'}
+ actual={k:parser.defaults().get(k,'').lower() for k in expected}
+ return actual, actual==expected
+
+def galera_status(ip):
+ keys=('wsrep_cluster_status','wsrep_cluster_size','wsrep_connected','wsrep_ready','wsrep_local_state_comment','wsrep_cluster_state_uuid')
+ query='SHOW GLOBAL STATUS WHERE Variable_name IN ('+','.join("'"+k+"'" for k in keys)+')'
+ output=run(['docker','exec','--user','root','mariadb','mariadb','--defaults-file=/etc/mysql/healthcheck.cnf','--protocol=tcp','--host='+ip,'--port=3306','--connect-timeout=5','--batch','--skip-column-names','--execute='+query])
+ values={}
+ for line in output.splitlines():
+  parts=line.split('\t')
+  if len(parts)!=2 or parts[0] in values or parts[0] not in keys:raise RuntimeError('Unexpected MariaDB monitor output')
+  values[parts[0]]=parts[1]
+ if set(values)!=set(keys):raise RuntimeError('Incomplete MariaDB monitor output')
+ expected={'wsrep_cluster_status':'Primary','wsrep_cluster_size':'3','wsrep_connected':'ON','wsrep_ready':'ON','wsrep_local_state_comment':'Synced'}
+ return values, all(values[k]==v for k,v in expected.items())
+
 def collect(node):
  if os.geteuid()!=0 or os.environ.get('SUDO_USER')!='joe' or socket.gethostname().split('.')[0]!=node:
   raise RuntimeError('Expected node identity and sudo from joe')
@@ -65,6 +85,8 @@ def collect_details(node,result):
   if healthy(states,node) or time.monotonic()>=deadline:break
   time.sleep(5)
  checks['selected core containers running and healthchecks passed']=healthy(states,node)
+ facts['Neutron HA configuration'],checks['Neutron router HA configured']=ha_configuration()
+ facts['galera'],checks['MariaDB three-member Primary Synced cluster']=galera_status(ip)
  facts['containers']=states
  facts['required containers']=list(required_containers(node))
  facts['missing required containers']=sorted(set(required_containers(node))-set(states))
