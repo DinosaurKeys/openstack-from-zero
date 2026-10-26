@@ -23,7 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 s = importlib.util.spec_from_file_location('create_access', REPO/'scripts/phase3-access.py')
 access = importlib.util.module_from_spec(s); s.loader.exec_module(access)
 deploy = access.deploy; ENV = access.ENV
-PLAN = {'version': 1, 'external_name': 'lab-external', 'external_subnet': 'lab-external-subnet',
+PLAN = {'version': 2, 'external_name': 'lab-external', 'external_subnet': 'lab-external-subnet',
         'external_cidr': '192.168.0.0/24', 'external_gateway': '192.168.0.1',
         'external_start': '192.168.0.152', 'external_end': '192.168.0.199',
         'physnet': 'physnet1', 'private_name': 'lab-private', 'private_subnet': 'lab-private-subnet',
@@ -111,7 +111,7 @@ def specifications(ids, project):
             'ip_version': 4, 'cidr': PLAN['private_cidr'], 'gateway_ip': PLAN['private_gateway'], 'enable_dhcp': True,
             'allocation_pools': [{'start': PLAN['private_start'], 'end': PLAN['private_end']}], 'dns_nameservers': PLAN['dns']}
     if 'external_subnet' in ids:
-        specs['router'] = dict(common, name=PLAN['router_name'], ha=False, distributed=False,
+        specs['router'] = dict(common, name=PLAN['router_name'], ha=True, distributed=False,
             external_gateway_info={'network_id': ids['external_network'], 'enable_snat': True,
                                    'external_fixed_ips': [{'subnet_id': ids['external_subnet']}]})
     return specs
@@ -132,7 +132,7 @@ def matches(key, expected, actual):
 
 def preflight(api, ids, project):
     aliases = {e.get('alias') for e in api.list('extensions')}
-    if not {'router', 'external-net', 'provider', 'agent', 'l3_agent_scheduler', 'l3-ha', 'dvr'}.issubset(aliases):
+    if not {'router', 'external-net', 'provider', 'agent', 'l3_agent_scheduler', 'l3-ha', 'dvr', 'dhcp_agent_scheduler'}.issubset(aliases):
         raise RuntimeError('Required Neutron network/router extensions are unavailable; no further writes')
     inventory = {r: api.list(r) for r in ('networks', 'subnets', 'routers')}
     names = {'external_network': PLAN['external_name'], 'private_network': PLAN['private_name'],
@@ -182,7 +182,7 @@ def create(api, project, state, save, log):
         ids[key] = ident; state.pop('pending', None); save(state)
         if not matches(key, expected, obj): raise RuntimeError('Created object needs review: '+key)
     ports = api.list('ports', urllib.parse.urlencode({'device_id': ids['router']}))
-    attached = [p for p in ports if p.get('device_id') == ids['router'] and p.get('device_owner', '').startswith('network:router_interface')
+    attached = [p for p in ports if p.get('device_id') == ids['router'] and p.get('device_owner') in ('network:router_interface', 'network:ha_router_replicated_interface')
                 and any(f.get('subnet_id') == ids['private_subnet'] for f in p.get('fixed_ips', []))]
     if not attached:
         state['pending'] = 'router_interface'; save(state)
@@ -193,7 +193,7 @@ def create(api, project, state, save, log):
     deadline = time.monotonic()+180
     while True:
         ports = api.list('ports', urllib.parse.urlencode({'device_id': ids['router']}))
-        internal = [p for p in ports if p.get('device_id') == ids['router'] and p.get('device_owner', '').startswith('network:router_interface')
+        internal = [p for p in ports if p.get('device_id') == ids['router'] and p.get('device_owner') in ('network:router_interface', 'network:ha_router_replicated_interface')
                     and any(f.get('subnet_id') == ids['private_subnet'] and f.get('ip_address') == PLAN['private_gateway'] for f in p.get('fixed_ips', []))]
         external = [p for p in ports if p.get('device_id') == ids['router'] and p.get('device_owner') == 'network:router_gateway'
                     and any(f.get('subnet_id') == ids['external_subnet'] for f in p.get('fixed_ips', []))]
@@ -202,14 +202,44 @@ def create(api, project, state, save, log):
         time.sleep(5)
     preflight(api, ids, project)
     router = api.get('routers/'+ids['router'])['router']
-    hosts = api.get('routers/'+ids['router']+'/l3-agents').get('agents', [])
-    if router.get('status') != 'ACTIVE' or len(hosts) != 1 or hosts[0].get('alive') is not True or hosts[0].get('admin_state_up') is not True or hosts[0].get('host', '').split('.')[0] not in ('node1', 'node2', 'node3'):
-        raise RuntimeError('Router status or scheduled L3 agent needs review')
+    placement = wait_ha(api, ids['router'])
+    dhcp = wait_dhcp(api, ids['private_network'])
+    if router.get('status') != 'ACTIVE' or router.get('ha') is not True:
+        raise RuntimeError('Router status or HA flag needs review')
     networks = [api.get('networks/'+ids[key])['network'] for key in ('external_network', 'private_network')]
-    return {'ids': dict(ids), 'router_host': hosts[0].get('host'), 'router_external_ips': router['external_gateway_info']['external_fixed_ips'],
+    return {'ids': dict(ids), 'router_hosts': placement, 'dhcp_hosts': [a.get('host') for a in dhcp], 'router_external_ips': router['external_gateway_info']['external_fixed_ips'],
             'networks': [{k: n.get(k) for k in ('id', 'name', 'provider:network_type', 'provider:physical_network', 'provider:segmentation_id', 'mtu')} for n in networks],
             'private_gateway': PLAN['private_gateway'], 'router_ports': [{'id': p['id'], 'device_owner': p['device_owner'], 'fixed_ips': p['fixed_ips'], 'status': p['status']} for p in internal+external],
             'scope': 'Network objects and API/port state verified; VM traffic, DNS operation and failover not tested.'}
+
+
+def ha_placement(agents):
+    hosts = {a.get('host', '').split('.')[0] for a in agents}
+    states = [a.get('ha_state') for a in agents]
+    if len(agents) != 3 or hosts != {'node1', 'node2', 'node3'} or states.count('active') != 1 or states.count('standby') != 2:
+        raise RuntimeError('Expected HA router on all three nodes: one active, two standby')
+    if not all(a.get('alive') is True and a.get('admin_state_up') is True for a in agents):
+        raise RuntimeError('An HA router agent is not alive/enabled')
+    return [{k: a.get(k) for k in ('host', 'alive', 'admin_state_up', 'ha_state')} for a in agents]
+
+
+def wait_ha(api, router_id):
+    deadline = time.monotonic()+180
+    while True:
+        try: return ha_placement(api.get('routers/'+router_id+'/l3-agents').get('agents', []))
+        except RuntimeError:
+            if time.monotonic() >= deadline: raise
+            time.sleep(5)
+
+
+def wait_dhcp(api, network_id):
+    deadline = time.monotonic()+180
+    while True:
+        agents = api.get('networks/'+network_id+'/dhcp-agents').get('agents', [])
+        hosts = {a.get('host', '').split('.')[0] for a in agents}
+        if len(agents) == 2 and len(hosts) == 2 and hosts.issubset({'node1','node2','node3'}) and all(a.get('alive') is True and a.get('admin_state_up') is True for a in agents): return agents
+        if time.monotonic() >= deadline: raise RuntimeError('Expected two alive/enabled DHCP agents on known nodes')
+        time.sleep(5)
 
 
 def execute(log):
@@ -258,7 +288,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('--apply', action='store_true'); args = p.parse_args(argv)
     if not args.apply:
         print('PLAN ONLY — no connections or files changed:\n'+json.dumps(PLAN, indent=2))
-        print('Creates two networks, two subnets and one non-HA legacy router plus its private interface. Read Chapter B before --apply.'); return 0
+        print('Creates two networks, two subnets and one HA non-distributed router plus its private interface. Read Chapter B before --apply.'); return 0
     deploy.validation.config_step.load_step('create_network_r2d2', 'phase2-check.py').require_r2d2(); deploy.tools.check_paths(ENV)
     if not sys.stdin.isatty(): raise RuntimeError('Use an interactive R2d2 terminal')
     if Path(sys.prefix) != ENV:
