@@ -31,9 +31,26 @@ def deployment_recap(text):
   match=re.search(r'\b'+node+r'\s*:\s*(ok=\d+[^\n]*)',recap)
   if not match:raise RuntimeError('Deployment recap missing '+node)
   values={k:int(v) for k,v in re.findall(r'(\w+)=(\d+)',match.group(1))}
-  if not values.get('ok') or any(values.get(k,0) for k in ('failed','unreachable','rescued','ignored')):
+  if not values.get('ok') or any(values.get(k,0) for k in ('failed','unreachable','rescued')):
    raise RuntimeError('Deployment recap needs review: '+node)
   result[node]=values
+ # Only the pinned fresh-cluster MariaDB discovery wait may be ignored.
+ allowed={n:0 for n in inv.NODES}; task=''; pending={}
+ for line in text.splitlines():
+  match=re.search(r'TASK \[([^\]]+)\]',line)
+  if match:task=match.group(1)
+  failed=re.search(r'fatal: \[('+ '|'.join(inv.NODES) +r')\]: FAILED!',line)
+  if failed:
+   n=failed.group(1)
+   pending[n]=task=='mariadb : Check MariaDB service port liveness' and 'Timeout when waiting for search string MariaDB' in line
+  ignored=re.search(r'\[('+ '|'.join(inv.NODES) +r')\].*\.\.\.ignoring',line)
+  if ignored:
+   n=ignored.group(1)
+   if pending.get(n) is True and allowed[n]==0:allowed[n]+=1
+   else:raise RuntimeError('Unexpected ignored deployment task: '+n)
+   pending.pop(n,None)
+ for n,values in result.items():
+  if values.get('ignored',0)!=allowed[n]:raise RuntimeError('Ignored deployment task lacks reviewed discovery evidence: '+n)
  # These tasks establish that service deployment ran, rather than just a syntax check.
  for marker in ('mariadb :','keystone :','nova-cell :','neutron :','cinder :','horizon :'):
   if 'TASK ['+marker not in text:raise RuntimeError('Deployment service execution missing: '+marker)
@@ -50,6 +67,9 @@ def verify_vip(observations):
   raise RuntimeError('All three deployment observations must pass')
  owners=[n for n,s in observations.items() if s['facts'].get('VIP on management interface') is True]
  if len(owners)!=1:raise RuntimeError('Expected exactly one observed API VIP owner; review Keepalived state')
+ uuids={s['facts'].get('galera',{}).get('wsrep_cluster_state_uuid') for s in observations.values()}
+ if len(uuids)!=1 or not all(isinstance(u,str) and re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',u) and int(u.replace('-',''),16) for u in uuids):
+  raise RuntimeError('Expected one valid shared MariaDB cluster UUID across three nodes')
  return owners[0]
 
 def execute(log,private_log,work,expected_ca):
