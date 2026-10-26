@@ -23,6 +23,27 @@ def records():
 
 
 class VerifyTests(unittest.TestCase):
+    def test_file_backend_glance_required_on_node1_only(self):
+        states = {n: {'running': True, 'health': 'healthy'} for n in node_step.REQUIRED}
+        states.pop('glance_api')
+        self.assertFalse(node_step.healthy(states, 'node1'))
+        for node in ('node2', 'node3'):
+            self.assertNotIn('glance_api', node_step.required_containers(node))
+            self.assertTrue(node_step.healthy(states, node))
+            missing = dict(states); missing.pop('nova_compute')
+            self.assertFalse(node_step.healthy(missing, node))
+            unhealthy = {k: dict(v) for k, v in states.items()}
+            unhealthy['cinder_volume']['health'] = 'unhealthy'
+            self.assertFalse(node_step.healthy(unhealthy, node))
+        with self.assertRaises(RuntimeError): node_step.required_containers('unknown')
+
+    def test_glance_present_on_node1_still_requires_health(self):
+        states = {n: {'running': True, 'health': 'healthy'} for n in node_step.REQUIRED}
+        self.assertTrue(node_step.healthy(states, 'node1'))
+        for key, value in [('running', False), ('health', 'starting'), ('health', 'unhealthy')]:
+            broken = {k: dict(v) for k, v in states.items()}; broken['glance_api'][key] = value
+            self.assertFalse(node_step.healthy(broken, 'node1'))
+
     def test_unavailable_vip_observations_are_unknown_not_absent(self):
         r = records(); r['node2']['observation'] = {'node': 'node2', 'ready': False, 'error': 'fixture query failed'}
         result = step.summarize(r)
