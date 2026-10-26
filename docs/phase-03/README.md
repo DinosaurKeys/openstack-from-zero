@@ -17,6 +17,6 @@ Each chapter follows **purpose → explain the script → publish → Joe pulls 
 
 The selected versions, three-node roles, NIC mappings, independent Cinder LVM pools and HTTPS plan stay as agreed in Phase 2. We do not recreate the disks, passwords or certificates.
 
-**Current checkpoint:** [Chapter D is complete](D-client-access.md#7-finish-check-and-short-lesson). All earlier procedures remain available for rebuilding. Phase 4 preparation is next, by agreement.
+**Current checkpoint:** [Chapter D is complete](D-client-access.md#7-finish-check-and-short-lesson). All earlier procedures remain available for rebuilding. Joe authorized [Phase 4 Chapter A — diagram and read-only network inspection](../phase-04/A-network-inspection.md). Its live report is pending; network/VM creation remains a later agreed step.
 
 **Next phase:** document and test the virtual networks that use `br-ex` and the USB NICs: external/provider network, tenant network/subnet, virtual router, floating IP and the actual VM-to-LAN packet path. VM, volume and failover tests remain pending.
