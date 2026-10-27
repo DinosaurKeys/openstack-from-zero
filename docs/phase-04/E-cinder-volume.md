@@ -108,6 +108,14 @@ A later repeat of `--apply` on a completed exercise checks the tracked volume; i
 
 Private tracking is `private/phase4/volume.json`. It records each confirmed checkpoint and a pending marker before mutations. If an operation's outcome is uncertain, the marker prevents repetition. On `CINDER_VOLUME_NEEDS_REVIEW`, return the report; do not remove the marker/state or run manual format/force-detach commands. No automatic cleanup or deletion occurs. Normal reads/probes can generate logs and filesystem access metadata.
 
+To collect the saved checkpoint and current Cinder/Nova API state, including while an operation is pending, run this observation mode on R2d2:
+
+```bash
+/usr/bin/python3 scripts/phase4-volume.py --observe
+```
+
+It authenticates normally, then uses GET requests only. It does not SSH into the guest, format, mount, attach, detach, retry a request or clear the pending marker. `CINDER_VOLUME_STATE_OBSERVED` means the API snapshot was collected; it does not mean the persistence exercise passed. Return that private report before deciding a next action.
+
 ## 7. View it yourself
 
 On R2d2:
