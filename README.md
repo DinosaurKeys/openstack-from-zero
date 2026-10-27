@@ -29,6 +29,10 @@ All nodes use `enp0s31f6` for management/API traffic and the VXLAN underlay. Sep
 
 The reviewed resource snapshot showed four CPU cores and about 15 GiB usable RAM per node, with 6.3/6.6/7.1 GiB available respectively and no active swapping during the short sample. That is initial headroom, not a workload or failure-capacity guarantee. Measure again after adding HA routers and a guest.
 
+## Current learning step
+
+The fresh deployment's container/Galera/VIP observations, HTTPS API checks, HA router placement and VM ingredients have passed their reviewed reports. Router snapshot: one active and two standby replicas; actual failover remains untested. [Phase 4 D](docs/phase-04/D-boot-and-test-vm.md) now prepares one VM and floating IP with guest networking checks. Joe's live VM report is pending. Browser sign-in is a separate user-confirmed check.
+
 ## Course
 
 | Phase | Guide |
