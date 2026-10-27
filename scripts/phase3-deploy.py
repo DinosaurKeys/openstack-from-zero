@@ -34,23 +34,24 @@ def deployment_recap(text):
   if not values.get('ok') or any(values.get(k,0) for k in ('failed','unreachable','rescued')):
    raise RuntimeError('Deployment recap needs review: '+node)
   result[node]=values
- # Only the pinned fresh-cluster MariaDB discovery wait may be ignored.
- allowed={n:0 for n in inv.NODES}; task=''; pending={}
+ # Log callbacks may print "...ignoring" without a hostname. Attribute the
+ # exact FAILED event itself to its task/node, then reconcile recap counts.
+ allowed={n:0 for n in inv.NODES}; task=''
  for line in text.splitlines():
   match=re.search(r'TASK \[([^\]]+)\]',line)
   if match:task=match.group(1)
-  failed=re.search(r'fatal: \[('+ '|'.join(inv.NODES) +r')\]: FAILED!',line)
-  if failed:
-   n=failed.group(1)
-   pending[n]=task=='mariadb : Check MariaDB service port liveness' and 'Timeout when waiting for search string MariaDB' in line
-  ignored=re.search(r'\[('+ '|'.join(inv.NODES) +r')\].*\.\.\.ignoring',line)
-  if ignored:
-   n=ignored.group(1)
-   if pending.get(n) is True and allowed[n]==0:allowed[n]+=1
-   else:raise RuntimeError('Unexpected ignored deployment task: '+n)
-   pending.pop(n,None)
- for n,values in result.items():
-  if values.get('ignored',0)!=allowed[n]:raise RuntimeError('Ignored deployment task lacks reviewed discovery evidence: '+n)
+  failed=re.search(r'fatal: \[([^\]]+)\]: FAILED!\s*=>\s*(.*)',line)
+  if not failed:continue
+  node,payload=failed.groups()
+  if node not in inv.NODES:raise RuntimeError('Unexpected failed deployment host or delegation')
+  try:details=json.loads(payload)
+  except (ValueError,TypeError):raise RuntimeError('Unparseable failed deployment event: '+node) from None
+  expected='Timeout when waiting for search string MariaDB in '+inv.NODES[node]+':3306'
+  if task!='mariadb : Check MariaDB service port liveness' or not isinstance(details,dict) or details.get('changed') is not False or details.get('msg')!=expected or allowed[node]:
+   raise RuntimeError('Unexpected failed deployment task: '+node)
+  allowed[node]+=1
+ for node,values in result.items():
+  if values.get('ignored',0)!=allowed[node]:raise RuntimeError('Ignored deployment task lacks reviewed discovery evidence: '+node)
  # These tasks establish that service deployment ran, rather than just a syntax check.
  for marker in ('mariadb :','keystone :','nova-cell :','neutron :','cinder :','horizon :'):
   if 'TASK ['+marker not in text:raise RuntimeError('Deployment service execution missing: '+marker)
