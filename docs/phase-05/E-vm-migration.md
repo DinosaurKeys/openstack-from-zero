@@ -43,7 +43,11 @@ Expected collection result:
 RESULT: VM_MIGRATION_INSPECTION_COLLECTED
 ```
 
-At the end, use the printed `cat` command and return the report. If it says `NEEDS_REVIEW`, return that report too. Collection is not approval to migrate; negative observations remain visible in the candidate summary.
+The terminal and `.txt` report show a short table: available RAM/disk per node, CPU comparison, libvirt connection and Nova/Placement checks. `NOT CHECKED` means an earlier required observation is missing; it does not mean incompatibility. `NOT CONFIRMED` means the query did not confirm the requirement. A failed command is identified with its stage, command and a classified reason; raw error text is withheld. Other host facts already collected are retained.
+
+Full technical observations are saved in a separate private `.json` file. Share it only when requested.
+
+At the end, use the printed **Read short summary** `cat` command and return the short report. If it says `NEEDS_REVIEW`, return that summary too. Collection is not approval to migrate.
 
 This script has **no `--apply` mode**. It does not migrate, create a VM, attach/detach a volume, format a disk, stop services or change configuration. Normal SSH/sudo audit logs and the private report may be written.
 
@@ -59,7 +63,7 @@ After reviewing the report:
 
 The summary uses 1 GiB of RAM and 2 GiB of disk as small lab review margins beyond the guest requirement. These are not reservations or a Nova scheduling guarantee. An authenticated libvirt read does not prove that the later QEMU memory/disk stream ports work. Its TCP/TLS label describes the libvirt control connection, not proof of encryption for every migration stream.
 
-The CPU comparison is independent of Nova's configured CPU-comparison workaround; a bypass setting does not establish compatibility. An absent configuration value is reported as absent, not silently presented as an observed runtime default.
+The helper reads the running VM's ordinary XML on a read-only libvirt connection. Libvirt 10 requires a normal connection for the hypervisor CPU-comparison query; the helper permits only explicit inspection commands and exposes no VM mutation command. The comparison is independent of Nova's configured CPU-comparison workaround; a bypass setting does not establish compatibility. An absent configuration value is reported as absent, not silently presented as an observed runtime default.
 
 ## 3. Completion and recovery
 
