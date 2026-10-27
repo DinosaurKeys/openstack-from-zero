@@ -38,8 +38,11 @@ def validate_unit(text):
     if set(service)!={'execstart','execstop','restart','restartsec','successexitstatus'}:
         raise RuntimeError('Unreviewed service hooks/options')
     stop=re.fullmatch(r'/usr/bin/docker stop keepalived -t ([0-9]+)',service.get('ExecStop',''))
-    if service.get('ExecStart')!='/usr/bin/docker start -a keepalived' or not stop or not 1<=int(stop.group(1))<=30:
-        raise RuntimeError('Service does not manage only the approved Keepalived container')
+    if service.get('ExecStart')!='/usr/bin/docker start -a keepalived':
+        raise RuntimeError('Keepalived ExecStart differs from the pinned service command')
+    if not stop:raise RuntimeError('Keepalived ExecStop structure differs from the pinned service command')
+    if int(stop.group(1)) not in (10,60):
+        raise RuntimeError('Unreviewed Keepalived stop timeout: '+stop.group(1)+' seconds; expected pinned 60 or module fallback 10')
     return True
 
 
@@ -79,9 +82,9 @@ def execute(node,action,container_id=None):
         if action=='stop':
             if not before['vip_owner'] or not before['keepalived']['running'] or not before['haproxy']['running'] or before['unit']['active']!='active':
                 raise RuntimeError('Stop requires this healthy current VIP owner')
-            run(['systemctl','stop',UNIT],timeout=45)
+            run(['systemctl','stop',UNIT],timeout=90)
         elif not before['keepalived']['running'] or before['unit']['active']!='active':
-            run(['systemctl','start',UNIT],timeout=45)
+            run(['systemctl','start',UNIT],timeout=90)
         deadline=time.monotonic()+15
         while True:
             after=collect(node)
