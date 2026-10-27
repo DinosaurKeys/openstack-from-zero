@@ -4,7 +4,9 @@
 
 **Purpose:** briefly interrupt the active router's virtual HA link, check a standby takes over the existing VM's traffic, then restore the original link.
 
-**Status: live inspection reviewed; test script locally tested. Failover pending.** The reviewed inspection showed node3 holding the private gateway, external router IP and VM floating IP; node1/node2 had no forwarding addresses. All three HA links were UP and tracked by their router Keepalived configuration. Preparation discovers the current owner again.
+**Status: complete — reviewed live report passed `ROUTER_HA_FAILOVER_VERIFIED`.** The active router moved from node3 to node2 after node3's virtual HA interface was lowered. The original interface was restored UP; all three HA links were UP with one active/two standby, and final guest traffic/data, host/API/database checks passed. Node2 remained active. The existing volume retained its filesystem UUID and file checksum. No additional restoration is required by this report.
+
+Takeover was observed 11.67 seconds after the down request, including command and observation delays; this is not an exact outage duration. The single background network sample did not complete successfully within its request window. Separate recovery/final probes passed; uninterrupted connectivity is not claimed. Continue to [E — VM migration](E-vm-migration.md); the procedure below is a reference, not a request to repeat D.
 
 ## 1. Understand the target
 
