@@ -100,6 +100,15 @@ cd ~/openstack-from-zero
 
 It reads all three nodes, asks for their sudo passwords and writes a private report. Look for each member: `Synced`, `Primary`, cluster size `3`, `wsrep_connected: ON`, `wsrep_ready: ON`, and one shared cluster UUID. The wrapper also checks containers, host layout and VIP ownership; no repair is performed.
 
+## 5. Verify the tracked first VM — from R2d2
+
+```bash
+cd ~/openstack-from-zero
+/usr/bin/python3 scripts/phase4-boot-vm.py --verify
+```
+
+This requires Chapter D's tracked VM/port/floating IP. It creates no cloud resources and repeats the identity/guest connectivity checks. Its SSH and HTTP probes produce normal access logs. See [Chapter D](phase-04/D-boot-and-test-vm.md) for the creation scope and interactive SSH command. Keep VM state and the private known-hosts file; do not disable host-key checks to make login work.
+
 ## Small glossary
 
 | Term | Meaning |
