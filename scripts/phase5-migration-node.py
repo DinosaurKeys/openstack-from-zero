@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import shlex
 import subprocess
 import urllib.parse
 import uuid
@@ -19,9 +20,40 @@ NODES={'node1':'192.168.0.200','node2':'192.168.0.201','node3':'192.168.0.202'}
 IMAGES={name:'quay.io/openstack.kolla/'+image+':2026.2-ubuntu-noble' for name,image in [('nova_compute','nova-compute'),('nova_libvirt','nova-libvirt')]}
 
 
+def command_reason(stderr):
+    text=(stderr or '').lower()
+    for patterns,reason in [
+        (('read only','read-only','readonly','secure flag'),'Libvirt rejected this operation on a read-only connection'),
+        (('domain not found','failed to get domain','no domain with matching'),'Libvirt could not find the requested VM domain'),
+        (('authentication failed','authentication unavailable','sasl'),'Libvirt authentication was not completed'),
+        (('permission denied','access denied'),'Access was denied'),
+        (('connection refused','failed to connect socket'),'The libvirt connection could not be opened'),
+        (('unsupported configuration','unsupported flags','unsupported option','command not found'),'The installed tool does not support the requested query'),
+        (('not compatible','incompatible','unsupported cpu'),'The CPU comparison did not confirm compatibility')]:
+        if any(value in text for value in patterns):return reason
+    return 'Command failed; unclassified raw output withheld'
+
+
+class CommandFailure(RuntimeError):
+    def __init__(self,args,rc,reason):
+        # These fixed inspection command arguments contain no passwords or XML.
+        if args[:2]==['docker','inspect']:
+            label='docker inspect '+args[-1]
+        else:label=shlex.join(args)
+        self.details={'command':label,'exit_status':rc,'reason':reason}
+        super().__init__(label+': '+reason+' ('+('timeout' if rc is None else 'exit '+str(rc))+')')
+
+
 def run(args,input=None,allow_failure=False):
-    value=subprocess.run(args,input=input,capture_output=True,text=True,timeout=35)
-    if value.returncode and not allow_failure:raise RuntimeError('Read-only command failed: '+args[0])
+    try:value=subprocess.run(args,input=input,capture_output=True,text=True,timeout=35)
+    except subprocess.TimeoutExpired:raise CommandFailure(args,None,'Read-only query timed out after 35 seconds') from None
+    if value.returncode and not allow_failure:raise CommandFailure(args,value.returncode,command_reason(value.stderr))
+    return value
+
+
+def failure(error,stage):
+    value={'stage':stage,'error':str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; inspection incomplete'}
+    if isinstance(error,CommandFailure):value.update(error.details)
     return value
 
 
@@ -77,7 +109,13 @@ def identity(node):
 
 
 def virsh(*args,input=None,allow_failure=False,uri='qemu:///system'):
-    return run(['docker','exec','-i','--user','root','nova_libvirt','virsh','--readonly','--connect',uri,*args],input=input,allow_failure=allow_failure)
+    if not args or args[0] not in ('capabilities','version','dumpxml','hypervisor-cpu-compare','hostname'):
+        raise RuntimeError('Only approved libvirt inspection commands are permitted')
+    if args[0]=='dumpxml' and (len(args)!=2 or str(uuid.UUID(args[1]))!=args[1]):raise RuntimeError('Only ordinary XML inspection of the tracked UUID is permitted')
+    # Libvirt 10 rejects CompareHypervisorCPU on VIR_CONNECT_RO. Use a normal
+    # connection only for this comparison query; no mutating command is exposed.
+    flags=[] if args[0]=='hypervisor-cpu-compare' else ['--readonly']
+    return run(['docker','exec','-i','--user','root','nova_libvirt','virsh',*flags,'--connect',uri,*args],input=input,allow_failure=allow_failure)
 
 
 def observe(node,server,source,containers):
@@ -100,20 +138,26 @@ def observe(node,server,source,containers):
         if key in ('MemTotal','MemAvailable','SwapTotal','SwapFree'):memory[key+'_bytes']=int(value.split()[0])*1024
     cpus=Path('/proc/cpuinfo').read_text().split('\n\n')
     first={line.split(':',1)[0].strip():line.split(':',1)[1].strip() for line in cpus[0].splitlines() if ':' in line}
-    cap=ET.fromstring(virsh('capabilities').stdout)
-    domain=None
-    if node==source:
-        domain=domain_summary(virsh('dumpxml',server,'--migratable').stdout,server)
     addresses={}
     for n in NODES:
         try:addresses[n]=sorted({a[4][0] for a in socket.getaddrinfo(n,None,socket.AF_INET)})
         except socket.gaierror:addresses[n]=[]
-    return {'node':node,'observed':True,'containers':{n:{k:v[k] for k in ('id','image','running')} for n,v in containers.items()},
+    result={'node':node,'observed':False,'containers':{n:{k:v[k] for k in ('id','image','running')} for n,v in containers.items()},
       'memory':memory,'cpu':{'logical_cpus':os.cpu_count(),'model':first.get('model name'),'vendor':first.get('vendor_id'),'flags':first.get('flags','').split()},
       'instances_storage':{'container_path':container_path,'path_explicit_in_nova_config':instances is not None,'available_bytes':usage.f_bavail*usage.f_frsize,'total_bytes':usage.f_blocks*usage.f_frsize},
-      'nova_config':config,'libvirt_version':virsh('version').stdout.strip(),
-      'libvirt_host_cpu':{'arch':cap.findtext('host/cpu/arch'),'model':cap.findtext('host/cpu/model'),'vendor':cap.findtext('host/cpu/vendor')},
-      'peer_name_resolution':addresses,'domain':domain}
+      'nova_config':config,'peer_name_resolution':addresses,'domain':None,'errors':[]}
+    try:
+        cap=ET.fromstring(virsh('capabilities').stdout)
+        result['libvirt_host_cpu']={'arch':cap.findtext('host/cpu/arch'),'model':cap.findtext('host/cpu/model'),'vendor':cap.findtext('host/cpu/vendor')}
+    except Exception as error:result['errors'].append(failure(error,'libvirt capabilities'))
+    if node==source:
+        try:result['domain']=domain_summary(virsh('dumpxml',server).stdout,server)
+        except Exception as error:result['errors'].append(failure(error,'source VM XML inspection'))
+    try:result['libvirt_version']=virsh('version').stdout.strip()
+    except Exception as error:result['errors'].append(failure(error,'libvirt version'))
+    result['observed']=not result['errors']
+    if result['errors']:result['error']='; '.join(e['stage']+': '+e['error'] for e in result['errors'])
+    return result
 
 
 def compare(node,payload):
@@ -123,7 +167,8 @@ def compare(node,payload):
     if root.tag!='cpu' or domain.get('virt_type')!='kvm' or domain.get('arch')!='x86_64' or domain.get('emulator')!='/usr/bin/qemu-system-x86_64' or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._-]*',domain.get('machine','')):raise RuntimeError('Unreviewed source CPU/emulator/machine')
     result=virsh('hypervisor-cpu-compare','/dev/stdin','--virttype','kvm','--emulator',domain['emulator'],'--arch','x86_64','--machine',domain['machine'],'--error',input=cpu,allow_failure=True)
     return {'node':node,'observed':True,'source_cpu_supported_by_destination_hypervisor':result.returncode==0,
-      'comparison':'compatible CPU definition' if result.returncode==0 else 'not confirmed; return report before migration'}
+      'comparison':'compatible CPU definition' if result.returncode==0 else command_reason(result.stderr),
+      'exit_status':result.returncode,'connection_mode':'normal connection for comparison query only'}
 
 
 def connection(node,payload):
@@ -133,7 +178,8 @@ def connection(node,payload):
     result=virsh('hostname',uri=uri,allow_failure=True)
     name=result.stdout.strip().split('.')[0]
     return {'node':node,'peer':peer,'observed':True,'authenticated_libvirt_read':result.returncode==0 and name==peer,
-      'transport':urllib.parse.urlsplit(uri).scheme,'encrypted_transport':urllib.parse.urlsplit(uri).scheme=='qemu+tls'}
+      'transport':urllib.parse.urlsplit(uri).scheme,'encrypted_transport':urllib.parse.urlsplit(uri).scheme=='qemu+tls',
+      'exit_status':result.returncode,'reason':None if result.returncode==0 and name==peer else command_reason(result.stderr) if result.returncode else 'Peer hostname did not match'}
 
 
 def execute(node,action,payload):
@@ -151,7 +197,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--node',choices=NODES,required=True);parser.add_argument('--action',choices=['observe','compare','connection'],required=True);parser.add_argument('--payload',required=True);args=parser.parse_args()
     try:
         payload=json.loads(base64.b64decode(args.payload,validate=True));result=execute(args.node,args.action,payload)
-    except Exception as error:result={'node':args.node,'observed':False,'error':str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; inspection incomplete'}
+    except Exception as error:result=dict(failure(error,args.action),node=args.node,observed=False)
     print(json.dumps(result));return 0 if result.get('observed') else 1
 
 if __name__=='__main__':raise SystemExit(main())
