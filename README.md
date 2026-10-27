@@ -31,7 +31,9 @@ The reviewed resource snapshot showed four CPU cores and about 15 GiB usable RAM
 
 ## Current learning step
 
-The fresh deployment's container/Galera/VIP observations, HTTPS API checks, HA router placement and VM ingredients have passed their reviewed reports. Router snapshot: one active and two standby replicas; actual failover remains untested. [Phase 4 D](docs/phase-04/D-boot-and-test-vm.md) now prepares one VM and floating IP with guest networking checks. Joe's live VM report is pending. Browser sign-in is a separate user-confirmed check.
+The fresh deployment's container/Galera/VIP observations, HTTPS API checks, HA router placement and first VM's networking have passed reviewed reports. Chapter D verified SSH, DHCP, metadata, DNS, outbound HTTPS and floating-IP ping. [Phase 4 E](docs/phase-04/E-cinder-volume.md) prepares one data volume and tests persistence across detach/reattach; its live report is pending. Browser sign-in is a separate user-confirmed check.
+
+Continue in order: **Cinder volume → controlled API/database/router HA tests → planned VM migration**. HA storage/Ceph and automatic VM recovery are deferred. No reinstall is needed for the volume chapter.
 
 ## Course
 
