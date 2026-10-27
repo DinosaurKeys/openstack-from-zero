@@ -157,10 +157,32 @@ class HAContractTests(unittest.TestCase):
         return ''.join('TASK ['+m+' fixture]\n' for m in ('mariadb :','keystone :','nova-cell :','neutron :','cinder :','horizon :'))+'PLAY RECAP\n'+''.join(n+f' : ok=1 changed=1 unreachable=0 failed=0 rescued=0 ignored={ignored}\n' for n in deploy.inv.NODES)
     def test_only_exact_reviewed_discovery_timeouts_can_be_ignored(self):
         evidence='TASK [mariadb : Check MariaDB service port liveness]\n'
-        for n in deploy.inv.NODES:evidence+=f'fatal: [{n}]: FAILED! => {{"msg":"Timeout when waiting for search string MariaDB in address:3306"}}\n[{n}]: ...ignoring\n'
+        for n in deploy.inv.NODES:evidence+=f'fatal: [{n}]: FAILED! => '+json.dumps({'changed':False,'msg':'Timeout when waiting for search string MariaDB in '+deploy.inv.NODES[n]+':3306'})+'\n['+n+']: ...ignoring\n'
         self.assertEqual(len(deploy.deployment_recap(evidence+self.recap(1))),3)
         for text in [self.recap(1),evidence.replace('port liveness','wrong task')+self.recap(1),evidence.replace('Timeout when waiting for search string MariaDB','Other failure')+self.recap(1)]:
             with self.assertRaises(RuntimeError):deploy.deployment_recap(text)
+    def callback_log(self):
+        text='2026-10-27 08:30:00 p=123 INFO| TASK [mariadb : Check MariaDB service port liveness] ***\n'
+        for node,address in deploy.inv.NODES.items():
+            event={'changed':False,'elapsed':10,'msg':'Timeout when waiting for search string MariaDB in '+address+':3306'}
+            text+='2026-10-27 08:30:10 p=123 INFO| fatal: ['+node+']: FAILED! => '+json.dumps(event)+'\n'
+            text+='2026-10-27 08:30:10 p=123 INFO| ...ignoring\n'
+        return text+self.recap(1)
+    def test_actual_ansible_callback_hostless_ignoring_format(self):
+        # default.py emits a bare "...ignoring", with no host association.
+        value=self.callback_log()
+        self.assertEqual({n:r['ignored'] for n,r in deploy.deployment_recap(value).items()},dict.fromkeys(deploy.inv.NODES,1))
+    def test_same_ignored_count_does_not_allow_wrong_ip_task_or_changed_result(self):
+        text=self.callback_log()
+        for bad in [text.replace('in 192.168.0.200:3306','in 192.168.0.201:3306'),
+                    text.replace('"changed": false','"changed": true'),
+                    text.replace('mariadb : Check MariaDB service port liveness','other : discovery'),
+                    text.replace('ignored=1','ignored=2')]:
+            with self.assertRaises(RuntimeError):deploy.deployment_recap(bad)
+    def test_duplicate_or_unparseable_failure_is_not_accepted(self):
+        text=self.callback_log();line=next(l for l in text.splitlines() if 'fatal: [node1]' in l)
+        for bad in [text.replace(line,line+'\n'+line),text.replace(line,'fatal: [node1]: FAILED! => invalid-json')]:
+            with self.assertRaises(RuntimeError):deploy.deployment_recap(bad)
     def test_galera_parser_requires_all_expected_status_keys(self):
         values={'wsrep_cluster_status':'Primary','wsrep_cluster_size':'3','wsrep_connected':'ON','wsrep_ready':'ON','wsrep_local_state_comment':'Synced','wsrep_cluster_state_uuid':'12345678-1234-1234-1234-123456789abc'}
         text='\n'.join(k+'\t'+v for k,v in values.items())
