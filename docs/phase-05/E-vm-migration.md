@@ -2,73 +2,92 @@
 
 [Phase 5](README.md) · [Previous: virtual router](D-router.md)
 
-**Goal:** move the existing running `lab-vm-01` between healthy compute hosts, similar to VMware vMotion. No new VM is needed.
+**Goal:** move the existing running `lab-vm-01` from **node1 to node2**, similar to VMware vMotion. The destination was selected after reviewing live CPU, memory, disk, libvirt and Nova/Placement observations.
 
-**Status: read-only inspection script ready and locally tested; migration pending.** First inspect the actual hosts and migration settings. Choose the destination and review the exact migration plan afterward.
+**Status: inspection passed; preparation/apply script locally tested. Migration pending.** Both hosts stay working throughout this exercise.
 
-| Component | Intended result of the later migration |
+| Component | Intended result |
 |---|---|
-| VM memory and execution | Move to the chosen compute host |
-| Local root disk | Copy to the destination as part of block live migration |
-| Existing Cinder data volume | Stay on its current storage backend; connect from the destination compute host |
-| Private and floating IPs | Stay associated with the same VM port |
+| VM memory and execution | Move to node2 |
+| Local root disk | Copy to node2 through Nova block live migration |
+| Existing Cinder data volume | Stay on its original node3 backend; remain attached to the same VM |
+| VM identity, private IP and floating IP | Stay the same |
 
-Both compute hosts must remain working. This exercise does not test recovery after a host dies, automatic VM restart or storage HA.
-
-## 1. Collect the facts — on R2d2 as joe
+## 1. Prepare — on R2d2 as joe
 
 ```bash
 cd ~/openstack-from-zero
 git pull --ff-only
+/usr/bin/python3 scripts/phase5-move-vm.py --prepare
+```
+
+Unlock the existing guest key and enter node sudo passwords when asked. Typing is hidden. Preparation rechecks current health, the same VM/volume, data checksum, destination CPU and capacity, configured instance path and libvirt connection. It rejects an unresolved previous migration.
+
+It also tests the installed Nova VNC XML transformation against a synthetic document and checks that migration uses it. This confirms that the destination's VNC listen address can replace the source's address. It does not edit Nova configuration or the VM.
+
+Expected result:
+
+```text
+RESULT: VM_MIGRATION_PREPARED
+```
+
+**Return the short report before applying.** Review the node1 → node2 scope and approve the move first. The private plan expires after 30 minutes. Preparation requests no migration.
+
+## 2. Apply the reviewed plan
+
+Only after reviewing and approving preparation:
+
+```bash
+/usr/bin/python3 scripts/phase5-move-vm.py --apply
+```
+
+The script:
+
+1. Rechecks the prepared VM, configuration/container identities, current source, destination capacity and CPU compatibility.
+2. Records the guest boot ID and durable pending state before issuing **one** Nova `os-migrateLive` request for node2, with `block_migration: true` and API microversion 2.79. Scheduler checks remain enabled; no force option is used.
+3. Polls the VM and its migration record while sampling guest network checks. Nova's migration prechecks are asynchronous; HTTP 202 alone does not mean completion.
+4. Requires a completed live-migration record and the same VM ACTIVE on node2 with no task in progress.
+5. Checks that the VM is active only on node2, its boot ID is unchanged, guest network and original data checksum pass, IPs and volume backend/UUID remain unchanged, and the destination VNC address matches its configuration.
+6. Rechecks host/API/Horizon/database health and protected configuration/container identities before clearing the pending state.
+
+Expected success:
+
+```text
+RESULT: VM_LIVE_MIGRATION_VERIFIED
+```
+
+Keep the terminal open and return the short report. The script observes for up to 20 minutes; individual bounded API requests may extend that window. A window ending does not cancel a migration. The VM stays on node2 after success; moving it back is a separate decision.
+
+## 3. If the result needs review
+
+A lost response or interrupted script does not tell us whether Nova accepted or completed the move. On R2d2, collect actual API state:
+
+```bash
+/usr/bin/python3 scripts/phase5-move-vm.py --observe
+```
+
+This uses GET requests, preserves the pending checkpoint and issues no migration/recovery action. **Return the report before another action.** If Nova completion is confirmed and a full final verification is requested:
+
+```bash
+/usr/bin/python3 scripts/phase5-move-vm.py --verify
+```
+
+Verification changes no cloud resource. It clears the local pending marker only after the completed migration and final VM/network/data/host checks pass.
+
+Do not repeat the migration request, clear private state, force-complete, evacuate, reboot, delete source files or stop a host to make the report pass. There is no automatic rollback or move back.
+
+## Read-only inspection reference
+
+```bash
 /usr/bin/python3 scripts/phase5-migration.py --inspect
 ```
 
-Unlock the existing guest SSH key if asked, then enter each node's sudo password in the terminal. Typing is hidden; passwords are not written to the report.
+This separate inspection script selects no destination and has no apply mode. Its terminal/TXT report is short; full technical details are in a private sibling JSON file. `NOT CHECKED` means a prerequisite observation was unavailable, and `NOT CONFIRMED` means the query did not confirm that requirement. Collection is not migration approval.
 
-The script checks the existing VM, SSH identity, network traffic, attached volume and its data checksum. It reads all three nodes and both possible destinations; it does not assume the VM still runs on its earlier host.
+The physical review margins are 1 GiB RAM and 2 GiB disk beyond this guest's requirement; they are not reservations. Preparation also checks Placement inventory/usage, but Nova still performs its own asynchronous scheduling/device/storage checks. The current libvirt control connection uses TCP on the management network; API HTTPS does not encrypt that separate connection, and a control read does not prove the later QEMU stream ports work.
 
-| Check | Plain meaning |
-|---|---|
-| Available RAM and instance-disk space | Is there room for this small guest? |
-| Source guest CPU comparison | Can the destination hypervisor provide the VM's current CPU definition? |
-| Nova services and Placement inventory/usage | What capacity and service state does OpenStack report? |
-| Nova configuration and libvirt version | Which migration settings and virtualization software are deployed? |
-| Authenticated libvirt peer read | Can the source query the destination's libvirt service using the existing configuration? |
+## Limits
 
-Only selected configuration fields, CPU details and digests are printed. Full Nova configuration, domain authentication details and libvirt credential files are not printed.
+Network probes are samples, not exact downtime or uninterrupted-session proof. Same guest boot ID is checked to detect a guest reboot. Planned migration does not prove automatic VM recovery, host-failure recovery, storage replication or storage HA. The Cinder backend is not migrated or reformatted.
 
-Expected collection result:
-
-```text
-RESULT: VM_MIGRATION_INSPECTION_COLLECTED
-```
-
-The terminal and `.txt` report show a short table: available RAM/disk per node, CPU comparison, libvirt connection and Nova/Placement checks. `NOT CHECKED` means an earlier required observation is missing; it does not mean incompatibility. `NOT CONFIRMED` means the query did not confirm the requirement. A failed command is identified with its stage, command and a classified reason; raw error text is withheld. Other host facts already collected are retained.
-
-Full technical observations are saved in a separate private `.json` file. Share it only when requested.
-
-At the end, use the printed **Read short summary** `cat` command and return the short report. If it says `NEEDS_REVIEW`, return that summary too. Collection is not approval to migrate.
-
-This script has **no `--apply` mode**. It does not migrate, create a VM, attach/detach a volume, format a disk, stop services or change configuration. Normal SSH/sudo audit logs and the private report may be written.
-
-## 2. Review and choose
-
-After reviewing the report:
-
-1. Choose a destination with sufficient physical and OpenStack capacity and a compatible CPU.
-2. Review the actual migration transport, disk/device support and remaining prerequisites.
-3. Prepare the exact one-VM migration request, completion checks and handling for an uncertain result.
-4. Ask for approval before issuing the migration.
-5. Migrate once, then verify the new compute host, unchanged VM/IP identity, working guest network and original volume checksum.
-
-The summary uses 1 GiB of RAM and 2 GiB of disk as small lab review margins beyond the guest requirement. These are not reservations or a Nova scheduling guarantee. An authenticated libvirt read does not prove that the later QEMU memory/disk stream ports work. Its TCP/TLS label describes the libvirt control connection, not proof of encryption for every migration stream.
-
-The helper reads the running VM's ordinary XML on a read-only libvirt connection. Libvirt 10 requires a normal connection for the hypervisor CPU-comparison query; the helper permits only explicit inspection commands and exposes no VM mutation command. The comparison is independent of Nova's configured CPU-comparison workaround; a bypass setting does not establish compatibility. An absent configuration value is reported as absent, not silently presented as an observed runtime default.
-
-## 3. Completion and recovery
-
-A successful later test must show the same VM on the chosen destination with guest access, networking and the existing mounted data intact. A local-root block migration copies the root disk; it does not request migration or replication of the Cinder backend.
-
-If the migration request has an uncertain outcome, inspect Nova's real VM and migration state before another action. Do not repeat the request automatically, force-complete, delete source files, power off a host or promise an automatic rollback. Moving back is a separate decision.
-
-[Inspection script](../../scripts/phase5-migration.py) · [Node helper](../../scripts/phase5-migration-node.py) · [Nova live-migration guide](https://docs.openstack.org/nova/latest/admin/configuring-migrations.html) · [Kolla libvirt guide](https://docs.openstack.org/kolla-ansible/latest/reference/compute/libvirt-guide.html) · [Libvirt CPU comparison](https://libvirt.org/manpages/virsh.html#hypervisor-cpu-compare)
+[Migration script](../../scripts/phase5-move-vm.py) · [Inspection script](../../scripts/phase5-migration.py) · [Node helper](../../scripts/phase5-migration-node.py) · [Nova live-migration API](https://docs.openstack.org/api-ref/compute/#live-migrate-server-os-migratelive-action) · [Nova graphics XML handling](https://github.com/openstack/nova/blob/34.0.0/nova/virt/libvirt/migration.py)
