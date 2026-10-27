@@ -65,6 +65,50 @@ class API(prep.API):
         return self.request(service,method,path,body,expected)
 
 
+class ReadOnlyAPI(API):
+    def request(self,service,method,path,body=None,expected=200):
+        if method!='GET' or body is not None:raise RuntimeError('Observation permits GET requests only after authentication')
+        return super().request(service,method,path,None,expected)
+    def write(self,*args,**kwargs):raise RuntimeError('Observation cannot change cloud resources')
+
+
+def observe(api,state,project):
+    """Collect actual state without clearing a pending request or asserting its outcome."""
+    volume=api.get('block-storage','volumes/'+state['volume_id'])['volume']
+    server=api.get('compute','servers/'+state['server_id'])['server']
+    rows=attachments(api,state)
+    issues=[]
+    try:volume_check(volume,state,project)
+    except RuntimeError as error:issues.append(str(error))
+    if rows:
+        try:check_attachment(rows,state,True)
+        except RuntimeError as error:issues.append(str(error))
+    return {'scope':'API snapshot only; no guest check, request retry or pending-marker change',
+        'checkpoint':{k:state.get(k) for k in ('stage','pending','server_id','volume_id','filesystem_uuid','sha256')},
+        'volume':{k:volume.get(k) for k in ('id','name','status','size','os-vol-host-attr:host','attachments')},
+        'server':{k:server.get(k) for k in ('id','name','status','OS-EXT-SRV-ATTR:host','OS-EXT-STS:task_state','OS-EXT-STS:vm_state','os-extended-volumes:volumes_attached')},
+        'nova_attachments':rows,'identity_issues':issues,
+        'persistence':'Not yet verified after reattachment; pending state is preserved regardless of API observations.'}
+
+
+def execute_observation(log):
+    deploy.source_guard();env=deploy.tools.tool_environment()
+    inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+    hashes=access.input_hashes(config,inventory);folder=REPO/'private/phase4';path=folder/'volume.json'
+    deploy.validation.private_file(path);before=path.read_bytes();state=json.loads(before)
+    original,project,user=prep.authenticate(config);api=ReadOnlyAPI(original.client,original.urls,original.token)
+    if state.get('plan')!=PLAN or state.get('project_id')!=project or state.get('user_id')!=user or state.get('apis')!=api.urls or not all(valid_uuid(state.get(k)) for k in ('volume_id','server_id')):
+        raise RuntimeError('Observation state identity differs from this authenticated project')
+    vm_path=folder/'vm.json';deploy.validation.private_file(vm_path);vm=json.loads(vm_path.read_text())
+    if vm.get('project_id')!=project or vm.get('user_id')!=user or vm.get('apis')!=api.urls or vm.get('ids',{}).get('server')!=state['server_id']:
+        raise RuntimeError('Observation VM binding differs')
+    log('Current volume/VM observations:\n'+json.dumps(observe(api,state,project),indent=2))
+    if path.read_bytes()!=before or hashes!=access.input_hashes(config,inventory):raise RuntimeError('Inputs changed while observing; return report')
+    log('RESULT: CINDER_VOLUME_STATE_OBSERVED')
+    log('Read-only API snapshot. No format, mount, attach, detach, retry, cleanup or checkpoint update. Return report.')
+    return 0
+
+
 def valid_uuid(value):
     try:return isinstance(value,str) and str(uuid.UUID(value))==value
     except (ValueError,AttributeError):return False
@@ -329,21 +373,21 @@ def execute(log,verify=False):
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__);mode=parser.add_mutually_exclusive_group()
-    mode.add_argument('--apply',action='store_true');mode.add_argument('--verify',action='store_true');args=parser.parse_args(argv)
-    if not args.apply and not args.verify:
+    mode.add_argument('--apply',action='store_true');mode.add_argument('--verify',action='store_true');mode.add_argument('--observe',action='store_true');args=parser.parse_args(argv)
+    if not args.apply and not args.verify and not args.observe:
         print('PLAN ONLY — no connections or files changed:\n'+json.dumps(PLAN,indent=2))
-        print('--apply creates one volume, formats only its verified blank guest disk, writes a test file, safely detaches/reattaches and verifies persistence. --verify checks the completed mounted volume without cloud or guest mutations.');return 0
+        print('--apply creates one volume, formats only its verified blank guest disk, writes a test file, safely detaches/reattaches and verifies persistence. --verify checks the completed mounted volume without cloud or guest mutations. --observe reads API state even with a pending request and preserves that marker.');return 0
     deploy.validation.config_step.load_step('volume_r2d2','phase2-check.py').require_r2d2();deploy.tools.check_paths(ENV)
-    if not sys.stdin.isatty():raise RuntimeError('Use an interactive R2d2 terminal for the guest key passphrase')
+    if not args.observe and not sys.stdin.isatty():raise RuntimeError('Use an interactive R2d2 terminal for the guest key passphrase')
     if Path(sys.prefix)!=ENV:
-        os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--verify' if args.verify else '--apply'],deploy.tools.tool_environment())
+        os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--observe' if args.observe else '--verify' if args.verify else '--apply'],deploy.tools.tool_environment())
     os.umask(0o077);reports=REPO/'reports';deploy.inv.private_dir(reports)
     stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-');fd,name=tempfile.mkstemp(prefix='phase4-volume-'+stamp,suffix='.txt',dir=reports)
     print('Private report: '+name,flush=True);status=1
     with os.fdopen(fd,'w') as output:
         def log(line):print(line,flush=True);output.write(line+'\n');output.flush()
-        log('Phase 4 Chapter E — '+('VERIFY completed volume only' if args.verify else 'APPLY one data volume and test persistence')+'\nPlan:\n'+json.dumps(PLAN,indent=2))
-        try:status=execute(log,args.verify)
+        log('Phase 4 Chapter E — '+('OBSERVE API state only; preserve pending checkpoint' if args.observe else 'VERIFY completed volume only' if args.verify else 'APPLY one data volume and test persistence')+'\nPlan:\n'+json.dumps(PLAN,indent=2))
+        try:status=execute_observation(log) if args.observe else execute(log,args.verify)
         except (Exception,KeyboardInterrupt) as error:
             log('RESULT: CINDER_VOLUME_NEEDS_REVIEW')
             log(str(error) if isinstance(error,RuntimeError) else 'Stopped ('+type(error).__name__+'); private details withheld.')
