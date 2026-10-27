@@ -4,12 +4,12 @@
 
 **Goal:** check that another service takes over when one stops, then move a running VM for planned maintenance.
 
-Phase 4's VM networking and Cinder persistence reports passed. Phase 5 tests have **not** run. Start with A; B–E are short test plans. Exact interruption/migration commands will be prepared and reviewed after the fresh baseline.
+Phase 4's VM networking and Cinder persistence reports passed. Phase 5 tests have **not** run. Start with A. B has a locally tested prepare/apply/restore script; prepare and review its current target before approving a stop. C–E remain short test plans; their exact commands follow the preceding reviewed reports.
 
 | Chapter | Simple purpose | Status |
 |---|---|---|
 | [A — Readiness](A-readiness.md) | Check health, resources and where things run | Existing check commands ready |
-| [B — API VIP](B-api-vip.md) | Keep the cloud's front-door address working | Test plan |
+| [B — API VIP](B-api-vip.md) | Keep the cloud's front-door address working | Script ready; live result pending |
 | [C — MariaDB](C-mariadb.md) | Keep the database working with one member stopped | Test plan |
 | [D — Virtual router](D-router.md) | Keep the VM's network path working after takeover | Test plan |
 | [E — VM migration](E-vm-migration.md) | Move a VM between healthy compute nodes | Test plan |
