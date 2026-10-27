@@ -57,23 +57,23 @@ class SummaryTests(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):step.main(['--apply'])
 
 class NodeTests(unittest.TestCase):
-    def test_compare_uses_readonly_virsh_and_cpu_only_stdin(self):
+    def test_compare_uses_required_normal_connection_and_cpu_only_stdin(self):
         with patch.object(node,'run',return_value=SimpleNamespace(returncode=0)) as run:
             value=node.compare('node2',{'domain':DOMAIN})
         args=run.call_args.args[0];kw=run.call_args.kwargs
-        self.assertIn('--readonly',args);self.assertIn('hypervisor-cpu-compare',args)
+        self.assertNotIn('--readonly',args);self.assertIn('hypervisor-cpu-compare',args)
         self.assertIn('/dev/stdin',args);self.assertIn('--error',args)
         self.assertEqual(kw['input'],DOMAIN['cpu_xml']);self.assertNotIn('SECRET',kw['input'])
         self.assertTrue(value['source_cpu_supported_by_destination_hypervisor'])
     def test_failed_comparison_is_a_negative_observation_not_migration(self):
-        with patch.object(node,'run',return_value=SimpleNamespace(returncode=1)):
+        with patch.object(node,'run',return_value=SimpleNamespace(returncode=1,stderr='CPU incompatible')):
             self.assertFalse(node.compare('node2',{'domain':DOMAIN})['source_cpu_supported_by_destination_hypervisor'])
     def test_invalid_cpu_emulator_or_machine_prevents_command(self):
         for wrong in (dict(DOMAIN,cpu_xml='<!DOCTYPE cpu><cpu/>'),dict(DOMAIN,emulator='/tmp/unknown'),dict(DOMAIN,machine='--change'),dict(DOMAIN,virt_type='qemu')):
             with patch.object(node,'run') as run,self.assertRaises(RuntimeError):node.compare('node2',{'domain':wrong})
             run.assert_not_called()
     def test_remote_authentication_read_checks_actual_peer_identity(self):
-        for result,expected in [(SimpleNamespace(returncode=0,stdout='node2\n'),True),(SimpleNamespace(returncode=0,stdout='node3\n'),False),(SimpleNamespace(returncode=1,stdout=''),False)]:
+        for result,expected in [(SimpleNamespace(returncode=0,stdout='node2\n'),True),(SimpleNamespace(returncode=0,stdout='node3\n'),False),(SimpleNamespace(returncode=1,stdout='',stderr='authentication failed'),False)]:
             with patch.object(node,'run',return_value=result) as run:
                 value=node.connection('node1',{'peer':'node2','uri':'qemu+tcp://192.168.0.201/system'})
             self.assertEqual(value['authenticated_libvirt_read'],expected)
@@ -164,12 +164,84 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('Not selected',logs[-1])
     def test_missing_source_domain_prevents_compatibility_actions(self):
         nodes=self.nodes();bad={n:host(n) for n in node.NODES};bad['node1']['domain']=None
-        with patch.object(nodes,'all',return_value=bad),self.assertRaises(RuntimeError):step.inspect(nodes,self.api(),{'ids':{'server':SERVER}},'node1',lambda s:None)
-        self.assertFalse(nodes.calls)
+        with patch.object(nodes,'all',return_value=bad):
+            records,summaries=step.inspect(nodes,self.api(),{'ids':{'server':SERVER}},'node1',lambda s:None)
+        self.assertFalse(any(v[1]=='compare' for v in nodes.calls))
+        self.assertFalse(summaries['node2']['inspection_complete'])
     def test_missing_placement_inventory_marks_incomplete(self):
         api=self.api();api.list=lambda *args:[]
         records,summaries=step.inspect(self.nodes(),api,{'ids':{'server':SERVER}},'node1',lambda s:None)
         self.assertFalse(summaries['node2']['inspection_complete'])
         self.assertFalse(summaries['node2']['placement_capacity_collected'])
+
+class RegressionTests(unittest.TestCase):
+    # The actual libvirt v10.0.0 API contracts are in src/libvirt-domain.c
+    # virDomainGetXMLDesc and src/libvirt-host.c virConnectCompareHypervisorCPU.
+    # Reproduce those rejection rules rather than treating every virsh call as
+    # successful, which allowed the original incompatible flags through tests.
+    def test_libvirt10_connection_rules_and_ordinary_xml(self):
+        calls=[]
+        def libvirt10(args,**kwargs):
+            calls.append(args)
+            rejected='--readonly' in args and ('--migratable' in args or 'hypervisor-cpu-compare' in args)
+            return SimpleNamespace(returncode=1 if rejected else 0,stdout='' if rejected else XML,stderr='operation forbidden for read only access' if rejected else '')
+        with patch.object(node.subprocess,'run',side_effect=libvirt10):
+            value=node.virsh('dumpxml',SERVER)
+            self.assertEqual(value.stdout,XML)
+            self.assertTrue(node.compare('node2',{'domain':DOMAIN})['source_cpu_supported_by_destination_hypervisor'])
+        self.assertIn('--readonly',calls[0]);self.assertNotIn('--migratable',calls[0])
+        self.assertNotIn('--readonly',calls[1]);self.assertIn('hypervisor-cpu-compare',calls[1])
+    def test_no_vm_mutation_or_sensitive_xml_flag_is_accepted(self):
+        with patch.object(node,'run') as run:
+            for args in [('migrate',SERVER),('destroy',SERVER),('start',SERVER),('dumpxml',SERVER,'--security-info'),('dumpxml',SERVER,'--migratable')]:
+                with self.assertRaises(RuntimeError):node.virsh(*args)
+        run.assert_not_called()
+    def test_command_failure_identifies_query_and_classifies_without_raw_secret(self):
+        value=SimpleNamespace(returncode=1,stdout='',stderr='operation forbidden for read only access PASSWORD=PRIVATE_SECRET')
+        with patch.object(node.subprocess,'run',return_value=value),self.assertRaises(node.CommandFailure) as error:
+            node.virsh('dumpxml',SERVER)
+        self.assertIn('dumpxml',str(error.exception));self.assertIn(SERVER,str(error.exception))
+        self.assertEqual(error.exception.details['exit_status'],1)
+        self.assertNotIn('PRIVATE_SECRET',json.dumps(node.failure(error.exception,'source VM XML inspection')))
+    def test_query_timeout_is_bounded_and_identifies_operation(self):
+        import subprocess
+        with patch.object(node.subprocess,'run',side_effect=subprocess.TimeoutExpired(['docker'],35)),self.assertRaisesRegex(node.CommandFailure,'timed out'):
+            node.virsh('capabilities')
+    def test_source_xml_failure_preserves_ram_disk_config_and_version(self):
+        parser=node.configparser.ConfigParser(interpolation=None);parser.read_dict({'libvirt':{'connection_uri':'qemu+tcp://192.168.0.200/system'}})
+        containers={'nova_compute':{'id':'a'*64,'image':node.IMAGES['nova_compute'],'running':True,'mounts':[{'Destination':'/var/lib/nova','Source':'/actual/nova'}]},
+                    'nova_libvirt':{'id':'b'*64,'image':node.IMAGES['nova_libvirt'],'running':True}}
+        def virsh(*args,**kwargs):
+            if args[0]=='dumpxml':raise node.CommandFailure(['docker','exec','nova_libvirt','virsh','dumpxml',SERVER],1,'Libvirt could not find the requested VM domain')
+            return SimpleNamespace(stdout='<capabilities><host><cpu><model>test</model></cpu></host></capabilities>' if args[0]=='capabilities' else 'libvirt 10.0.0')
+        def text(path):return 'MemAvailable: 6000000 kB' if str(path)=='/proc/meminfo' else 'model name : Intel'
+        with patch.object(node,'configuration',return_value=(parser,{'config_sha256':'a'*64})),patch.object(node,'virsh',side_effect=virsh),patch.object(node.Path,'read_text',text),patch.object(node.os,'statvfs',return_value=SimpleNamespace(f_bavail=100,f_blocks=200,f_frsize=4096)),patch.object(node.socket,'getaddrinfo',return_value=[]):
+            value=node.observe('node1',SERVER,'node1',containers)
+        self.assertFalse(value['observed']);self.assertIsNone(value['domain'])
+        self.assertEqual(value['memory']['MemAvailable_bytes'],6000000*1024)
+        self.assertEqual(value['instances_storage']['available_bytes'],100*4096)
+        self.assertEqual(value['libvirt_version'],'libvirt 10.0.0')
+        self.assertEqual(value['errors'][0]['stage'],'source VM XML inspection')
+        self.assertIn('dumpxml',value['errors'][0]['command'])
+    def test_short_output_omits_raw_cpu_xml_and_flags_details_retained(self):
+        logs=[]
+        def log(line):logs.append(line)
+        log.details={}
+        workflow=WorkflowTests();nodes=workflow.nodes()
+        records,summaries=step.inspect(nodes,workflow.api(),{'ids':{'server':SERVER}},'node1',log)
+        output='\n'.join(logs)
+        self.assertLess(len(logs),15);self.assertNotIn('<cpu',output);self.assertNotIn('cpu_xml',output)
+        self.assertIn('node2 | PASS | PASS',output)
+        self.assertEqual(log.details['compute_hosts']['node1']['domain']['cpu_xml'],DOMAIN['cpu_xml'])
+    def test_source_failure_still_summarizes_candidates_without_compatibility_attempts(self):
+        workflow=WorkflowTests();nodes=workflow.nodes();values={n:host(n) for n in node.NODES}
+        values['node1'].update(observed=False,domain=None,error='source VM query failed')
+        logs=[]
+        with patch.object(nodes,'all',return_value=values):records,summaries=step.inspect(nodes,workflow.api(),{'ids':{'server':SERVER}},'node1',logs.append)
+        self.assertFalse(nodes.calls)
+        self.assertIn('node2 | NOT CHECKED | NOT CHECKED','\n'.join(logs))
+        self.assertIn('source VM CPU/XML inspection is incomplete',logs[-1])
+        self.assertEqual(summaries['node2']['physical_available_ram_gib'],6.0)
+
 
 if __name__=='__main__':unittest.main()
