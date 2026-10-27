@@ -4,7 +4,7 @@
 
 **Purpose:** stop one MariaDB member, check that the other two still serve the tested requests, then bring the member back.
 
-**Status: script prepared and locally tested; live database test pending.** Chapter B's API VIP test passed. This is a separate exercise.
+**Status: complete — reviewed live report passed `MARIADB_HA_VERIFIED`.** Node2's database was stopped; node1 and node3 stayed Synced/Primary, size 2, with the original cluster UUID. Authenticated API reads passed. The script restored node2 and confirmed all three members Synced/Primary, size 3, with the same UUID; final host/API/Horizon checks passed. All 10 sampled API probes succeeded. This does not prove zero downtime or application-write replication. No further restoration is required by this report. Continue to [D — virtual router](D-router.md); the steps below remain a reference, not a request to repeat C.
 
 ## 1. Understand the test
 
