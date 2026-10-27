@@ -116,6 +116,20 @@ To collect the saved checkpoint and current Cinder/Nova API state, including whi
 
 It authenticates normally, then uses GET requests only. It does not SSH into the guest, format, mount, attach, detach, retry a request or clear the pending marker. `CINDER_VOLUME_STATE_OBSERVED` means the API snapshot was collected; it does not mean the persistence exercise passed. Return that private report before deciding a next action.
 
+### Explicit reattachment of the existing data volume
+
+After reviewing the observation report and authorizing reattachment, use this mode on R2d2:
+
+```bash
+/usr/bin/python3 scripts/phase4-volume.py --reattach
+```
+
+It requires the saved checkpoint for the existing initialized volume, its original filesystem UUID and test-file checksum. Fresh Cinder/Nova reads must show the volume available with no attachments, and the guest must confirm it is absent. It records that reconciliation and one new pending attachment request before proceeding. Do not edit the private state yourself.
+
+The command attaches that same volume once, waits for it to appear, mounts the existing ext4 filesystem and verifies the original file/checksum. It cannot create a volume, format a disk, overwrite the test file, detach a disk or reboot. If the request is uncertain, it stops without a second attempt; return the report. A confirmed attachment can continue through the remaining checks, and a completed run only verifies on repetition.
+
+Expected success remains `CINDER_VOLUME_PERSISTENCE_VERIFIED`. The volume remains mounted at `/mnt/lab-data`.
+
 ## 7. View it yourself
 
 On R2d2:
