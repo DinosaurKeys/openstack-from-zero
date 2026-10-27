@@ -33,7 +33,7 @@ The reviewed resource snapshot showed four CPU cores and about 15 GiB usable RAM
 
 Phase 4 is complete: reviewed live reports passed VM networking and Cinder data persistence across detach/reattach. The VM and volume remain on independent compute/storage hosts; this is not storage HA. Browser sign-in is a separate user-confirmed check.
 
-Next: [Phase 5 — HA validation and VM migration](docs/phase-05/README.md). Begin with fresh readiness checks, then API VIP, MariaDB, virtual router and planned VM migration. The API VIP takeover/restoration test passed; database/router failure tests and migration remain pending. Ceph and automatic VM recovery are deferred.
+Next: [Phase 5 — HA validation and VM migration](docs/phase-05/README.md). Begin with fresh readiness checks, then API VIP, MariaDB, virtual router and planned VM migration. The API VIP and one-member MariaDB tests passed, including restoration. Router failover and VM migration remain pending. Chapter D now starts with a read-only router inspection. Ceph and automatic VM recovery are deferred.
 
 ## Course
 
