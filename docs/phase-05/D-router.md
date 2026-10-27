@@ -2,38 +2,92 @@
 
 [Phase 5](README.md) · [Previous: MariaDB](C-mariadb.md) · [Next: VM migration](E-vm-migration.md)
 
-**Simple idea:** the private network has one active router and two standby copies. We will test whether a standby takes over forwarding the existing VM's traffic.
+**Purpose:** briefly interrupt the active router's virtual HA link, check a standby takes over the existing VM's traffic, then restore the original link.
 
-## 1. Inspect first — no changes
+**Status: live inspection reviewed; test script locally tested. Failover pending.** The reviewed inspection showed node3 holding the private gateway, external router IP and VM floating IP; node1/node2 had no forwarding addresses. All three HA links were UP and tracked by their router Keepalived configuration. Preparation discovers the current owner again.
 
-On **R2d2**, run:
+## 1. Understand the target
+
+| Item | Meaning |
+|---|---|
+| `qrouter-…` namespace | The router's separate networking area on a node |
+| `ha-…` interface | A virtual interface watched by the router's Keepalived |
+| `qr-…` interface | Private network connection; gateway `10.10.10.1` |
+| `qg-…` interface | External connection; router IP and VM floating IP on the active replica |
+
+The test changes only the selected **virtual HA interface inside this router's namespace**. It does not lower a physical management/USB NIC, stop the L3 container, kill a process, change API Keepalived, stop MariaDB, migrate the VM or operate on its disks.
+
+## 2. Prepare — on R2d2 as joe
 
 ```bash
 cd ~/openstack-from-zero
 git pull --ff-only
+/usr/bin/python3 scripts/phase5-router.py --prepare
+```
+
+Enter node sudo passwords and unlock the existing guest key if asked; typing is hidden. The script checks:
+
+1. Healthy hosts, three synchronized database members, API VIP, APIs and Horizon's HTTPS login page.
+2. The existing VM, attached volume, SSH identity, network traffic and saved data checksum.
+3. Three router replicas with one active/two standby; API roles agree with actual forwarding addresses.
+4. Each HA interface's observed Neutron port MAC, name, namespace, container and tracked Keepalived configuration.
+
+It saves a private plan and prints the exact management-SSH **restoration command**. No link is changed.
+
+Expected result:
+
+```text
+RESULT: ROUTER_HA_TEST_PREPARED
+```
+
+**Return the report before applying.** Review the target and restoration command, then approve the interruption. The plan expires after 30 minutes; a failed preparation cannot be applied.
+
+## 3. Run the approved test
+
+Only after reviewing and approving the prepared report:
+
+```bash
+/usr/bin/python3 scripts/phase5-router.py --apply
+```
+
+Keep the terminal open and the printed restoration command in a second terminal. The script:
+
+1. Rechecks the same router, current owner, guest traffic and data.
+2. Records restoration responsibility before lowering only the selected virtual HA link.
+3. Observes a different active replica holding the gateway/external addresses; probes floating-IP ping, guest gateway ping and outbound HTTPS.
+4. Brings the original HA link UP in `finally`, including after an error or Ctrl+C.
+5. Confirms three UP HA links, one active/two standby, guest traffic/data, host/API/Horizon health and the original database cluster UUID. Protected host configuration and database container identities must remain unchanged.
+
+Expected success:
+
+```text
+RESULT: ROUTER_HA_FAILOVER_VERIFIED
+```
+
+Return the report before VM migration. Restoring the original link does not require moving the active role back to its original node.
+
+## 4. Restoration reference
+
+The printed direct command reaches the original node through its **management IP** and brings only the recorded virtual HA interface UP.
+
+If script-managed restoration is not confirmed, on R2d2:
+
+```bash
+/usr/bin/python3 scripts/phase5-router.py --restore
+```
+
+`ROUTER_HA_LINK_RESTORED` confirms link UP only. Run Chapter A and inspect current router roles; return the reports before another fault. A forcibly killed script or loss of R2d2 cannot execute automatic restoration, so retain the direct command. Do not clear private state to repeat a fault.
+
+## Limits
+
+The 90-second role-observation window includes polling; individual bounded SSH/API requests can extend elapsed time. Network probes are samples, not continuous packet capture or exact downtime measurements. This test does not prove uninterrupted TCP sessions, process-crash recovery, whole-node recovery, storage HA or automatic VM recovery.
+
+For read-only interface/configuration facts at any time:
+
+```bash
 /usr/bin/python3 scripts/phase5-router-inspect.py --run
 ```
 
-Enter each node's sudo password in the terminal. The script reads the router ID from your existing private VM record. It checks all three nodes and records:
+`ROUTER_INSPECTION_COLLECTED` means collection succeeded, not that failover passed. No configuration or authentication text is printed; only selected facts and configuration digests are recorded.
 
-| Item | Plain meaning |
-|---|---|
-| Router namespace | The router's separate networking area on that node |
-| `ha-` interface | The virtual interface used by the router's HA mechanism |
-| `qr-` / `qg-` addresses | Private and external router interface addresses |
-| Tracked interface | The interface Keepalived watches for failure |
-| Configuration digest | A fingerprint of the configuration; no password text is printed |
-
-At the end, use the printed `cat` command and return the report. `ROUTER_INSPECTION_COLLECTED` means the facts were collected; it does **not** mean failover passed. An incomplete report is also useful: return it before trying another action.
-
-This inspection does not stop a service, change an interface, create a VM, or operate on the volume. Normal SSH/sudo audit logs may be written.
-
-## 2. Review the proposed test
-
-After reviewing the actual interfaces and settings, prepare a separate test that briefly lowers **only the active router's virtual HA interface**, checks whether a standby takes over, and restores the original interface UP through management SSH. Review the prepared report and restoration command before applying the fault.
-
-The test must verify one active/two standby replicas, guest traffic and the existing volume checksum before and after. It must record network probes while the original HA interface is down.
-
-The fault script is not released by this inspection step. Do not run an improvised interface-down, process-kill or L3-container restart command.
-
-**Pass for the later test:** the active role moves and tested guest traffic recovers, followed by a healthy restored setup. A virtual HA-link test does not prove whole-node recovery, uninterrupted connections or storage HA. Return the report before E.
+[Script](../../scripts/phase5-router.py) · [Node helper](../../scripts/phase5-router-node.py)
