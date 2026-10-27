@@ -232,4 +232,46 @@ class CallbackTests(unittest.TestCase):
         save.assert_not_called()
 
 
+class FaultObservationTests(unittest.TestCase):
+    def api(self,detail_override=None,unavailable=False):
+        request='req-'+MIG
+        action={'action':'live-migration','instance_uuid':SERVER,'request_id':request,'start_time':'2026-10-27T21:19:00'}
+        class API:
+            def __init__(self):self.calls=[]
+            def get(self,service,path):return {'server':{'id':SERVER,'fault':{'code':500,'message':'Example migration precheck failed'}}}
+            def request(self,service,method,path):
+                self.calls.append((method,path))
+                if unavailable:raise RuntimeError('API returned HTTP 403')
+                if '?' in path:return {'instanceActions':[dict(action,request_id='req-'+ID,start_time='2026-10-26T00:00:00'),action]}
+                return {'instanceAction':detail_override if detail_override is not None else dict(action,message='Error',events=[{'event':'conductor_live_migrate_instance','result':'Error','host':'node1','traceback':'File frame PRIVATE_STACK\nnova.exception.ExampleError: PRIVATE_ERROR_VALUE'}])}
+        return API()
+    def test_only_gets_and_selected_fault_event_metadata_are_returned(self):
+        api=self.api();value=step.fault_diagnostics(api,state())
+        self.assertEqual(value['fault_code'],500)
+        self.assertEqual(value['latest_live_migration_action']['request_id'],'req-'+MIG)
+        self.assertEqual(value['latest_live_migration_action']['failed_events'][0]['exception_type'],'nova.exception.ExampleError')
+        self.assertTrue(all(method=='GET' for method,path in api.calls))
+        self.assertNotIn('PRIVATE_STACK',json.dumps(value));self.assertNotIn('PRIVATE_ERROR_VALUE',json.dumps(value))
+    def test_missing_policy_access_retains_fault_without_repair_or_retry(self):
+        api=self.api(unavailable=True);original=copy.deepcopy(state());value=step.fault_diagnostics(api,original)
+        self.assertEqual(value['fault_code'],500);self.assertIn('403',value['action_details']);self.assertEqual(original,state())
+        self.assertEqual(len(api.calls),1)
+    def test_mismatched_action_is_not_used_as_failure_evidence(self):
+        value=step.fault_diagnostics(self.api(detail_override={'instance_uuid':ID}),state())
+        self.assertIsNone(value['latest_live_migration_action']);self.assertIn('identity differs',value['action_details'])
+    def test_sensitive_values_and_raw_traceback_are_never_printed(self):
+        self.assertNotIn('PRIVATE',step.safe_message('password=PRIVATE'))
+        self.assertNotIn('PRIVATE',step.safe_message('failed qemu+tcp://joe:PRIVATE@host/system'))
+        self.assertEqual(step.exception_name('nova.exception.ExampleError: PRIVATE'),'nova.exception.ExampleError')
+        self.assertIsNone(step.exception_name('PRIVATE_FREEFORM_VALUE with spaces'))
+        self.assertIsNone(step.exception_name('PRIVATE_SECRET'))
+        self.assertEqual(step.exception_name('libvirt.libvirtError: PRIVATE'),'libvirt.libvirtError')
+        self.assertEqual(len(step.safe_message('x'*1000)),500)
+    def test_missing_fault_and_action_are_reported_without_guessing(self):
+        api=self.api();api.get=lambda *a:{'server':{'id':SERVER}}
+        api.request=lambda *a:{'instanceActions':[]}
+        value=step.fault_diagnostics(api,state())
+        self.assertIsNone(value['fault_code']);self.assertIsNone(value['fault_message']);self.assertIsNone(value['latest_live_migration_action'])
+
+
 if __name__=='__main__':unittest.main()
