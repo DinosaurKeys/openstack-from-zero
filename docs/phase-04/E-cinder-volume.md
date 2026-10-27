@@ -2,7 +2,7 @@
 
 [Phase 4](README.md) · [Previous: VM networking](D-boot-and-test-vm.md) · [Viewing commands](../command-glossary.md)
 
-**Status: prepared and locally tested; live volume result pending.** Chapter D's reviewed live report passed VM boot, SSH, DHCP, metadata, DNS, outbound HTTPS and floating-IP ping. The VM was on node1; the active router was on node3. Scripts read current IDs and placement rather than assuming those snapshots remain current.
+**Status: complete — reviewed live report `phase4-volume-20261027T145218Z-_v23b1sz.txt` passed.** Chapter D's reviewed live report passed VM boot, SSH, DHCP, metadata, DNS, outbound HTTPS and floating-IP ping. The VM was on node1; the active router was on node3. Scripts read current IDs and placement rather than assuming those snapshots remain current.
 
 ## 1. Two disks, two purposes
 
@@ -159,12 +159,12 @@ A passed report proves this one volume's attachment, filesystem operation and da
 The learning order remains:
 
 1. Finish and review this Cinder volume report.
-2. Prepare separate controlled API VIP, MariaDB and virtual-router HA tests. Explain each interruption and restoration, then obtain approval before fault injection.
-3. Inspect prerequisites/capacity and prepare a planned VM migration between healthy compute nodes.
+2. Continue with [Phase 5 — HA validation and VM migration](../phase-05/README.md), starting with readiness checks.
+3. Review and approve each HA interruption and planned migration before execution.
 4. Assess HA storage/Ceph and automatic VM recovery later. No reinstall is needed for this chapter.
 
 ## Local validation and limits
 
-Tests simulate the full lifecycle, interrupted writes, duplicate resources, identity drift, quota gates, root-disk protection, serial matching, zero-data checks, safe unmount and checksum verification. A disposable regular image file is formatted with the exact ext4 options and exercised using local filesystem tools; no host block device or mounted lab disk is used. These are local tests, not a real Cinder attachment, iSCSI connectivity test or live data-persistence result. Joe's live report supplies that evidence.
+Tests simulate the full lifecycle, interrupted writes, duplicate resources, identity drift, quota gates, root-disk protection, serial matching, zero-data checks, safe unmount and checksum verification. A disposable regular image file is formatted with the exact ext4 options and exercised using local filesystem tools; no host block device or mounted lab disk is used. These are local tests, not a real Cinder attachment, iSCSI connectivity test or live data-persistence result. Joe's reviewed live report supplies attachment and detach/reattach persistence evidence; failure and migration tests remain separate.
 
 [Volume API](https://docs.openstack.org/api-ref/block-storage/v3/) · [Nova volume attachments](https://docs.openstack.org/api-ref/compute/) · [Cinder LVM driver](https://docs.openstack.org/cinder/latest/configuration/block-storage/drivers/lvm-volume-driver.html)
