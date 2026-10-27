@@ -71,21 +71,44 @@ def candidate_summary(item,comparison,transport,requirements):
       'limits':'Snapshot only; margins are not reservations. Migration-stream ports, complete disk/CPU/device compatibility and Nova scheduling are not proven by an authenticated libvirt read.'}
 
 
+def detail(log,name,value):
+    if hasattr(log,'details'):log.details[name]=value
+
+
+def gib(value):
+    return str(round(value/1024**3,2))+' GiB' if isinstance(value,(int,float)) else 'not collected'
+
+
+def host_rows(records,source,log):
+    log('Node | Role | Available RAM | Available instance disk | Inspection')
+    for name,item in records.items():
+        log(name+' | '+('VM source' if name==source else 'candidate')+' | '+gib(item.get('memory',{}).get('MemAvailable_bytes'))+' | '+gib(item.get('instances_storage',{}).get('available_bytes'))+' | '+('collected' if item.get('observed') else 'needs review'))
+        errors=item.get('errors') or ([{'error':item['error']}] if item.get('error') else [])
+        for error in errors:
+            log('  '+name+': '+error.get('stage','inspection')+' — '+error.get('error','not completed'))
+
+
+def checked(value,key):
+    if not value.get('observed'):return 'NOT CHECKED'
+    return 'PASS' if value.get(key) is True else 'NOT CONFIRMED'
+
+
 def inspect(nodes,api,vm,source,log):
     records=nodes.all({'server_id':vm['ids']['server'],'source':source})
-    log('Compute host observations:\n'+json.dumps(records,indent=2))
+    detail(log,'compute_hosts',records);host_rows(records,source,log)
     source_record=records[source]
-    if not source_record.get('observed') or not source_record.get('domain'):raise RuntimeError('Source domain inspection incomplete; no migration can be prepared')
-    domain=source_record['domain']
-    observed={};summaries={};requirements={'ram_mb':prep.PLAN['ram_mb'],'disk_gb':prep.PLAN['disk_gb'],'vcpus':prep.PLAN['vcpus']}
+    domain=source_record.get('domain') if source_record.get('observed') else None
+    requirements={'ram_mb':prep.PLAN['ram_mb'],'disk_gb':prep.PLAN['disk_gb'],'vcpus':prep.PLAN['vcpus']}
     services=api.list('compute','os-services','services')
     hypervisors=api.list('compute','os-hypervisors/detail','hypervisors')
-    log('Nova compute observations:\n'+json.dumps({'services':[{k:s.get(k) for k in ('host','binary','state','status')} for s in services if s.get('binary')=='nova-compute'],
-      'hypervisors':[{k:h.get(k) for k in ('hypervisor_hostname','state','status','vcpus','vcpus_used','memory_mb','memory_mb_used','local_gb','local_gb_used','disk_available_least')} for h in hypervisors]},indent=2))
+    detail(log,'nova_compute',{'services':[{k:s.get(k) for k in ('host','binary','state','status')} for s in services if s.get('binary')=='nova-compute'],
+      'hypervisors':[{k:h.get(k) for k in ('hypervisor_hostname','state','status','vcpus','vcpus_used','memory_mb','memory_mb_used','local_gb','local_gb_used','disk_available_least')} for h in hypervisors]})
+    observed={};summaries={}
+    log('Destination | CPU comparison | Libvirt connection | Nova service | Placement data')
     for dest,item in records.items():
         if dest==source:continue
-        comparison=nodes.call(dest,'compare',{'domain':domain}) if item.get('observed') else {'observed':False}
-        transport=nodes.call(source,'connection',{'peer':dest,'uri':item['nova_config']['connection_uri']}) if item.get('observed') else {'observed':False}
+        comparison=nodes.call(dest,'compare',{'domain':domain}) if domain and item.get('observed') else {'observed':False,'reason':'Source CPU or destination observation unavailable'}
+        transport=nodes.call(source,'connection',{'peer':dest,'uri':item['nova_config']['connection_uri']}) if source_record.get('observed') and item.get('observed') else {'observed':False,'reason':'Source or destination inspection incomplete'}
         summary=candidate_summary(item,comparison,transport,requirements)
         matches=[s for s in services if s.get('binary')=='nova-compute' and s.get('host','').split('.')[0]==dest]
         summary['nova_compute_up_enabled']=len(matches)==1 and matches[0].get('state')=='up' and matches[0].get('status')=='enabled'
@@ -93,12 +116,17 @@ def inspect(nodes,api,vm,source,log):
         except RuntimeError as error:placement={'inspection_error':str(error)}
         summary['placement_capacity_collected']='inspection_error' not in placement
         if not summary['placement_capacity_collected']:summary['inspection_complete']=False
-        observed[dest]={'cpu_comparison':comparison,'source_to_destination_libvirt':transport,'placement':placement}
-        summaries[dest]=summary
-    log('Candidate prerequisite observations:\n'+json.dumps(observed,indent=2))
-    log('Migration inspection summary:\n'+json.dumps({'current_compute_host':source,'VM_requirements':requirements,'candidates':summaries,
-      'destination':'Not selected; review report first','root_disk':'Local root disk must be copied for planned block live migration',
-      'Cinder_volume':'Remains on existing storage backend; no storage migration requested'},indent=2))
+        observed[dest]={'cpu_comparison':comparison,'source_to_destination_libvirt':transport,'placement':placement};summaries[dest]=summary
+        log(dest+' | '+checked(comparison,'source_cpu_supported_by_destination_hypervisor')+' | '+checked(transport,'authenticated_libvirt_read')+' | '+('up/enabled' if summary['nova_compute_up_enabled'] else 'needs review')+' | '+('collected' if summary['placement_capacity_collected'] else 'needs review'))
+        for label,value in [('CPU',comparison),('connection',transport)]:
+            if value.get('error'):log('  '+dest+' '+label+': '+value['error'])
+            elif value.get('comparison') and not value.get('source_cpu_supported_by_destination_hypervisor'):log('  '+dest+' CPU: '+value['comparison'])
+            elif value.get('reason') and value.get('observed'):log('  '+dest+' '+label+': '+value['reason'])
+        if not summary['placement_capacity_collected']:log('  '+dest+': '+placement['inspection_error'])
+    detail(log,'candidate_observations',observed)
+    detail(log,'summary',{'current_compute_host':source,'VM_requirements':requirements,'candidates':summaries,'destination':'Not selected; review report first'})
+    log('Destination: Not selected. No migration requested.')
+    if not domain:log('Blocker: source VM CPU/XML inspection is incomplete; CPU comparison was not attempted.')
     return records,summaries
 
 
@@ -138,12 +166,17 @@ def execute(log):
         if public.is_symlink() or not public.is_file() or ' '.join(public.read_text().split()[:2])!=prepared['public_key']:raise RuntimeError('Guest key differs from preparation')
         boot.ensure_agent(prepared['public_key'],log);ssh=boot.ssh_command(address,known)
         if not router.guest_probe(ssh,address,net.PLAN['private_gateway'])['ok']:raise RuntimeError('Guest baseline network check failed')
-        guest=volume.guest(ssh,vstate,'verify',log)
+        guest=volume.guest(ssh,vstate,'verify',lambda line:None)
+        detail(log,'guest_volume',guest)
+        log('Guest network and data checksum: PASS')
         if guest.get('sha256')!=vstate['sha256'] or guest.get('filesystem_uuid')!=vstate['filesystem_uuid']:raise RuntimeError('Guest data checksum/UUID differs')
         for name in inv.NODES:passwords[name]=getpass.getpass('Joe sudo password on '+name+' (hidden): ')
         profile=access.load_profile(config)
         db.full_checks(db.Nodes(env,passwords),profile,vip.ProbeClient(profile['cacert']))
-        log('Existing workload:\n'+json.dumps({'server_id':vm['ids']['server'],'compute_host':source,'private_ip':private,'floating_ip':address,'volume_id':vstate['volume_id'],'storage_backend':storage,'data_checksum':guest['sha256']},indent=2))
+        workload={'server_id':vm['ids']['server'],'compute_host':source,'private_ip':private,'floating_ip':address,'volume_id':vstate['volume_id'],'storage_backend':storage,'data_checksum':guest['sha256']}
+        detail(log,'workload',workload)
+        log('Existing VM: '+vm['ids']['server']+' on '+source+'; floating IP '+address)
+        log('Data volume: '+vstate['volume_id']+' on '+storage+'; remains attached')
         records,summaries=inspect(Nodes(env,passwords),api,vm,source,log)
         if hashes!=access.input_hashes(config,inventory):raise RuntimeError('Deployment inputs changed during inspection')
         if any(not v.get('observed') for v in records.values()) or any(not v.get('inspection_complete') for v in summaries.values()):raise RuntimeError('Some migration observations are incomplete; return report for review')
@@ -163,15 +196,20 @@ def main(argv=None):
     if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--inspect'],deploy.tools.tool_environment())
     os.umask(0o077);folder=REPO/'reports';inv.private_dir(folder)
     fd,name=tempfile.mkstemp(prefix='phase5-migration-'+dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'),suffix='.txt',dir=folder)
-    print('Private report: '+name,flush=True);status=1
+    print('Private summary: '+name,flush=True);status=1
+    details_path=Path(name).with_suffix('.json')
+    details={'scope':'Read-only migration inspection; no migration requested'}
     with os.fdopen(fd,'w') as out:
         def log(line):print(line,flush=True);out.write(line+'\n');out.flush()
+        log.details=details
         log('Phase 5 E — READ-ONLY planned VM migration inspection')
         try:execute(log);status=0
         except (Exception,KeyboardInterrupt) as error:
             log('RESULT: VM_MIGRATION_INSPECTION_NEEDS_REVIEW');log(str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; private details withheld')
             log('No migration requested. Return report before changing configuration or attempting a move.')
-    print('Read report: cat '+shlex.quote(name));return status
+    with details_path.open('x') as output:json.dump(details,output,indent=2)
+    print('Technical details (private; only if requested): '+str(details_path))
+    print('Read short summary: cat '+shlex.quote(name));return status
 
 if __name__=='__main__':
     try:sys.exit(main())
