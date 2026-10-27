@@ -2,7 +2,7 @@
 
 [Phase 4](README.md) · [Previous: create networks](B-create-networks.md) · [Viewing commands](../command-glossary.md)
 
-**Status: prepared and locally tested; live preparation is pending.** Chapter B must first pass its HA-router and DHCP placement checks for this deployment. This chapter prepares the ingredients; Chapter D will create and test the VM.
+**Status: live preparation report verified.** Chapter B must first pass its HA-router and DHCP placement checks for this deployment. This chapter prepares the ingredients; Chapter D will create and test the VM.
 
 ## 1. The four ingredients
 
@@ -81,10 +81,10 @@ In Horizon, view **Project → Compute → Images**, **Key Pairs**, and **Projec
 
 ## 7. Finish check and lesson
 
-- [ ] Chapter B fresh HA network/router report reviewed.
+- [x] Chapter B fresh HA network/router report reviewed.
 - [x] Chapter C procedure and local tests prepared.
-- [ ] Joe's live preparation report reviewed.
-- [ ] Agree Chapter D VM creation, floating IP and traffic tests.
+- [x] Joe's live preparation report reviewed: `VM_PREPARATION_VERIFIED`.
+- [x] [Chapter D](D-boot-and-test-vm.md) VM/floating-IP/test scope agreed; guide and script prepared.
 
 **Lesson:** the image supplies the OS, the flavor supplies the size, the key supplies the login identity and the security group supplies network access rules. None of those is a running VM. The virtual router is a separate network object; the API VIP is the shared front door for managing OpenStack.
 
