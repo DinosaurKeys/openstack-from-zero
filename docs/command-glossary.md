@@ -1,8 +1,8 @@
-# Lab viewing commands
+# Lab command glossary
 
 [Home](../README.md) · [Phase 4](phase-04/README.md)
 
-These commands inspect the lab. They do not create/delete resources or restart services. The API helper authenticates normally, then sends GET requests; it uses the existing private profile and CA, so no OpenStack CLI installation is required.
+The viewing sections inspect the lab without creating/deleting resources or restarting services. The manual API VIP exercise in section 6 explicitly includes service stop/start commands and requires an approved test. The API helper authenticates normally, then sends GET requests; it uses the existing private profile and CA, so no OpenStack CLI installation is required.
 
 ## Router versus API VIP
 
@@ -149,3 +149,116 @@ sudo sha256sum /mnt/lab-data/persistence-test.txt
 ```
 
 This is a separate data volume, not the VM's local root disk. A mount or persistent file does not prove storage HA. No format command is needed to view a disk.
+
+## 6. Manual API VIP failover and restoration
+
+[Full exercise and automated script: Phase 5 B](phase-05/B-api-vip.md)
+
+**Reference for an approved test, not an instruction to repeat it now.** Unlike the viewing commands above, `systemctl stop/start` changes a service. Use this sequence instead of the automated fault-injection command, never alongside it.
+
+### Step 1 — Find the current owner, from R2d2
+
+```bash
+cd ~/openstack-from-zero
+/usr/bin/python3 scripts/phase3-verify.py --run
+```
+
+Require a passing report and exactly one entry under `vip_owners`. That node currently owns `192.168.0.151`. Router `ha_state` identifies a different component; it does not tell you the API VIP owner.
+
+| Node | Management IP |
+|---|---|
+| node1 | `192.168.0.200` |
+| node2 | `192.168.0.201` |
+| node3 | `192.168.0.202` |
+
+### Step 2 — Connect to that owner and keep restoration ready
+
+On R2d2, replace `CURRENT_OWNER_IP` with the management IP you just confirmed:
+
+```bash
+ssh -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@CURRENT_OWNER_IP
+```
+
+Now **on the owner node**, inspect:
+
+```bash
+hostname
+ip -4 -o address show dev enp0s31f6
+sudo systemctl status kolla-keepalived-container.service --no-pager
+sudo systemctl cat kolla-keepalived-container.service --no-pager
+```
+
+Confirm the hostname, `.151` on the management interface, an active service, and a unit managing the `keepalived` container. Stop if any detail differs. Keep this SSH terminal open. Have the restoration command ready **before** the stop:
+
+```bash
+sudo systemctl start kolla-keepalived-container.service
+```
+
+### Step 3 — Stop only API Keepalived, after approval
+
+**On that same original owner node:**
+
+```bash
+sudo systemctl stop kolla-keepalived-container.service
+sudo systemctl is-active kolla-keepalived-container.service
+```
+
+Expected state: `inactive`. `is-active` returns a nonzero exit code for an inactive service; that is expected here. Kolla supervises the container through systemd, so use this service command rather than stopping the container with Docker. The unit's normal stop grace can take up to 60 seconds.
+
+### Step 4 — Check takeover, from a second R2d2 terminal
+
+Read each node's addresses:
+
+```bash
+# node1
+ssh -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@node1 ip -4 -o address show dev enp0s31f6
+# node2
+ssh -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@node2 ip -4 -o address show dev enp0s31f6
+# node3
+ssh -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@node3 ip -4 -o address show dev enp0s31f6
+```
+
+Look for the exact address `192.168.0.151` on **one different node**. Then check authentication and the existing VM's API listing:
+
+```bash
+cd ~/openstack-from-zero
+/usr/bin/python3 scripts/lab-view.py servers
+```
+
+Check that `lab-vm-01` is still reported ACTIVE. Open `https://192.168.0.151/` to check dashboard access separately. A working VM API listing is not itself a guest SSH or full browser-login test.
+
+These manual checks are snapshots. Use the automated Chapter B script for timed authentication/API samples; do not infer an exact outage duration from how long manual commands take.
+
+### Step 5 — Restore the original owner, even if a check failed
+
+In the SSH terminal still connected to the node you stopped:
+
+```bash
+sudo systemctl start kolla-keepalived-container.service
+sudo systemctl is-active kolla-keepalived-container.service
+sudo docker ps --filter 'name=^/keepalived$' --format 'table {{.Names}}\t{{.Status}}'
+```
+
+Require `active` and a running `keepalived` container. If the SSH session closed, reconnect directly to that original node's **management IP** and run the same start command. Do not choose the new VIP owner as the restoration target.
+
+### Step 6 — Check full health, from R2d2
+
+```bash
+/usr/bin/python3 scripts/phase3-verify.py --run
+/usr/bin/python3 scripts/lab-view.py servers
+```
+
+Require the service/Galera/VIP report to pass, exactly one VIP owner, and successful authenticated VM API access. The VIP may stay on the new owner. Keep the report and review it before another exercise. Do not reinstall services, edit configuration or create another VM for this test.
+
+### Reviewed test result — 27 October 2026
+
+| Item | Observed result |
+|---|---|
+| Original API VIP owner | node2 |
+| Takeover / final owner | node3 / node3 |
+| Original service restoration | Confirmed; final host, Galera, API and Horizon checks passed |
+| Takeover observed after stop request | 7.3 seconds, including SSH/collection delays |
+| Timed API samples | 2 failed out of 3; this is not an exact continuous outage measurement |
+| Result | `API_VIP_FAILOVER_VERIFIED` |
+
+This records a service-level API VIP test. It does not prove host-failure recovery, router failover, storage HA or VM migration. Discover the current owner again before any future test.
