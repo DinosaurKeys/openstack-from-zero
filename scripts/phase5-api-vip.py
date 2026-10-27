@@ -89,10 +89,11 @@ def restore_command(plan):
 
 
 class Nodes:
+    helper_name='phase5-api-vip-node.py'
     def __init__(self,env,passwords):self.env=env;self.passwords=passwords
     def call(self,node,action,container_id=None):
         if node not in inv.NODES or action not in ('observe','full','stop','start'):raise RuntimeError('Unapproved node call')
-        helper=base64.b64encode((REPO/'scripts/phase5-api-vip-node.py').read_bytes()).decode()
+        helper=base64.b64encode((REPO/'scripts'/self.helper_name).read_bytes()).decode()
         baseline=base64.b64encode((REPO/'scripts/phase3-deploy-node.py').read_bytes()).decode()
         code="import base64;exec(compile(base64.b64decode("+repr(helper)+"),'vip-node','exec'),{'__name__':'__main__','BASELINE_SOURCE':"+repr(baseline)+"})"
         args=['sudo','-S','-p','','/usr/bin/python3','-c',code,'--node',node,'--action',action]
