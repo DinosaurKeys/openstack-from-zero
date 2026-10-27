@@ -72,7 +72,7 @@ If restoration is not confirmed, use the exact direct SSH command printed in the
 /usr/bin/python3 scripts/phase5-api-vip.py --restore
 ```
 
-This starts only the recorded API Keepalived service/container and asks for that node's sudo password. `API_KEEPALIVED_RESTORED` confirms the container is running; rerun Chapter A to establish full health afterward. No container is recreated and no configuration is rewritten.
+This starts only the recorded API Keepalived service/container and asks for that node's sudo password. `API_KEEPALIVED_RESTORED` confirms the container is running; rerun Chapter A to establish full health afterward. No container is recreated and no configuration is rewritten. The pinned Kolla deployment uses a 60-second graceful container-stop timeout; the service command has a 90-second allowance, with a separate bounded SSH timeout.
 
 Automatic restoration cannot run if R2d2 loses power or the script is forcibly killed. Keep the direct command available. Do not start the next exercise until restoration and health are confirmed.
 
