@@ -66,7 +66,7 @@ A lost response or interrupted script does not tell us whether Nova accepted or 
 /usr/bin/python3 scripts/phase5-move-vm.py --observe
 ```
 
-This uses GET requests, preserves the pending checkpoint and issues no migration/recovery action. **Return the report before another action.** If Nova completion is confirmed and a full final verification is requested:
+This uses GET requests, preserves the pending checkpoint and issues no migration/recovery action. It shows the VM/migration state, Nova fault code/message and the latest recorded live-migration action with failed-event names and exception class names when available. The original request ID was not saved, so the action is explicitly identified as the latest one for this VM. Full tracebacks and authentication text are not printed. API status alone does not establish whether the guest is running. **Return the report before another action.** If Nova completion is confirmed and a full final verification is requested:
 
 ```bash
 /usr/bin/python3 scripts/phase5-move-vm.py --verify
