@@ -76,6 +76,14 @@ Verification changes no cloud resource. It clears the local pending marker only 
 
 Do not repeat the migration request, clear private state, force-complete, evacuate, reboot, delete source files or stop a host to make the report pass. There is no automatic rollback or move back.
 
+For a messaging timeout, use [the read-only evidence collector](../../scripts/phase5-migration-diagnose.py) when requested. On R2d2, supply the reviewed request ID and UTC incident window:
+
+```bash
+/usr/bin/python3 scripts/phase5-migration-diagnose.py --help
+```
+
+The reviewer supplies the complete command with `--run`, `--request-id`, `--start` and `--end`. Enter each node's sudo password when asked, then return the printed private report. It collects Nova/RabbitMQ container state, bounded incident log excerpts and selected installed Nova RPC settings/source facts on all three nodes. It requests no migration, repair, service change or checkpoint update. Collection is not a diagnosis; empty excerpts and current container health do not establish the incident's cause. Older/rotated log files and broker queue health are outside this collector's scope. Keep the report private.
+
 ## Read-only inspection reference
 
 ```bash
