@@ -2,7 +2,7 @@
 
 [Phase 4](README.md) · [Previous: VM ingredients](C-prepare-vm.md) · [Viewing commands](../command-glossary.md)
 
-**Status: prepared and locally tested; Joe's live VM report is pending.** Chapter B's report verified one active/two standby router replicas and two DHCP agents. Chapter C's report verified the Ubuntu image, flavor, guest key and firewall group.
+**Status: complete — reviewed live report `phase4-boot-vm-20261027T124644Z-dl3xem1r.txt` passed.** Chapter B's report verified one active/two standby router replicas and two DHCP agents. Chapter C's report verified the Ubuntu image, flavor, guest key and firewall group.
 
 ## 1. What we are building
 
@@ -110,7 +110,7 @@ On R2d2:
 
 In Horizon: **Project → Compute → Instances** and **Project → Network → Network Topology**. Browser sign-in remains a separate user-confirmed check.
 
-After reviewing a report, use this mode to repeat the checks on the existing tracked VM without creating cloud resources:
+After reviewing a report, use this mode to repeat the checks on the existing tracked VM without creating cloud resources. Once Chapter E completes, this check permits its validated tracked data volume; unknown attachments still stop verification. It does not test the volume's filesystem or data persistence:
 
 ```bash
 /usr/bin/python3 scripts/phase4-boot-vm.py --verify
@@ -131,10 +131,10 @@ Run `exit` to return from the guest to R2d2. The private key stays on R2d2; it i
 
 The VM's compute host and active router host can differ. When they differ, private traffic can cross VXLAN over management NICs before reaching the active router's external USB connection. Floating-IP access is a NAT mapping, not another physical NIC in the guest.
 
-Once this guest works, plan the Cinder volume exercise and controlled API/database/router failure tests separately. Keep the test guest on a surviving compute node when measuring router failover. No failure injection is performed in Chapter D.
+Continue with [Chapter E — one Cinder data volume](E-cinder-volume.md), then controlled API/database/router failure tests, then planned VM migration. HA storage/Ceph and automatic VM recovery remain deferred. Keep the test guest on a surviving compute node when measuring router failover. No failure injection is performed in Chapter D.
 
 ## Local validation and limits
 
-Tests cover exact one-VM/port/floating-IP scope, quotas, conflicts, drift, partial and uncertain requests, repeat verification, restricted API actions, secret-safe errors, DHCP/route/identity checks and guest result handling. Real temporary Ed25519 keys are used to compare fingerprints with `ssh-keygen`; host-key mismatch cases block login. API/guest/agent responses are fixtures. These tests are not a live Nova boot, actual DHCP lease, SSH login, USB packet capture or failover result. Joe's live report supplies that next evidence.
+Tests cover exact one-VM/port/floating-IP scope, quotas, conflicts, drift, partial and uncertain requests, repeat verification, restricted API actions, secret-safe errors, DHCP/route/identity checks and guest result handling. Real temporary Ed25519 keys are used to compare fingerprints with `ssh-keygen`; host-key mismatch cases block login. API/guest/agent responses are fixtures. These tests are not a live Nova boot, actual DHCP lease, SSH login, USB packet capture or failover result. Joe's reviewed live report supplies VM/guest-network evidence; failover and migration remain untested.
 
 [Nova server/console API](https://docs.openstack.org/api-ref/compute/) · [Neutron ports/floating IPs](https://docs.openstack.org/api-ref/network/v2/) · [cloud-init keys-to-console](https://docs.cloud-init.io/en/latest/reference/modules.html#keys-to-console)
