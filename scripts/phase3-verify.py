@@ -102,10 +102,24 @@ def summarize(records):
             'vip_observations_complete': vip_complete, 'vip_owners': owners if vip_complete else None}
 
 
-def execute(log, work):
+def review_deployment_report(path):
+    deploy.validation.private_file(path)
+    if not path.resolve().is_relative_to((REPO/'reports').resolve()):
+        raise RuntimeError('Deployment report must be inside this repository reports directory')
+    marker = 'Full kolla-deploy.log transcript:\n'
+    text = path.read_text()
+    if text.count(marker) != 1: raise RuntimeError('Expected one complete saved Kolla deployment transcript')
+    return deploy.deployment_recap(text.split(marker, 1)[1])
+
+
+def execute(log, work, deployment_report=None):
     deploy.validation.config_step.load_step('verify_r2d2', 'phase2-check.py').require_r2d2()
     tools.check_paths(ENV)
     deploy.source_guard()
+    if deployment_report is not None:
+        stats = review_deployment_report(deployment_report)
+        log('Saved deployment log review passed; only exact initial MariaDB discovery timeouts were accepted where recorded.')
+        for node, values in stats.items(): log('DEPLOY_RECAP '+node+': '+json.dumps(values, sort_keys=True))
     env = tools.tool_environment()
     inventory = REPO/'private/phase2/inventory.ini'
     deploy.validation.private_file(inventory)
@@ -137,7 +151,10 @@ def execute(log, work):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--run', action='store_true'); args = p.parse_args(argv)
+    p.add_argument('--run', action='store_true')
+    p.add_argument('--deployment-report', type=Path, help='also review the complete saved deployment transcript; never deploy')
+    args = p.parse_args(argv)
+    if args.deployment_report is not None and not args.run: p.error('--deployment-report requires --run')
     if not args.run:
         print('PLAN ONLY: read container states, MariaDB cluster status, VIP and USB bridges on all three nodes; save one private report.')
         print('No deployment, restart, recovery, cleanup or settings change. Use --run on R2d2.'); return 0
@@ -147,7 +164,8 @@ def main(argv=None):
     if Path(sys.prefix) != ENV:
         deploy.validation.config_step.load_step('verify_r2d2', 'phase2-check.py').require_r2d2()
         tools.check_paths(ENV)
-        os.execve(str(ENV/'bin/python'), [str(ENV/'bin/python'), str(Path(__file__).resolve()), '--run'], tools.tool_environment())
+        extra = ['--deployment-report', str(args.deployment_report.resolve())] if args.deployment_report is not None else []
+        os.execve(str(ENV/'bin/python'), [str(ENV/'bin/python'), str(Path(__file__).resolve()), '--run', *extra], tools.tool_environment())
     os.umask(0o077)
     reports = REPO/'reports'; inv.private_dir(reports)
     stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-')
@@ -160,7 +178,7 @@ def main(argv=None):
             print(line, flush=True); output.write(line+'\n'); output.flush()
         log('Existing OpenStack installation: observation only; no install or repair actions.')
         try:
-            status = execute(log, work)
+            status = execute(log, work, args.deployment_report)
         except (Exception, KeyboardInterrupt) as error:
             log('RESULT: OPENSTACK_VERIFICATION_NEEDS_REVIEW')
             log(str(error) if isinstance(error, RuntimeError) else 'Verification interrupted; details withheld.')
