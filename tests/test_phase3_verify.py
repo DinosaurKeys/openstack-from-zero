@@ -146,4 +146,27 @@ class VerifyTests(unittest.TestCase):
             self.assertNotIn('secret-', '\n'.join(logs)+str(events)+''.join(p.read_text() for p in root.rglob('*') if p.is_file()))
 
 
+class SavedDeploymentReportTests(unittest.TestCase):
+    def saved(self):
+        transcript='TASK [mariadb : Check MariaDB service port liveness]\n'
+        for node,address in step.inv.NODES.items():
+            transcript+='fatal: ['+node+']: FAILED! => '+json.dumps({'changed':False,'msg':'Timeout when waiting for search string MariaDB in '+address+':3306'})+'\n...ignoring\n'
+        transcript+=''.join('TASK ['+m+' fixture]\n' for m in ('mariadb :','keystone :','nova-cell :','neutron :','cinder :','horizon :'))
+        transcript+='PLAY RECAP\n'+''.join(n+' : ok=1 changed=1 failed=0 unreachable=0 rescued=0 ignored=1\n' for n in step.inv.NODES)
+        return 'RESULT: OPENSTACK_DEPLOYMENT_NEEDS_REVIEW\nFull kolla-prechecks.log transcript:\nprechecks here\nFull kolla-deploy.log transcript:\n'+transcript
+    def test_reads_complete_saved_transcript_without_running_commands(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'reports').mkdir();path=root/'reports/deploy.txt';path.write_text(self.saved());path.chmod(0o600)
+            original=path.read_bytes()
+            with patch.object(step,'REPO',root),patch.object(step.tools,'Runner',side_effect=AssertionError('must only read')):
+                self.assertEqual(len(step.review_deployment_report(path)),3)
+            self.assertEqual(path.read_bytes(),original)
+    def test_missing_transcript_and_report_outside_reports_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'reports').mkdir();path=root/'reports/deploy.txt';path.write_text('partial report');path.chmod(0o600)
+            with patch.object(step,'REPO',root),self.assertRaisesRegex(RuntimeError,'complete saved'):step.review_deployment_report(path)
+            outside=root/'outside';outside.write_text(self.saved());outside.chmod(0o600)
+            with patch.object(step,'REPO',root),self.assertRaisesRegex(RuntimeError,'inside'):step.review_deployment_report(outside)
+
+
 if __name__ == '__main__': unittest.main()
