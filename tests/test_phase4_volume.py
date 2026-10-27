@@ -323,6 +323,66 @@ class ObservationTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(),before);self.assertIn('RESULT: CINDER_VOLUME_STATE_OBSERVED',lines)
 
 
+class ReattachmentTests(unittest.TestCase):
+    def setup_recovery(self):
+        self.api=API();self.value=state();self.value.update(volume_id=VOLUME,stage='absent',pending='reattach same data volume',baseline=[{'name':'/dev/vda'}],backend=HOST)
+        self.value['sha256']=step.expected_checksum(self.value)
+        volume=step.body_for(self.value)['volume'];volume.update(id=VOLUME,volume_type='__DEFAULT__',status='available',attachments=[],bootable='false',multiattach=False,encrypted=False,
+            **{'os-vol-tenant-attr:tenant_id':PROJECT,'os-vol-host-attr:host':HOST})
+        self.api.volumes=[volume];self.saved=[];self.actions=[]
+        self.save=lambda v:self.saved.append(copy.deepcopy(v))
+        def probe(action):
+            self.actions.append(action)
+            self.assertIn(action,('absent','present','mount','verify'))
+            return {'passed':True,'ready':True,'volume_absent':True,'sha256':step.expected_checksum(self.value)}
+        self.probe=probe
+    def run_recovery(self):return step.reattach_existing(self.api,self.value,PROJECT,self.save,self.probe,lambda line:None)
+    def test_exactly_one_attach_no_format_create_or_detach(self):
+        self.setup_recovery();result=self.run_recovery()
+        self.assertEqual(len(self.api.writes),1);self.assertEqual(self.api.writes[0][0:2],('compute','POST'))
+        self.assertEqual(self.actions,['absent','present','mount','verify']);self.assertEqual(self.value['stage'],'complete')
+        self.assertNotIn('pending',self.value);self.assertEqual(self.saved[0]['pending'],'authorized single reattachment')
+        self.assertTrue(self.saved[0]['reattach_recovery_attempted']);self.assertEqual(self.value['reconciled_request']['pending'],'reattach same data volume')
+        self.assertEqual(result['volume_id'],VOLUME)
+        self.api.writes=[];self.actions=[];self.run_recovery();self.assertFalse(self.api.writes);self.assertEqual(self.actions,['verify'])
+    def test_uncertain_attach_cannot_be_retried(self):
+        self.setup_recovery();self.api.failure=1
+        with self.assertRaises(RuntimeError):self.run_recovery()
+        self.assertEqual(self.value['pending'],'authorized single reattachment')
+        with self.assertRaises(RuntimeError):self.run_recovery()
+        self.assertEqual(len(self.api.writes),1)
+    def test_changed_state_or_saved_identity_blocks_request(self):
+        for change in ({'stage':'written'},{'pending':'other operation'},{'reattach_recovery_attempted':True},{'sha256':'wrong'},{'baseline':[]}):
+            with self.subTest(change=change):
+                self.setup_recovery();self.value.update(change)
+                with self.assertRaises(RuntimeError):self.run_recovery()
+                self.assertFalse(self.api.writes);self.assertFalse(self.saved)
+    def test_live_attachment_or_guest_presence_blocks_request(self):
+        for status in ('in-use','attaching','error_attaching'):
+            with self.subTest(status=status):
+                self.setup_recovery();self.api.volumes[0]['status']=status
+                with self.assertRaises(RuntimeError):self.run_recovery()
+                self.assertFalse(self.api.writes)
+        self.setup_recovery();self.probe=lambda action:{'ready':False}
+        with self.assertRaises(RuntimeError):self.run_recovery()
+        self.assertFalse(self.api.writes)
+    def test_duplicate_volume_and_foreign_nova_attachment_block_request(self):
+        self.setup_recovery();self.api.volumes.append(dict(self.api.volumes[0],id='different'))
+        with self.assertRaises(RuntimeError):self.run_recovery()
+        self.assertFalse(self.api.writes)
+        self.setup_recovery();self.api.rows=[{'volumeId':'foreign'}]
+        with self.assertRaises(RuntimeError):self.run_recovery()
+        self.assertFalse(self.api.writes)
+    def test_recovery_api_rejects_creation_deletion_and_detach(self):
+        api=step.ReattachAPI(SimpleNamespace(),{},'secret');api.server_id=SERVER;api.volume_id=VOLUME
+        with patch.object(api,'request',return_value={}) as request:
+            for args in [('block-storage','POST','volumes',{},202),('compute','DELETE','servers/'+SERVER+'/os-volume_attachments/'+VOLUME,None,202),('compute','POST','servers/foreign/os-volume_attachments',{},200)]:
+                with self.assertRaises(RuntimeError):api.write(*args)
+            request.assert_not_called()
+            api.write('compute','POST','servers/'+SERVER+'/os-volume_attachments',{'volumeAttachment':{'volumeId':VOLUME,'delete_on_termination':False}},200)
+            request.assert_called_once()
+
+
 class RealFilesystemTests(unittest.TestCase):
     def test_ext4_flags_uuid_and_file_roundtrip_in_regular_scratch_image(self):
         # No mount, loop device, host block device or cloud call: only a disposable regular file.
