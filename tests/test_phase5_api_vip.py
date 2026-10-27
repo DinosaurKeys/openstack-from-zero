@@ -132,6 +132,15 @@ class GuardTests(unittest.TestCase):
         with patch.object(step,'execute',side_effect=AssertionError),patch.object(step.deploy.tools,'check_paths',side_effect=AssertionError),contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(step.main([]),0)
         self.assertIn('PLAN ONLY',out.getvalue())
+    def test_failed_preparation_is_rejected_before_password_collection(self):
+        with self.assertRaisesRegex(RuntimeError,'failed --prepare'):
+            step.require_preparation('apply',None)
+        step.require_preparation('prepare',None)
+        step.require_preparation('apply',plan())
+        import inspect
+        source=inspect.getsource(step.execute)
+        self.assertLess(source.index('require_preparation(mode,plan)'),source.index('getpass.getpass'))
+
     def test_restoration_is_management_ip_not_vip(self):
         command=step.restore_command(plan());self.assertIn('192.168.0.201',command);self.assertNotIn('192.168.0.151',command)
         self.assertIn('sudo systemctl start kolla-keepalived-container.service',command)
@@ -158,7 +167,7 @@ class NodeTests(unittest.TestCase):
     def test_only_exact_current_owner_container_can_stop(self):
         after=copy.deepcopy(self.item);after['keepalived']['running']=False;after['vip_owner']=False;after['unit']['active']='inactive'
         with patch.object(node,'collect',side_effect=[self.item,after]),patch.object(node,'run') as run:self.invoke('stop',IDS['node2'])
-        run.assert_called_once_with(['systemctl','stop',node.UNIT],timeout=45)
+        run.assert_called_once_with(['systemctl','stop',node.UNIT],timeout=90)
         for cid,owner in ((IDS['node1'],True),(IDS['node2'],False)):
             item=copy.deepcopy(self.item);item['vip_owner']=owner
             with patch.object(node,'collect',return_value=item),patch.object(node,'run') as run,self.assertRaises(RuntimeError):self.invoke('stop',cid)
@@ -168,7 +177,7 @@ class NodeTests(unittest.TestCase):
         run.assert_not_called()
         stopped=copy.deepcopy(self.item);stopped['keepalived']['running']=False;stopped['unit']['active']='inactive'
         with patch.object(node,'collect',side_effect=[stopped,self.item]),patch.object(node,'run') as run:self.invoke('start',IDS['node2'])
-        run.assert_called_once_with(['systemctl','start',node.UNIT],timeout=45)
+        run.assert_called_once_with(['systemctl','start',node.UNIT],timeout=90)
     def test_node_and_sudo_identity_required(self):
         with patch.object(node.os,'geteuid',return_value=1000),self.assertRaises(RuntimeError):node.execute('node2','stop',IDS['node2'])
         with self.assertRaises(RuntimeError):self.invoke('delete',IDS['node2'])
@@ -194,8 +203,14 @@ class UnitDefinitionTests(unittest.TestCase):
         path=ROOT/'build/real-tools-check/share/kolla-ansible/ansible/module_utils/kolla_systemd_worker.py'
         tree=ast.parse(path.read_text());template=next(ast.literal_eval(v.value) for v in tree.body if isinstance(v,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='TEMPLATE' for t in v.targets))
         from string import Template
-        content=Template(template).substitute(service_name=node.UNIT,engine='docker',deps='docker.service',restart_timeout=120,restart_retries=10,name='keepalived',graceful_timeout=10,restart_policy='always',restart_duration=11)
+        import yaml
+        defaults=yaml.safe_load((ROOT/'build/real-tools-check/share/kolla-ansible/ansible/group_vars/all/common.yml').read_text())
+        self.assertEqual(defaults['docker_common_options']['graceful_timeout'],'{{ docker_graceful_timeout }}')
+        self.assertEqual(defaults['docker_graceful_timeout'],60)
+        content=Template(template).substitute(service_name=node.UNIT,engine='docker',deps='docker.service',restart_timeout=120,restart_retries=10,name='keepalived',graceful_timeout=defaults['docker_graceful_timeout'],restart_policy='always',restart_duration=11)
         self.assertTrue(node.validate_unit(content))
+        self.assertTrue(node.validate_unit(content.replace(' -t 60',' -t 10')))
+        with self.assertRaises(RuntimeError):node.validate_unit(content.replace(' -t 60',' -t 600'))
         for bad in (content.replace('start -a keepalived','start -a mariadb'),content.replace('stop keepalived','stop haproxy'),content.replace('Restart=always','ExecStartPost=/bin/false\nRestart=always')):
             with self.assertRaises(RuntimeError):node.validate_unit(bad)
 
