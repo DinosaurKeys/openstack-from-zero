@@ -10,9 +10,9 @@ Build OpenStack 2026.2 with Kolla-Ansible 23.0.0 on three Ubuntu 24.04 nodes. Le
 
 | Feature | Configure | Install/create | Verify |
 |---|---|---|---|
-| API VIP `192.168.0.151`, Keepalived + HAProxy | [Phase 2 E](docs/phase-02/E-configure-lab.md) | [Phase 3 C](docs/phase-03/C-deploy-openstack.md) | Container/VIP observations in Phase 3 C; HTTPS in D; controlled failover in E |
-| MariaDB/Galera on all three nodes | Phase 2 E and three-node inventory | Phase 3 C | Three Synced/Primary members and shared UUID in Phase 3 C; controlled failover in E |
-| Virtual-router HA | Phase 2 E enables Neutron agent HA | Phase 3 C deploys agents; [Phase 4 B](docs/phase-04/B-create-networks.md) creates the HA router | One active and two standby router agents in Phase 4 B; VM traffic/failover after the first VM works |
+| API VIP `192.168.0.151`, Keepalived + HAProxy | [Phase 2 E](docs/phase-02/E-configure-lab.md) | [Phase 3 C](docs/phase-03/C-deploy-openstack.md) | Container/VIP observations in Phase 3 C; HTTPS in D; controlled failover in Phase 5 |
+| MariaDB/Galera on all three nodes | Phase 2 E and three-node inventory | Phase 3 C | Three Synced/Primary members and shared UUID in Phase 3 C; controlled failover in Phase 5 |
+| Virtual-router HA | Phase 2 E enables Neutron agent HA | Phase 3 C deploys agents; [Phase 4 B](docs/phase-04/B-create-networks.md) creates the HA router | One active and two standby router agents in Phase 4 B; Guest traffic in Phase 4 D; controlled failover in Phase 5 D |
 
 Three nodes provide the places to run replicas. Each service still needs its own HA configuration and test.
 
@@ -31,9 +31,9 @@ The reviewed resource snapshot showed four CPU cores and about 15 GiB usable RAM
 
 ## Current learning step
 
-The fresh deployment's container/Galera/VIP observations, HTTPS API checks, HA router placement and first VM's networking have passed reviewed reports. Chapter D verified SSH, DHCP, metadata, DNS, outbound HTTPS and floating-IP ping. [Phase 4 E](docs/phase-04/E-cinder-volume.md) prepares one data volume and tests persistence across detach/reattach; its live report is pending. Browser sign-in is a separate user-confirmed check.
+Phase 4 is complete: reviewed live reports passed VM networking and Cinder data persistence across detach/reattach. The VM and volume remain on independent compute/storage hosts; this is not storage HA. Browser sign-in is a separate user-confirmed check.
 
-Continue in order: **Cinder volume → controlled API/database/router HA tests → planned VM migration**. HA storage/Ceph and automatic VM recovery are deferred. No reinstall is needed for the volume chapter.
+Next: [Phase 5 — HA validation and VM migration](docs/phase-05/README.md). Begin with fresh readiness checks, then API VIP, MariaDB, virtual router and planned VM migration. These exercises remain untested. Ceph and automatic VM recovery are deferred.
 
 ## Course
 
@@ -43,8 +43,9 @@ Continue in order: **Cinder volume → controlled API/database/router HA tests �
 | 2 — Management environment | [Tools, inventory, HA settings and HTTPS certificates](docs/phase-02/README.md) |
 | 3 — Install OpenStack | [Full prechecks, HA deployment, access and verification](docs/phase-03/README.md) |
 | 4 — Networking and first VM | [HA router, VM ingredients, guest traffic and volumes](docs/phase-04/README.md) |
-| 5 — Application | Planned after the guest and volume checks |
-| 6 — Monitoring | Planned after the application |
+| 5 — HA validation and VM migration | [Readiness, three HA exercises and planned migration](docs/phase-05/README.md) |
+| 6 — Application | Planned after Phase 5 |
+| 7 — Monitoring | Planned after the application |
 
 [Architecture and limits](docs/architecture.md) · [Viewing-command glossary](docs/command-glossary.md) · [Goal and learning plan](docs/00-goal-and-plan.md)
 
