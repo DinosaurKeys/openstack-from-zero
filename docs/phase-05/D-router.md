@@ -2,18 +2,38 @@
 
 [Phase 5](README.md) · [Previous: MariaDB](C-mariadb.md) · [Next: VM migration](E-vm-migration.md)
 
-**Simple idea:** the private network has one active router and two standby copies. We test whether a standby takes over forwarding the VM's traffic.
+**Simple idea:** the private network has one active router and two standby copies. We will test whether a standby takes over forwarding the existing VM's traffic.
 
-**Status: test plan.** The exact per-router Keepalived process and a supported restoration method must be identified and reviewed before interruption. Do not improvise a process-kill command.
+## 1. Inspect first — no changes
 
-| Step | What we do | What we check |
-|---|---|---|
-| 1 | Read current router roles and VM placement | One active, two standby; working guest network |
-| 2 | Identify the active router's Keepalived and restoration method; ask approval | Correct router/process; management access available |
-| 3 | Interrupt only that router's active HA process | A standby becomes the active router |
-| 4 | Probe the VM's network during takeover | Same gateway/floating IP; measure interruption and recovery |
-| 5 | Restore the original router replica | Three healthy replicas, one active/two standby; guest traffic works |
+On **R2d2**, run:
 
-Stopping only the Neutron L3 agent may leave its router Keepalived running. That alone is not a reliable takeover test. API Keepalived and router Keepalived are separate components.
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/phase5-router-inspect.py --run
+```
 
-**Pass:** the active role moves and tested guest traffic recovers, followed by a healthy restored setup. This does not test a whole-node failure or guarantee uninterrupted connections. Return the report before E.
+Enter each node's sudo password in the terminal. The script reads the router ID from your existing private VM record. It checks all three nodes and records:
+
+| Item | Plain meaning |
+|---|---|
+| Router namespace | The router's separate networking area on that node |
+| `ha-` interface | The virtual interface used by the router's HA mechanism |
+| `qr-` / `qg-` addresses | Private and external router interface addresses |
+| Tracked interface | The interface Keepalived watches for failure |
+| Configuration digest | A fingerprint of the configuration; no password text is printed |
+
+At the end, use the printed `cat` command and return the report. `ROUTER_INSPECTION_COLLECTED` means the facts were collected; it does **not** mean failover passed. An incomplete report is also useful: return it before trying another action.
+
+This inspection does not stop a service, change an interface, create a VM, or operate on the volume. Normal SSH/sudo audit logs may be written.
+
+## 2. Review the proposed test
+
+After reviewing the actual interfaces and settings, prepare a separate test that briefly lowers **only the active router's virtual HA interface**, checks whether a standby takes over, and restores the original interface UP through management SSH. Review the prepared report and restoration command before applying the fault.
+
+The test must verify one active/two standby replicas, guest traffic and the existing volume checksum before and after. It must record network probes while the original HA interface is down.
+
+The fault script is not released by this inspection step. Do not run an improvised interface-down, process-kill or L3-container restart command.
+
+**Pass for the later test:** the active role moves and tested guest traffic recovers, followed by a healthy restored setup. A virtual HA-link test does not prove whole-node recovery, uninterrupted connections or storage HA. Return the report before E.
