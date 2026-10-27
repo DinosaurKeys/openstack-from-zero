@@ -4,14 +4,14 @@
 
 **Goal:** check that another service takes over when one stops, then move a running VM for planned maintenance.
 
-Phase 4's VM networking and Cinder persistence reports passed. The API VIP test in B has passed its reviewed live report; MariaDB, router and migration exercises remain pending. Start with A. B has a locally tested prepare/apply/restore script; prepare and review its current target before approving a stop. C also has a locally tested prepare/apply/restore script; review its explicit database target before approving a stop. D–E remain test plans.
+Phase 4's VM networking and Cinder persistence reports passed. Reviewed live reports passed B (API VIP) and C (MariaDB), including restoration. Next is D: collect the router's read-only inspection report before preparing its interruption test. E (VM migration) remains pending. Repeating a completed fault test requires fresh preparation and review.
 
 | Chapter | Simple purpose | Status |
 |---|---|---|
 | [A — Readiness](A-readiness.md) | Check health, resources and where things run | Existing check commands ready |
 | [B — API VIP](B-api-vip.md) | Keep the cloud's front-door address working | Complete — reviewed API VIP takeover and restoration passed |
-| [C — MariaDB](C-mariadb.md) | Keep the database working with one member stopped | Script ready; live report pending |
-| [D — Virtual router](D-router.md) | Keep the VM's network path working after takeover | Test plan |
+| [C — MariaDB](C-mariadb.md) | Keep the database working with one member stopped | Complete — one-member stop, surviving cluster/API reads and three-member restoration passed |
+| [D — Virtual router](D-router.md) | Keep the VM's network path working after takeover | Read-only inspection ready; failover pending |
 | [E — VM migration](E-vm-migration.md) | Move a VM between healthy compute nodes | Test plan |
 
 For each exercise:
