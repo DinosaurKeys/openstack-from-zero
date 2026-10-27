@@ -90,13 +90,15 @@ def check_port(port, project, networks, prepared, server_id=None):
     return address
 
 
-def check_server(server, project, user, networks, prepared):
+def check_server(server, project, user, networks, prepared, allowed_volume=None):
     wanted={'name':PLAN['server_name'],'tenant_id':project,'user_id':user,'key_name':prepared['key'],
             'metadata':{'ofz_chapter':'phase4-d','ofz_private_network':networks['private_network']},
             'image':{'id':prepared['image']},'flavor':{'id':prepared['flavor']}}
     if not net.subset(wanted,server): raise RuntimeError('Tracked VM differs from the approved image/flavor/key/project')
-    if server.get('config_drive') not in ('',False,'False') or server.get('os-extended-volumes:volumes_attached') != []:
-        raise RuntimeError('VM must use HTTP metadata and an image-backed local root disk without Cinder attachments')
+    volumes=server.get('os-extended-volumes:volumes_attached')
+    wanted_volumes=[] if allowed_volume is None else [allowed_volume]
+    if not isinstance(volumes,list) or [v.get('id') for v in volumes]!=wanted_volumes or server.get('config_drive') not in ('',False,'False'):
+        raise RuntimeError('VM root/metadata or data-volume attachments differ from reviewed course state')
 
 
 def check_floating(obj, project, networks, port_id, private_ip):
@@ -119,7 +121,7 @@ def preflight(api, state, project, user, networks, prepared):
         if kind in ids and len(selected)!=1: raise RuntimeError('Tracked '+kind+' is missing or renamed')
     port=next((p for p in ports if p.get('id')==ids.get('port')),None)
     private=check_port(port,project,networks,prepared,ids.get('server')) if port else None
-    if 'server' in ids: check_server(next(s for s in servers if s['id']==ids['server']),project,user,networks,prepared)
+    if 'server' in ids: check_server(next(s for s in servers if s['id']==ids['server']),project,user,networks,prepared,getattr(api,'allowed_data_volume',None))
     relevant=[f for f in floating if f.get('description')==PLAN['floating_ip_description'] or ('port' in ids and f.get('port_id')==ids['port']) or f.get('id')==ids.get('floating_ip')]
     if len(relevant)>1 or any(f.get('id')!=ids.get('floating_ip') for f in relevant): raise RuntimeError('Untracked or conflicting floating IP; no association changes')
     if 'floating_ip' in ids:
@@ -168,7 +170,7 @@ def provision(api,state,project,user,networks,prepared,save,log,verify_only=Fals
         if port.get('device_id') or port.get('status')!='DOWN': raise RuntimeError('The precreated VM port must be unbound/DOWN before boot')
         log('Creating lab-vm-01; Nova selects its compute host. Waiting for ACTIVE.')
         create_one(api,state,save,'server','compute','servers',{'server':server_spec(networks,prepared,ids['port'])},202,'server')
-    server=wait_server(api,ids['server']);check_server(server,project,user,networks,prepared)
+    server=wait_server(api,ids['server']);check_server(server,project,user,networks,prepared,getattr(api,'allowed_data_volume',None))
     host=server.get('OS-EXT-SRV-ATTR:host','').split('.')[0]
     if host not in ('node1','node2','node3'): raise RuntimeError('Nova did not report a known compute host')
     deadline=time.monotonic()+180
@@ -324,6 +326,24 @@ def load_inputs(api,project,user,folder):
     return networks['ids'],ids,public
 
 
+def reviewed_data_volume(api,folder,vm,project,user):
+    """A later completed Chapter E may add exactly one tracked data volume."""
+    path=folder/'volume.json'
+    if not path.exists() and not path.is_symlink():return None
+    deploy.validation.private_file(path);state=json.loads(path.read_text())
+    if state.get('pending') or state.get('stage')!='complete' or state.get('server_id')!=vm['ids'].get('server') or state.get('project_id')!=project or state.get('user_id')!=user or state.get('apis')!=api.urls:
+        raise RuntimeError('Chapter E volume exercise needs review before Chapter D verification')
+    spec=importlib.util.spec_from_file_location('boot_volume_review',REPO/'scripts/phase4-volume.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    if state.get('plan')!=module.PLAN or not module.valid_uuid(state.get('volume_id')):
+        raise RuntimeError('Unreviewed Chapter E volume identity')
+    volume=api.get('block-storage','volumes/'+state['volume_id'])['volume']
+    module.volume_check(volume,state,project)
+    if volume.get('status')!='in-use' or len(volume.get('attachments',[]))!=1:
+        raise RuntimeError('Completed Chapter E volume is not attached')
+    return state['volume_id']
+
+
 def execute(log,verify_only=False):
     deploy.source_guard();env=deploy.tools.tool_environment()
     inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
@@ -349,6 +369,7 @@ def execute(log,verify_only=False):
             if verify_only:raise RuntimeError('No tracked VM state exists; --verify creates no cloud resources')
             state=dict(binding,ids={})
         save=lambda value:net.write_state(path,value)
+        api.allowed_data_volume=reviewed_data_volume(api,folder,state,project,user)
         preflight(api,state,project,user,networks,prepared)
         ensure_agent(public,log)
         identity=provision(api,state,project,user,networks,prepared,save,log,verify_only)
@@ -361,7 +382,7 @@ def execute(log,verify_only=False):
             'external_USB_NIC':deploy.validation.config_step.USB[active.split('.')[0]],'verification':checks,
             'path_evidence':'Guest routes plus successful SSH/ping/metadata/DNS/HTTPS and current API placement. USB/VXLAN path is inferred from this topology; no packet capture or failover test.'},indent=2))
         log('RESULT: FIRST_VM_NETWORKING_VERIFIED')
-        log('VM and floating IP remain running/allocated. Return report. Cinder volumes and failover are not tested.')
+        log('VM and floating IP remain running/allocated. Return report. This command does not test Cinder persistence or failover.')
     return 0
 
 
