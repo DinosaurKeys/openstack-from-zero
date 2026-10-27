@@ -62,6 +62,15 @@ On `OPENSTACK_DEPLOYMENT_NEEDS_REVIEW`, return the report before rerunning or ch
 /usr/bin/python3 scripts/phase3-verify.py --run
 ```
 
+To include a review of the saved deployment transcript in that same observation report:
+
+```bash
+/usr/bin/python3 scripts/phase3-verify.py --run \
+  --deployment-report "$(ls -t reports/phase3-deploy-*.txt | head -n 1)"
+```
+
+This reads the original report's complete Kolla deployment transcript, validates its failed/ignored-event evidence and recap, then collects current service observations. It does not run deployment or alter the original report. It requires the complete saved report, not a terminal excerpt.
+
 This collects fresh container/host/VIP observations and Galera status on all three nodes. It does not repeat deployment. Then use [Chapter D](D-client-access.md) for HTTPS/login/API checks.
 
 **Lesson:** API Keepalived moves the management entry address; Galera replicates service records; Neutron per-router HA protects the VM routing path after a router exists. Those are different mechanisms. None automatically restarts a guest from a failed compute host or replicates local Glance/Cinder storage.
