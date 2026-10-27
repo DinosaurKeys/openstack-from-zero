@@ -4,7 +4,7 @@
 
 **Purpose:** check whether another node takes over the cloud's front-door address, `192.168.0.151`.
 
-**Status: script prepared and locally tested; live failover not yet tested.** No new VM or volume is created. The script uses the existing VM's API record for a read check.
+**Status: live test passed — reviewed report `phase5-api-vip-20261027T174827Z-vwzg87aq.txt`.** No new VM or volume is created. The script uses the existing VM's API record for a read check.
 
 ## 1. Understand the exercise
 
@@ -91,3 +91,9 @@ Sampling can miss a short interruption. Zero failed samples does **not** prove z
 Local tests use simulated nodes/APIs to check target guards, stop/start scope, uncertain responses, interruptions and restoration. Native `ssh -G` checks command configuration without opening a connection. Only Joe's live report can prove takeover in this lab.
 
 [Script](../../scripts/phase5-api-vip.py) · [Node helper](../../scripts/phase5-api-vip-node.py) · [Kolla API HA](https://docs.openstack.org/kolla-ansible/latest/reference/high-availability/haproxy-guide.html) · [Pinned Kolla service supervision](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/module_utils/kolla_systemd_worker.py)
+
+## Reviewed live checkpoint
+
+API VIP ownership moved from node2 to node3; node3 remained the final owner. The original service was restored and final host/Galera/API/Horizon checks passed. Takeover was observed 7.3 seconds after the stop request, including command/collection delays. Two of three timed API samples failed; this is not a measurement of one continuous outage.
+
+[Manual commands and restoration reference](../command-glossary.md#6-manual-api-vip-failover-and-restoration). No new test is requested by this reference.
