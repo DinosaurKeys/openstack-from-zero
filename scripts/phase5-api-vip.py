@@ -97,7 +97,7 @@ class Nodes:
         code="import base64;exec(compile(base64.b64decode("+repr(helper)+"),'vip-node','exec'),{'__name__':'__main__','BASELINE_SOURCE':"+repr(baseline)+"})"
         args=['sudo','-S','-p','','/usr/bin/python3','-c',code,'--node',node,'--action',action]
         if container_id:args+=['--container-id',container_id]
-        proc=subprocess.run(ssh_args(node)+[shlex.join(args)],input=self.passwords[node]+'\n',capture_output=True,text=True,env=self.env,timeout=180 if action=='full' else 60)
+        proc=subprocess.run(ssh_args(node)+[shlex.join(args)],input=self.passwords[node]+'\n',capture_output=True,text=True,env=self.env,timeout=180 if action in ('full','stop','start') else 60)
         try:result=json.loads(proc.stdout)
         except ValueError:raise RuntimeError(node+': no structured response; SSH/sudo or operation needs review') from None
         if proc.returncode or result.get('passed') is not True:raise RuntimeError(node+': '+result.get('error','node call incomplete'))
@@ -200,6 +200,11 @@ def exercise(nodes,plan,profile,client,server_id,save,log,sampler_factory=Sample
     return result
 
 
+def require_preparation(mode,plan):
+    if mode=='apply' and plan is None:
+        raise RuntimeError('No successful preparation plan exists. A failed --prepare cannot be applied; return its report for review')
+
+
 def execute(mode,log):
     deploy.source_guard();env=deploy.tools.tool_environment()
     inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
@@ -217,6 +222,7 @@ def execute(mode,log):
         old=json.loads(receipt.read_text()) if receipt.exists() else {}
         if old.get('restore_required') and mode!='restore':raise RuntimeError('Earlier test requires restoration; use --restore before preparing another test')
         plan=json.loads(path.read_text()) if path.exists() else None
+        require_preparation(mode,plan)
         target=old.get('target') if mode=='restore' else plan.get('target') if plan else None
         passwords={}
         try:
@@ -275,7 +281,8 @@ def main(argv=None):
         try:execute(mode,log);status=0
         except (Exception,KeyboardInterrupt) as error:
             log('RESULT: API_VIP_TEST_NEEDS_REVIEW');log(str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; private details withheld')
-            log('Use the printed direct restoration command if needed; --restore uses management SSH. Return report before another test.')
+            if mode=='prepare':log('Preparation stops no service. Do not run --apply unless preparation reports API_VIP_TEST_PREPARED. Return this report.')
+            else:log('Do not repeat the test. If a stop was attempted, use the direct restoration command or --restore. Return this report.')
     print('Read report: cat '+shlex.quote(name));return status
 
 if __name__=='__main__':
