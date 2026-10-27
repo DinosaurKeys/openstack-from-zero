@@ -29,7 +29,7 @@ PLAN={'scope':'Read-only inspection of the existing VM and all three compute nod
 class Nodes:
     def __init__(self,env,passwords):self.env=env;self.passwords=passwords
     def call(self,node,action,payload):
-        if node not in inv.NODES or action not in ('observe','compare','connection'):raise RuntimeError('Only read-only inspection actions are permitted')
+        if node not in inv.NODES or action not in ('observe','compare','connection','vnc','running'):raise RuntimeError('Only read-only inspection actions are permitted')
         helper=base64.b64encode((REPO/'scripts/phase5-migration-node.py').read_bytes()).decode()
         data=base64.b64encode(json.dumps(payload).encode()).decode()
         code="import base64;exec(compile(base64.b64decode("+repr(helper)+"),'migration-inspection','exec'),{'__name__':'__main__'})"
@@ -93,7 +93,7 @@ def checked(value,key):
     return 'PASS' if value.get(key) is True else 'NOT CONFIRMED'
 
 
-def inspect(nodes,api,vm,source,log):
+def inspect(nodes,api,vm,source,log,selected=None):
     records=nodes.all({'server_id':vm['ids']['server'],'source':source})
     detail(log,'compute_hosts',records);host_rows(records,source,log)
     source_record=records[source]
@@ -124,13 +124,13 @@ def inspect(nodes,api,vm,source,log):
             elif value.get('reason') and value.get('observed'):log('  '+dest+' '+label+': '+value['reason'])
         if not summary['placement_capacity_collected']:log('  '+dest+': '+placement['inspection_error'])
     detail(log,'candidate_observations',observed)
-    detail(log,'summary',{'current_compute_host':source,'VM_requirements':requirements,'candidates':summaries,'destination':'Not selected; review report first'})
-    log('Destination: Not selected. No migration requested.')
+    detail(log,'summary',{'current_compute_host':source,'VM_requirements':requirements,'candidates':summaries,'destination':selected or 'Not selected; review report first'})
+    log('Destination for plan: '+selected+'. No migration requested during these checks.' if selected else 'Destination: Not selected. No migration requested.')
     if not domain:log('Blocker: source VM CPU/XML inspection is incomplete; CPU comparison was not attempted.')
     return records,summaries
 
 
-def execute(log):
+def execute(log,continuation=None):
     deploy.source_guard();env=deploy.tools.tool_environment()
     inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
     hashes=access.input_hashes(config,inventory);inv.ensure_agent(env,log)
@@ -172,14 +172,16 @@ def execute(log):
         if guest.get('sha256')!=vstate['sha256'] or guest.get('filesystem_uuid')!=vstate['filesystem_uuid']:raise RuntimeError('Guest data checksum/UUID differs')
         for name in inv.NODES:passwords[name]=getpass.getpass('Joe sudo password on '+name+' (hidden): ')
         profile=access.load_profile(config)
-        db.full_checks(db.Nodes(env,passwords),profile,vip.ProbeClient(profile['cacert']))
+        service_baseline=db.full_checks(db.Nodes(env,passwords),profile,vip.ProbeClient(profile['cacert']))
         workload={'server_id':vm['ids']['server'],'compute_host':source,'private_ip':private,'floating_ip':address,'volume_id':vstate['volume_id'],'storage_backend':storage,'data_checksum':guest['sha256']}
         detail(log,'workload',workload)
         log('Existing VM: '+vm['ids']['server']+' on '+source+'; floating IP '+address)
         log('Data volume: '+vstate['volume_id']+' on '+storage+'; remains attached')
-        records,summaries=inspect(Nodes(env,passwords),api,vm,source,log)
+        records,summaries=inspect(Nodes(env,passwords),api,vm,source,log,selected=getattr(continuation,'destination',None))
         if hashes!=access.input_hashes(config,inventory):raise RuntimeError('Deployment inputs changed during inspection')
         if any(not v.get('observed') for v in records.values()) or any(not v.get('inspection_complete') for v in summaries.values()):raise RuntimeError('Some migration observations are incomplete; return report for review')
+        if continuation:
+            return continuation(dict(env=env,inventory=inventory,config=config,hashes=hashes,api=api,project=project,user=user,vm=vm,vstate=vstate,prepared=prepared,source=source,ssh=ssh,profile=profile,passwords=passwords,records=records,summaries=summaries,workload=workload,services=service_baseline),log)
         log('RESULT: VM_MIGRATION_INSPECTION_COLLECTED')
         log('Collection only, not migration approval. No destination selected and no migration/VM/volume/service/configuration change requested. Return this report.')
     finally:
