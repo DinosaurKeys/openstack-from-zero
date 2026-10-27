@@ -131,6 +131,52 @@ def migration_snapshot(api,state):
       'migration':{k:item.get(k) for k in ('uuid','status','source_compute','dest_compute','migration_type')} if item else None}
 
 
+def safe_message(value):
+    if value is None:return None
+    line=str(value).splitlines()[0] if str(value).splitlines() else ''
+    if re.search(r'(?i)password|passwd|token|secret|authorization|credential|transport_url',line):return '[sensitive diagnostic text withheld]'
+    line=re.sub(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s\"'<>]+",'[URI withheld]',line)
+    return ' '.join(line.split())[:500]
+
+
+def exception_name(traceback):
+    # Return a class name only, never stack frames, locals or exception values.
+    lines=[line.strip() for line in str(traceback or '').splitlines() if line.strip()]
+    if not lines:return None
+    if ':' not in lines[-1]:return None
+    name=lines[-1].split(':',1)[0]
+    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.]{0,150}',name) and name.startswith(('nova.','libvirt.','oslo_')):return name
+    return name if re.fullmatch(r'[A-Z][A-Za-z0-9_]{0,100}(?:Error|Exception)',name) else None
+
+
+def fault_diagnostics(api,state):
+    server=api.get('compute','servers/'+state['server_id'])['server']
+    if server.get('id')!=state['server_id']:raise RuntimeError('Diagnostic VM identity differs')
+    fault=server.get('fault') or {}
+    result={'fault_code':fault.get('code'),'fault_message':safe_message(fault.get('message')),'latest_live_migration_action':None,
+      'scope':'API fault/action observations only; guest running state not established'}
+    try:
+        path='servers/'+state['server_id']+'/os-instance-actions'
+        actions=api.request('compute','GET',path+'?limit=100').get('instanceActions')
+        if not isinstance(actions,list):raise RuntimeError('Action list response unavailable')
+        matches=[a for a in actions if a.get('action')=='live-migration' and a.get('instance_uuid')==state['server_id']]
+        if not matches:return result
+        action=max(matches,key=lambda a:a.get('start_time') or '')
+        request=action.get('request_id','')
+        if not re.fullmatch(r'req-[a-f0-9-]{36}',request) or not volume.valid_uuid(request[4:]):raise RuntimeError('Action request identity unavailable')
+        detail=api.request('compute','GET',path+'/'+request)['instanceAction']
+        if detail.get('instance_uuid')!=state['server_id'] or detail.get('request_id')!=request or detail.get('action')!='live-migration':raise RuntimeError('Action detail identity differs')
+        events=detail.get('events') or []
+        failed=[e for e in events if str(e.get('result','')).lower() not in ('success','', 'none')]
+        result['latest_live_migration_action']={'request_id':request,'start_time':safe_message(action.get('start_time')),
+          'message':safe_message(detail.get('message')),'failed_events':[{'event':safe_message(e.get('event')),'result':safe_message(e.get('result')),
+          'host':safe_message(e.get('host')),'exception_type':exception_name(e.get('traceback'))} for e in failed[:3]],
+          'correlation':'Latest live-migration action for this VM; original POST request ID was not saved'}
+    except (RuntimeError,KeyError,TypeError,ValueError) as error:
+        result['action_details']='Unavailable: '+(safe_message(str(error)) if isinstance(error,RuntimeError) else type(error).__name__)
+    return result
+
+
 def completed(snapshot):
     return snapshot['server_status']=='ACTIVE' and snapshot['host']==PLAN['destination'] and snapshot['task'] is None and snapshot['migration'] is not None and snapshot['migration']['status']=='completed' and snapshot['migration']['dest_compute']==PLAN['destination']
 
@@ -252,7 +298,10 @@ def observe(log):
         if state.get('project_id')!=project or state.get('user_id')!=user or state.get('apis')!=original.urls:raise RuntimeError('Recorded migration identity differs')
         api=API(original.client,original.urls,original.token,state['server_id'],PLAN['destination'])
         snapshot=migration_snapshot(api,state);inspection.detail(log,'migration_snapshot',snapshot)
-        log(json.dumps(snapshot,indent=2));log('RESULT: VM_MIGRATION_STATE_OBSERVED')
+        log(json.dumps(snapshot,indent=2))
+        diagnostic=fault_diagnostics(api,state);inspection.detail(log,'fault_diagnostics',diagnostic)
+        log('Nova fault/action details:\n'+json.dumps(diagnostic,indent=2))
+        log('RESULT: VM_MIGRATION_STATE_OBSERVED')
         log('GET snapshot only; pending marker unchanged. No retry or recovery action. Return report.')
 
 
