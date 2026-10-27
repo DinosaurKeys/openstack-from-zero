@@ -10,9 +10,9 @@ These commands inspect the lab. They do not create/delete resources or restart s
 |---|---|---|
 | API VIP | Shared address for Horizon and OpenStack APIs; hosted by one controller at a time | `192.168.0.151` |
 | Virtual router | Software router joining the private and external networks | `lab-router`, one active and two standby replicas |
-| Router private gateway | The future VM's gateway | `10.10.10.1` |
+| Router private gateway | The VM's private gateway | `10.10.10.1` |
 | Router external IP | The router port facing the home LAN; used for outbound source NAT | Allocated during creation; read `lab-view.py router` |
-| Floating IP | An external address mapped to a VM's private address | None created yet |
+| Floating IP | An external address mapped to a VM's private address | Allocated in Chapter D; read `lab-view.py floating-ips` |
 
 The router is **not the API VIP**. It has private and external sides. In this course it is HA: one active replica owns the forwarding addresses, and standby replicas can take over. Neutron manages per-router Keepalived separately from the API VIP. Neither router address is assigned to the USB host interface.
 
@@ -34,7 +34,7 @@ git pull --ff-only
 | Images | `/usr/bin/python3 scripts/lab-view.py images` | `active` means available for boot, not that a VM booted |
 | VM sizes | `/usr/bin/python3 scripts/lab-view.py flavors` | RAM in MB, disk in GB, vCPUs |
 | Guest firewall rules | `/usr/bin/python3 scripts/lab-view.py security-groups` | Direction, protocol, ports and allowed source CIDR |
-| VMs | `/usr/bin/python3 scripts/lab-view.py servers` | Name, status and assigned addresses; empty until a VM is created |
+| VMs | `/usr/bin/python3 scripts/lab-view.py servers` | Name, status and assigned addresses; read actual placement and addresses |
 | Floating IPs | `/usr/bin/python3 scripts/lab-view.py floating-ips` | External IP, mapped private IP and status |
 | Volumes | `/usr/bin/python3 scripts/lab-view.py volumes` | Size, status and attachments; a root disk on local compute storage is not listed here |
 | Nova services | `/usr/bin/python3 scripts/lab-view.py compute-services` | Service host, `state: up` and `status: enabled` |
@@ -130,3 +130,22 @@ This requires Chapter D's tracked VM/port/floating IP. It creates no cloud resou
 | Security group | Stateful VM-port firewall rules in this lab |
 
 [Neutron router implementation](https://docs.openstack.org/neutron/latest/contributor/internals/layer3.html) · [OpenStack network-agent command reference](https://docs.openstack.org/python-openstackclient/2026.1/cli/command-objects/network-agent.html)
+
+## Cinder data-volume checks
+
+[Chapter E](phase-04/E-cinder-volume.md) explains disk identification, initialization and persistence. On R2d2, after the exercise completes:
+
+```bash
+/usr/bin/python3 scripts/phase4-volume.py --verify
+```
+
+Inside the guest, inspect the data disk and mount:
+
+```bash
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,SERIAL
+findmnt --mountpoint /mnt/lab-data
+sudo cat /mnt/lab-data/persistence-test.txt
+sudo sha256sum /mnt/lab-data/persistence-test.txt
+```
+
+This is a separate data volume, not the VM's local root disk. A mount or persistent file does not prove storage HA. No format command is needed to view a disk.
