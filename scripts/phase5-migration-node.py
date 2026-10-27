@@ -20,6 +20,32 @@ NODES={'node1':'192.168.0.200','node2':'192.168.0.201','node3':'192.168.0.202'}
 IMAGES={name:'quay.io/openstack.kolla/'+image+':2026.2-ubuntu-noble' for name,image in [('nova_compute','nova-compute'),('nova_libvirt','nova-libvirt')]}
 
 
+# Execute only selected installed Nova XML transformation functions against a
+# synthetic VNC XML document; never import the running driver or alter a VM.
+VNC_READER = r'''import ast,hashlib,importlib.metadata,json,sys,types,xml.etree.ElementTree as ET
+package=importlib.metadata.distribution('nova')
+paths=[package.locate_file('nova/virt/libvirt/'+name) for name in ('driver.py','migration.py')]
+texts=[p.read_text() for p in paths]
+driver,migration=[ast.parse(text) for text in texts]
+functions={n.name:n for n in migration.body if isinstance(n,ast.FunctionDef)}
+names=('graphics_listen_addrs','_update_graphics_xml')
+if any(n not in functions for n in names):raise RuntimeError('Installed Nova graphics helpers unavailable')
+namespace={}
+exec(compile(ast.fix_missing_locations(ast.Module(body=[functions[n] for n in names],type_ignores=[])),'nova-graphics-inspection','exec'),namespace)
+class Data:
+ graphics_listen_addr_vnc=sys.argv[1]
+ def obj_attr_is_set(self,name):return name=='graphics_listen_addr_vnc'
+xml=ET.fromstring('<domain><devices><graphics type="vnc" listen="192.0.2.1"><listen type="address" address="192.0.2.1"/></graphics></devices></domain>')
+result=namespace['_update_graphics_xml'](xml,Data())
+graphics=result.find('devices/graphics')
+updates=graphics.get('listen')==sys.argv[1] and graphics.find('listen').get('address')==sys.argv[1]
+fn=functions.get('get_updated_guest_xml')
+wired=fn is not None and any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='_update_graphics_xml' for n in ast.walk(fn))
+advertises=any(isinstance(n,ast.Assign) and any(isinstance(t,ast.Attribute) and t.attr=='graphics_listen_addr_vnc' for t in n.targets) and ast.unparse(n.value)=='CONF.vnc.server_listen' for n in ast.walk(driver))
+uses=any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='get_updated_guest_xml' for n in ast.walk(driver))
+print(json.dumps({'nova_version':package.version,'source_sha256':{p.name:hashlib.sha256(t.encode()).hexdigest() for p,t in zip(paths,texts)},'graphics_rewrite_test_passed':updates,'graphics_rewrite_wired':wired and advertises and uses}))
+'''
+
 def command_reason(stderr):
     text=(stderr or '').lower()
     for patterns,reason in [
@@ -39,6 +65,8 @@ class CommandFailure(RuntimeError):
         # These fixed inspection command arguments contain no passwords or XML.
         if args[:2]==['docker','inspect']:
             label='docker inspect '+args[-1]
+        elif 'python3' in args and '-c' in args:
+            label='docker exec --user root nova_compute python3 [Nova VNC inspection]'
         else:label=shlex.join(args)
         self.details={'command':label,'exit_status':rc,'reason':reason}
         super().__init__(label+': '+reason+' ('+('timeout' if rc is None else 'exit '+str(rc))+')')
@@ -92,7 +120,9 @@ def domain_summary(raw,server):
     return {'uuid':server,'virt_type':root.get('type'),'arch':os_type.get('arch'),'machine':os_type.get('machine'),
       'emulator':root.findtext('devices/emulator'),'cpu_xml':ET.tostring(cpu,encoding='unicode'),
       'memory':{'value':root.findtext('memory'),'unit':root.find('memory').get('unit') if root.find('memory') is not None else None},
-      'vcpus':root.findtext('vcpu'),'disks':disks}
+      'vcpus':root.findtext('vcpu'),'disks':disks,
+      'host_devices':len(root.findall('devices/hostdev'))+len(root.findall("devices/interface[@type='hostdev']")),
+      'vnc_listen':[g.get('listen') or (g.find('listen').get('address') if g.find('listen') is not None else None) for g in root.findall("devices/graphics[@type='vnc']")]}
 
 
 def identity(node):
@@ -109,7 +139,7 @@ def identity(node):
 
 
 def virsh(*args,input=None,allow_failure=False,uri='qemu:///system'):
-    if not args or args[0] not in ('capabilities','version','dumpxml','hypervisor-cpu-compare','hostname'):
+    if not args or args[0] not in ('capabilities','version','dumpxml','hypervisor-cpu-compare','hostname','list'):
         raise RuntimeError('Only approved libvirt inspection commands are permitted')
     if args[0]=='dumpxml' and (len(args)!=2 or str(uuid.UUID(args[1]))!=args[1]):raise RuntimeError('Only ordinary XML inspection of the tracked UUID is permitted')
     # Libvirt 10 rejects CompareHypervisorCPU on VIR_CONNECT_RO. Use a normal
@@ -190,11 +220,18 @@ def execute(node,action,payload):
         return observe(node,server,source,containers)
     if action=='compare':return compare(node,payload)
     if action=='connection':return connection(node,payload)
+    if action=='vnc':
+        value=json.loads(run(['docker','exec','--user','root','nova_compute','python3','-c',VNC_READER,NODES['node2']]).stdout)
+        return dict(value,node=node,observed=True)
+    if action=='running':
+        server=payload['server_id']
+        if str(uuid.UUID(server))!=server:raise RuntimeError('Invalid tracked VM UUID')
+        return {'node':node,'observed':True,'VM_running':server in virsh('list','--uuid').stdout.splitlines()}
     raise RuntimeError('Only read-only inspection actions are supported')
 
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--node',choices=NODES,required=True);parser.add_argument('--action',choices=['observe','compare','connection'],required=True);parser.add_argument('--payload',required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--node',choices=NODES,required=True);parser.add_argument('--action',choices=['observe','compare','connection','vnc','running'],required=True);parser.add_argument('--payload',required=True);args=parser.parse_args()
     try:
         payload=json.loads(base64.b64decode(args.payload,validate=True));result=execute(args.node,args.action,payload)
     except Exception as error:result=dict(failure(error,args.action),node=args.node,observed=False)
