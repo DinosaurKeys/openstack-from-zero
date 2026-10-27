@@ -26,9 +26,10 @@ A **controller** manages cloud requests. A **compute** runs VMs. **Cinder LVM** 
 | 1. Prerequisites | Ubuntu and SSH access work; actual network/disk details are reviewed and the remaining host preparation is verified |
 | [2. Management environment](phase-02/README.md) | R2d2 has the selected installer tools and reviewed configuration |
 | 3. Install OpenStack | API HA/database cluster/Neutron HA capability deployed; prechecks and cloud service/API checks pass |
-| 4. First VM | HA router placement verified, VM/volume tests pass, controlled failover is tested, then reproduce the workload with Terraform |
-| 5. Deploy an app | Application works and retains its database data |
-| 6. Monitoring | Dashboards show the lab and a test alert works |
+| [4. VM, networking and volumes](phase-04/README.md) | VM networking and Cinder persistence pass reviewed live reports |
+| [5. HA validation and VM migration](phase-05/README.md) | API VIP, database and router tests pass; planned VM migration is verified |
+| 6. Deploy an app | Application works and retains its database data |
+| 7. Monitoring | Dashboards show the lab and a test alert works |
 
 ## How we learn
 
@@ -52,3 +53,5 @@ R2d2 is installed: Ubuntu 24.04.5 LTS on VMware, hostname `r2d2`, account `joe`,
 The combined SSH inspection passed on all three nodes: Ubuntu 24.04, correct hostnames, management IPs and login as `joe`. Their configured gateway and DNS are `192.168.0.1`; R2d2 uses `192.168.162.2`. USB preparation also passed on all three, preserving management access. The NIC result and short lesson are in [Chapter H](phase-01/H-nics-and-storage.md); the separate Cinder disk step is [Chapter I](phase-01/I-cinder-storage.md).
 
 The nodes share an untagged mini switch and TP-Link home router. Home DHCP allocates `.2–.150`. The initial cloud-address proposal is API VIP `.151` and external pool `.152–.199`, preserving nodes `.200–.202`. Current execution instructions stay in [Phase 1](phase-01/README.md).
+
+Ceph/HA storage and automatic VM recovery are deferred. Complete one reviewed exercise at a time; obtain approval before service interruptions or VM migration.
