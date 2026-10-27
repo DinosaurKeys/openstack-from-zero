@@ -286,6 +286,43 @@ class ExistingVMIntegrationTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):step.boot.reviewed_data_volume(api,folder,{'ids':{'server':SERVER}},PROJECT,'user')
 
 
+class ObservationTests(unittest.TestCase):
+    def fixture(self,status='in-use',attached=True):
+        value=state();value.update(volume_id=VOLUME,stage='absent',pending='reattach same data volume',sha256='b'*64)
+        volume=step.body_for(value)['volume'];volume.update(id=VOLUME,volume_type='__DEFAULT__',status=status,attachments=[{'volume_id':VOLUME,'server_id':SERVER}] if attached else [],bootable='false',multiattach=False,encrypted=False,
+            **{'os-vol-tenant-attr:tenant_id':PROJECT,'os-vol-host-attr:host':HOST})
+        rows=[{'volumeId':VOLUME,'serverId':SERVER,'delete_on_termination':False}] if attached else []
+        def get(service,path):
+            if service=='block-storage':return {'volume':copy.deepcopy(volume)}
+            if path.endswith('os-volume_attachments'):return {'volumeAttachments':copy.deepcopy(rows)}
+            return {'server':{'id':SERVER,'name':'lab-vm-01','status':'ACTIVE','OS-EXT-SRV-ATTR:host':'node1','OS-EXT-STS:task_state':None,
+                'os-extended-volumes:volumes_attached':[{'id':VOLUME}] if attached else []}}
+        return value,get
+    def test_pending_snapshot_does_not_resolve_or_modify_it(self):
+        for status,attached in (('in-use',True),('available',False),('attaching',False),('error_attaching',False)):
+            with self.subTest(status=status):
+                value,get=self.fixture(status,attached);before=copy.deepcopy(value)
+                result=step.observe(SimpleNamespace(get=get),value,PROJECT)
+                self.assertEqual(value,before);self.assertEqual(result['checkpoint']['pending'],'reattach same data volume')
+                self.assertEqual(result['volume']['status'],status);self.assertIn('Not yet verified',result['persistence'])
+                if status.startswith('error'):self.assertTrue(result['identity_issues'])
+    def test_read_only_api_rejects_every_mutation(self):
+        api=step.ReadOnlyAPI(SimpleNamespace(),{},'secret')
+        for method in ('POST','PUT','DELETE','PATCH'):
+            with self.assertRaises(RuntimeError):api.request('compute',method,'any',{})
+        with self.assertRaises(RuntimeError):api.write('compute','POST','anything',{},200)
+    def test_local_checkpoint_is_byte_identical_after_observation(self):
+        value,get=self.fixture();urls={'compute':'url','block-storage':'other'};value.update(apis=urls,user_id='user')
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);private=root/'private/phase4';private.mkdir(parents=True)
+            path=private/'volume.json';path.write_text(json.dumps(value));path.chmod(0o600);before=path.read_bytes()
+            vm=private/'vm.json';vm.write_text(json.dumps({'project_id':PROJECT,'user_id':'user','apis':urls,'ids':{'server':SERVER}}));vm.chmod(0o600)
+            original=SimpleNamespace(client=None,urls=urls,token='secret');lines=[]
+            with patch.object(step,'REPO',root),patch.object(step.deploy,'source_guard'),patch.object(step.deploy.tools,'tool_environment',return_value={}),patch.object(step.deploy.validation,'local_checks',return_value=('inventory','config')),patch.object(step.access,'input_hashes',return_value='hash'),patch.object(step.prep,'authenticate',return_value=(original,PROJECT,'user')),patch.object(step.ReadOnlyAPI,'get',side_effect=get),patch.object(step.ReadOnlyAPI,'write',side_effect=AssertionError('No writes')):
+                self.assertEqual(step.execute_observation(lines.append),0)
+            self.assertEqual(path.read_bytes(),before);self.assertIn('RESULT: CINDER_VOLUME_STATE_OBSERVED',lines)
+
+
 class RealFilesystemTests(unittest.TestCase):
     def test_ext4_flags_uuid_and_file_roundtrip_in_regular_scratch_image(self):
         # No mount, loop device, host block device or cloud call: only a disposable regular file.
