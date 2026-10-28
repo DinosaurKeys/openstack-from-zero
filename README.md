@@ -35,7 +35,7 @@ Phase 4 is complete: reviewed live reports passed VM networking and Cinder data 
 
 Continue with [Phase 5 — HA validation and VM migration](docs/phase-05/README.md). The API VIP, one-member MariaDB and virtual-router HA tests passed, including restoration. Network interruption was observed during router takeover; uninterrupted service is not claimed. **Chapter E is paused: migration completion is not verified.** Finish reboot/workload verification and review the pending migration record before preparing or requesting another move. Ceph and automatic VM recovery are deferred.
 
-**Current operating checkpoint:** finish [reboot recovery](docs/reboot-and-recovery.md) before resuming migration. The combined final command is `/usr/bin/python3 scripts/lab-reboot-verify.py --check`: it observes the cluster, existing VM runtime, guest network and saved data, and preserves pending migration records. No migration retry or state reset is part of reboot verification.
+**Current operating checkpoint:** [reboot service recovery](docs/reboot-and-recovery.md). Run `/usr/bin/python3 scripts/lab-reboot-verify.py --check` for the by-node service/agent dashboard. It shows actual up/down, enabled/disabled, container health, Galera, RabbitMQ, VIP and HTTPS API observations. VM/migration checks are paused and do not affect cluster-service health; their records remain preserved. Optional workload verification is a separate explicit mode.
 
 ## Course
 
