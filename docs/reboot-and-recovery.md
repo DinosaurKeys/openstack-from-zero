@@ -47,6 +47,8 @@ These are separate checks you can run whenever you want. They authenticate throu
 
 Target: `enabled` and `up` for all three nodes. **Enabled** means allowed to work; **up** means Nova sees the service heartbeat. A running Docker container alone does not prove this.
 
+If a compute service is disabled, read its **Disabled reason** column before any enable action. The table only reports Nova's recorded reason; it does not enable the service or establish whether that reason is still current. An absent reason is shown as `unknown`.
+
 **Hypervisors** — hosts that run VMs:
 
 ```bash
