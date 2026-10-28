@@ -21,13 +21,13 @@ QUERIES = {
     'security-groups': ('network', 'v2.0/security-groups', 'security_groups', ('id', 'name', 'description', 'security_group_rules')),
     'servers': ('compute', 'servers/detail?limit=100', 'servers', ('id', 'name', 'status', 'addresses', 'OS-EXT-SRV-ATTR:host')),
     'volumes': ('block-storage', 'volumes/detail?limit=100', 'volumes', ('id', 'name', 'status', 'size', 'attachments')),
-    'compute-services': ('compute', 'os-services', 'services', ('id', 'binary', 'host', 'zone', 'status', 'state')),
+    'compute-services': ('compute', 'os-services', 'services', ('id', 'binary', 'host', 'zone', 'status', 'state', 'disabled_reason')),
     'hypervisors': ('compute', 'os-hypervisors/detail', 'hypervisors', ('id', 'hypervisor_hostname', 'state', 'status')),
     'cinder-services': ('block-storage', 'os-services', 'services', ('binary', 'host', 'zone', 'status', 'state')),
     'floating-ips': ('network', 'v2.0/floatingips', 'floatingips', ('id', 'floating_ip_address', 'fixed_ip_address', 'port_id', 'router_id', 'status')),
 }
 TABLES = {
-    'compute-services': ('services', (('Host','host'),('Service','binary'),('Enabled state','status'),('Heartbeat','state'))),
+    'compute-services': ('services', (('Host','host'),('Service','binary'),('Enabled state','status'),('Heartbeat','state'),('Disabled reason','disabled_reason'))),
     'cinder-services': ('services', (('Host','host'),('Service','binary'),('Enabled state','status'),('Heartbeat','state'))),
     'hypervisors': ('hypervisors', (('Host','hypervisor_hostname'),('Enabled state','status'),('State','state'))),
     'agents': ('agents', (('Host','host'),('Agent','agent_type'),('Alive','alive'),('Enabled','admin_state_up'))),
