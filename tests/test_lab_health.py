@@ -42,6 +42,32 @@ def agents():
 
 
 class HealthTests(unittest.TestCase):
+    def test_database_read_errors_are_classified_without_secrets(self):
+        args=['docker','exec','mariadb','mariadb','--defaults-file=/etc/mysql/healthcheck.cnf']
+        for stderr,reason in [('ERROR 2002 private=secret','database connection unavailable'),
+          ('ERROR 1047 WSREP has not yet prepared node private=secret','database not ready for queries'),
+          ('ERROR 1045 access denied password=secret','database query authentication rejected'),
+          ('container is not running password=secret','database container not running')]:
+            with patch.object(n.subprocess,'run',return_value=subprocess.CompletedProcess(args,1,'',stderr)):
+                with self.assertRaises(RuntimeError) as error:n.run(args)
+            self.assertIn(reason,str(error.exception));self.assertNotIn('secret',str(error.exception))
+
+    def test_recent_database_log_extracts_only_view_and_time(self):
+        raw='2026-10-28 21:29:09 0 [Note] WSREP: view(view_id(NON_PRIM,some-id,3) memb {\npassword=secret\n2026-10-28 21:30:00 0 [Note] WSREP: view(view_id(PRIM,some-id,4) memb {'
+        with patch.object(n,'run',return_value=raw) as run:
+            value=n.recent_galera_view()
+        self.assertEqual(value['view'],'PRIM');self.assertEqual(value['log_time'],'2026-10-28 21:30:00')
+        self.assertNotIn('secret',json.dumps(value));self.assertIn('not a live SQL result',value['scope'])
+        self.assertEqual(run.call_args.args[0][-3:],['-n','60','/var/log/kolla/mariadb/mariadb.log'])
+
+    def test_failed_auth_marks_unqueried_checks_as_blocked_by_auth(self):
+        rows=[];details={}
+        with patch.object(h.deploy.validation,'local_checks',side_effect=RuntimeError('HTTP 503 password=secret')):
+            h.api_checks(rows,details,{},include_workload=False)
+        self.assertEqual(details['HTTPS authentication']['error'],'HTTP 503; token withheld')
+        self.assertEqual(details['Neutron agents']['blocked_by'],'HTTPS authentication')
+        self.assertEqual(details['compute HTTPS API read']['blocked_by'],'HTTPS authentication')
+        self.assertNotIn('secret',json.dumps(details))
     def test_short_summary_names_actual_failures_and_preserves_uncertainty(self):
         records={node:host(node) for node in h.NODES}
         failed=['placement_api','nova_api','nova_metadata','nova_scheduler','nova_conductor','neutron_server','cinder_api']
