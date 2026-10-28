@@ -124,6 +124,38 @@ Require all three database members to meet the Galera target and share their UUI
 
 ## 5. Inspect one service before a targeted restart
 
+For the reviewed API-only scope below, use the locally tested [API recovery helper](../scripts/lab-recover-api.py). It is separate from the read-only health checker:
+
+| Approved container | Allowed nodes |
+|---|---|
+| `placement_api` | node1, node3 |
+| `nova_api`, `nova_metadata` | node1, node2, node3 |
+| `neutron_server`, `cinder_api` | node1, node2, node3 |
+
+On R2d2:
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/lab-recover-api.py --plan
+```
+
+Read-only plan: enter the three sudo passwords; read which of the approved containers remain unhealthy. The maximum scope is 14 containers. Healthy ones are skipped. Unknown state, missing containers, unexpected failures, unhealthy database/broker/proxy dependencies or changed identities block recovery.
+
+After approving that exact scope, run:
+
+```bash
+/usr/bin/python3 scripts/lab-recover-api.py --apply
+```
+
+Apply refreshes the plan, then restarts one still-unhealthy approved API container at a time through its verified Kolla unit. It rechecks dependencies before each action and requires the same container to become healthy before continuing. It records each attempt before sending it. A failure, lost response or interruption stops the sequence; return the printed summary instead of repeating `--apply`.
+
+The helper performs no MariaDB/RabbitMQ/ProxySQL/compute/agent restart, compute enable, VM operation or migration retry. Existing workload and migration checkpoints remain byte-for-byte unchanged. Its separate recovery receipt records only its own actions. A surviving pending migration requires separate review even if the APIs recover. An earlier apply receipt blocks another apply until reviewed; there is no force/reset option.
+
+At the end, it checks HTTPS and service state. `APPROVED_API_CONTAINERS_HEALTHY` confirms container checks; `API_AND_SERVICE_CHECKS_PASSED` confirms the listed API/service checks too. Neither means the unresolved VM/migration or guest data has been recovered. Keep and return the report. `--check` delegates to the ordinary read-only cluster checker.
+
+### Manual reference
+
 Example: inspecting **node1 Nova compute**, from R2d2. Substitute only the node/service identified in the reviewed report:
 
 ```bash
