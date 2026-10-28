@@ -28,13 +28,16 @@ RECEIPT='api-recovery-state.json'
 
 
 class Nodes:
+    allowed=ALLOWED
+    profile=None
     def __init__(self,env,passwords):self.env=env;self.passwords=passwords
     def call(self,node,action,name=None,target=None,cluster_uuid=None):
-        if node not in ALLOWED or action not in ('inspect','restart') or (action=='restart' and name not in ALLOWED[node]):raise RuntimeError('Unapproved recovery call')
+        if node not in self.allowed or action not in ('inspect','restart') or (action=='restart' and name not in self.allowed[node]):raise RuntimeError('Unapproved recovery call')
         helper=base64.b64encode((REPO/'scripts/lab-recover-api-node.py').read_bytes()).decode()
         reader=base64.b64encode((REPO/'scripts/lab-health-node.py').read_bytes()).decode()
         code='import base64;exec(compile(base64.b64decode('+repr(helper)+'),"api-recovery-node","exec"),{"__name__":"__main__","HEALTH_SOURCE":'+repr(reader)+'})'
         args=['sudo','-S','-p','','/usr/bin/python3','-c',code,'--node',node,'--action',action]
+        if self.profile:args+=['--profile',self.profile]
         if action=='restart':args+=['--service',name,'--container-id',target['container']['id'],'--unit-sha',target['unit']['sha256'],'--cluster-uuid',cluster_uuid]
         try:
             result=subprocess.run(health.vip.ssh_args(node)+[shlex.join(args)],input=self.passwords[node]+'\n',capture_output=True,text=True,env=self.env,timeout=360)
