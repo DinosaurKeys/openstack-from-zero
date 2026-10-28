@@ -9,6 +9,7 @@ import socket
 import subprocess
 import tarfile
 import re
+import time
 
 NODES={'node1':'192.168.0.200','node2':'192.168.0.201','node3':'192.168.0.202'}
 UUID_PATTERN=r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
@@ -17,8 +18,10 @@ def network_child(name):
     return re.fullmatch(r'(?:neutron_l3_agent_(?:haproxy|keepalived)_qrouter-|neutron_dhcp_agent_(?:dnsmasq|haproxy)_qdhcp-)'+UUID_PATTERN,name) is not None
 
 def run(args, binary=False):
-    p=subprocess.run(args,capture_output=True,text=not binary,timeout=60)
-    if p.returncode:raise RuntimeError(args[0]+' observation/action failed; no retry')
+    p=subprocess.run(args,capture_output=True,text=not binary,timeout=90)
+    if p.returncode:
+        reason='object no longer exists' if b'No such' in (p.stderr if binary else p.stderr.encode()) else 'command returned nonzero'
+        raise RuntimeError(' '.join(args[:2])+': '+reason+'; no retry')
     return p.stdout if binary else p.stdout.strip()
 
 def guard(node):
@@ -53,6 +56,29 @@ def database():
     if result['seqno']<0 or result['safe_to_bootstrap'] not in (0,1):raise RuntimeError('Galera shutdown position unavailable')
     return result
 
+def stop_child(name):
+    fmt='{"id":{{json .Id}},"name":{{json .Name}},"auto_remove":{{json .HostConfig.AutoRemove}}}'
+    before=json.loads(run(['docker','inspect','--format',fmt,name]))
+    cid=before.get('id','')
+    if before.get('name')!='/'+name or not re.fullmatch('[0-9a-f]{64}',cid) or type(before.get('auto_remove')) is not bool:
+        raise RuntimeError('Network helper identity unavailable; no stop')
+    since=str(int(time.time())-2)
+    run(['docker','stop','--time','60',cid])
+    if before['auto_remove']:
+        # AutoRemove containers cannot be inspected after a successful stop.
+        raw=run(['docker','events','--since',since,'--until',str(int(time.time())+1),
+          '--filter','type=container','--filter','container='+cid,'--format','{{json .}}'])
+        events=[json.loads(line) for line in raw.splitlines() if line.strip()]
+        if any(e.get('Actor',{}).get('ID')!=cid or e.get('Actor',{}).get('Attributes',{}).get('name')!=name for e in events):
+            raise RuntimeError('Network helper event identity mismatch')
+        deaths=[e for e in events if e.get('Action')=='die']
+        if len(deaths)!=1 or deaths[0]['Actor']['Attributes'].get('exitCode') not in ('0','143') or not any(e.get('Action')=='destroy' for e in events) or any(e.get('Action')=='oom' for e in events):
+            raise RuntimeError('Removed helper clean exit not confirmed; no further shutdown')
+    else:
+        state=json.loads(run(['docker','inspect','--format','{{json .State}}',cid]))
+        if state.get('Running') is not False or state.get('Status')!='exited' or state.get('ExitCode') not in (0,143) or state.get('OOMKilled'):
+            raise RuntimeError('Network helper clean stop unavailable; no further shutdown')
+
 def action(node,mode):
     guard(node)
     if mode=='inspect':
@@ -61,6 +87,15 @@ def action(node,mode):
         domains=run(['docker','exec','nova_libvirt','virsh','--readonly','list','--uuid']).splitlines()
         return {'host':host,'active_domains':domains,'running':running()}
     if mode=='running':return {'running':running()}
+    if mode=='partial':
+        scope={};exec(__import__('base64').b64decode(HEALTH_SOURCE),scope)
+        current=running();support={}
+        for name in ('mariadb','rabbitmq','proxysql','haproxy','keepalived'):
+            fmt='{"running":{{json .State.Running}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}"none"{{end}}}'
+            support[name]=json.loads(run(['docker','inspect','--format',fmt,name]))
+        processes=run(['ps','-e','-o','comm=']).splitlines()
+        return {'running':current,'support':support,'database':scope['galera'](NODES[node]),
+          'broker':scope['broker'](),'vm_processes':sum(p.strip().startswith(('qemu-system','qemu-kvm')) or p.strip()=='kvm' for p in processes)}
     if mode=='network-children':
         # Kolla must first stop BOTH L3 and DHCP agents/other clients, so their
         # process monitors cannot respawn these separately managed children.
@@ -69,10 +104,7 @@ def action(node,mode):
         if set(current)-set(names)-{'mariadb','rabbitmq','proxysql','haproxy','keepalived'}:
             raise RuntimeError('Cloud clients/agents or unknown containers still running; no network helper stop')
         for name in names:
-            run(['docker','stop','--time','60',name])
-            state=json.loads(run(['docker','inspect','--format','{{json .State}}',name]))
-            if state.get('Running') or state.get('ExitCode') not in (0,143) or state.get('OOMKilled'):
-                raise RuntimeError('Network helper clean stop unavailable; no further shutdown')
+            stop_child(name)
         return {'network_children_stopped':len(names)}
     if mode=='broker':return stopped('rabbitmq')
     if mode=='database':return database()
@@ -80,7 +112,7 @@ def action(node,mode):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--node',choices=NODES,required=True)
-    parser.add_argument('--action',choices=('inspect','running','network-children','broker','database'),required=True)
+    parser.add_argument('--action',choices=('inspect','partial','running','network-children','broker','database'),required=True)
     args=parser.parse_args()
     try:
         print(json.dumps({'node':args.node,'ok':True,'value':action(args.node,args.action)}))
