@@ -308,15 +308,21 @@ The script checks readiness again and asks you to type **`STOP ALL CLOUD SERVICE
 
 The stop stages use the pinned Kolla `stop` action, never `destroy`. Separate stages keep databases running until their clients have stopped. DHCP helpers (`dnsmasq`/metadata `haproxy`) and router helpers (`keepalived`/metadata `haproxy`) are recognized by their exact Neutron name patterns and network/router UUID. They are stopped only after both DHCP/L3 agents and all other cloud clients have stopped, so those agents cannot restart the helpers. Unknown container names still block shutdown. The usual installed Kolla unit stop timeouts still apply: if MariaDB is killed, exits abnormally or its state file is unclear, the script does not mark the services ready for manual poweroff. A clean shutdown reduces risk; it does not guarantee protection against hardware/power faults.
 
-**4. Power off the hosts yourself.** Only after `READY_FOR_MANUAL_POWEROFF`, use normal Ubuntu shutdown on each node. From R2d2:
+**4. Power off Ubuntu with one Bash command.** Only after `READY_FOR_MANUAL_POWEROFF`, run on R2d2:
 
 ```bash
-ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200 'sudo shutdown -h now'
-ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.201 'sudo shutdown -h now'
-ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.202 'sudo shutdown -h now'
+bash scripts/lab-poweroff.sh --apply
 ```
 
-These are your manual host-shutdown commands; the service-stop script cannot send them. Wait until each physical node is fully off before removing power. Lost SSH alone does not prove a completed shutdown.
+Type `POWER OFF ALL NODES` when prompted, then enter joe's sudo password for each node. This final script requires a successful saved service-stop record, checks each host's identity, confirms zero running containers/VM processes and clean MariaDB/RabbitMQ exit states, then schedules normal Ubuntu poweroff in **one minute**. R2d2 remains running. A failed check or unacknowledged SSH request stops the script; previous hosts may already be scheduled. It does not hide errors or retry.
+
+| Command | Purpose |
+|---|---|
+| `python3 scripts/lab-shutdown.py --apply` | Start stopping OpenStack services from a healthy running lab |
+| `python3 scripts/lab-shutdown.py --finish` | Continue a reviewed interrupted network-helper stage; skip the completed initial stop |
+| `bash scripts/lab-poweroff.sh --apply` | After verified service shutdown, schedule Ubuntu poweroff on all three nodes |
+
+The two Python modes leave hosts powered on. The separate Bash command performs the final host shutdown. Optional `bash scripts/lab-poweroff.sh --check` only checks the saved record and hosts; no poweroff request is sent. Wait until each physical node is fully off before removing power. Acknowledged requests or lost SSH alone do not prove completed physical shutdown.
 
 **If it stops early:** `SHUTDOWN_NEEDS_REVIEW` means some services may already have stopped; the script never powers off hosts. Keep the printed private report and receipt; do not repeat `--apply`, remove the receipt, bootstrap a database or restart everything. An incomplete receipt blocks another attempt. No automatic restart, retry or rollback is performed. Existing VM/migration checkpoints are preserved. Passwords are entered privately and the temporary Kolla authentication file is removed when the script exits normally or handles an error.
 
@@ -332,7 +338,7 @@ git pull --ff-only
 
 `--finish` requires exactly one saved interrupted helper-stage receipt. It freshly checks all three nodes: no QEMU/KVM guests, no cloud clients or unknown containers running, the original healthy three-member Galera cluster, healthy RabbitMQ and retained proxies. It asks for confirmation before continuing with remaining helpers, proxies, RabbitMQ and MariaDB. It does not repeat the initial cloud-service stop, discard the receipt, restart services or power off hosts. A different interrupted stage needs separate review.
 
-Neutron helpers configured to remove themselves after exit are verified using matching Docker container-ID exit/removal events. Retained helper containers are verified through their exit state. Missing evidence, OOM or an abnormal exit blocks further stops. After `READY_FOR_MANUAL_POWEROFF`, use the manual Ubuntu commands above.
+Neutron helpers configured to remove themselves after exit are verified using matching Docker container-ID exit/removal events. Retained helper containers are verified through their exit state. Missing evidence, OOM or an abnormal exit blocks further stops. After `READY_FOR_MANUAL_POWEROFF`, use the Bash poweroff command above.
 
 **5. Next power-on.** Start **node3 first**, then node2 and node1: node3 was the last RabbitMQ/database member stopped by this procedure. Do not wait for a healthy three-member cluster before starting the other two nodes. After all three hosts are reachable, run:
 
