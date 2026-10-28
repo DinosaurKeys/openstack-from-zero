@@ -12,6 +12,18 @@ view=importlib.util.module_from_spec(spec);spec.loader.exec_module(view)
 
 
 class ViewingTableTests(unittest.TestCase):
+    def test_disabled_reason_is_retained_in_json_and_table_without_mutation(self):
+        class API:
+            def list(self,service,path,key):
+                if (service,path,key)!=('compute','os-services','services'):raise AssertionError('Unexpected route')
+                return [{'host':'node2','binary':'nova-compute','status':'disabled','state':'down',
+                  'disabled_reason':'AUTO: Connection to libvirt lost','unselected_private_field':'private'}]
+        result=view.collect(API(),'compute-services')
+        self.assertEqual(result['services'][0]['disabled_reason'],'AUTO: Connection to libvirt lost')
+        text=view.table('compute-services',result)
+        self.assertIn('Disabled reason',text);self.assertIn('AUTO: Connection to libvirt lost',text)
+        self.assertNotIn('unselected_private_field',str(result))
+
     def test_agents_liveness_and_admin_state_are_separate(self):
         data={'agents':[{'host':'node1','agent_type':'L3 agent','alive':True,'admin_state_up':False},
           {'host':'node2','agent_type':'DHCP agent','alive':False,'admin_state_up':True}]}
