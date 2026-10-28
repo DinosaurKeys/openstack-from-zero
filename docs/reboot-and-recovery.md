@@ -274,9 +274,9 @@ Use the actual existing JSON sibling of your TXT report. This formats saved evid
 
 ### Full shutdown — node1, node2 and node3
 
-Use [lab-shutdown.py](../scripts/lab-shutdown.py) from **R2d2 as joe**. This is a planned whole-lab outage. It leaves R2d2 running. It stops services and schedules normal Ubuntu poweroff; it does not delete containers, databases, disks or cloud objects.
+Use [lab-shutdown.py](../scripts/lab-shutdown.py) from **R2d2 as joe**. This is a planned whole-lab outage. It leaves R2d2 running. It stops services and leaves all three Ubuntu hosts powered on for you to shut down manually; it does not delete containers, databases, disks or cloud objects.
 
-**1. Prepare.** Finish cloud/storage operations, confirm a usable database backup, and cleanly shut down any running VMs through an agreed guest procedure. The script checks all hypervisors and blocks if any domain is still active, including paused guests. It does not stop or repair guests, resolve migration records, or create the backup for you.
+**1. Prepare.** Finish cloud/storage operations and cleanly shut down any running VMs through an agreed guest procedure. The script checks all hypervisors and blocks if any domain is still active, including paused guests. It does not stop or repair guests or resolve migration records.
 
 **2. Check readiness — no services are stopped:**
 
@@ -286,7 +286,7 @@ git pull --ff-only
 /usr/bin/python3 scripts/lab-shutdown.py --check
 ```
 
-Enter joe's sudo password for each node. Require `SHUTDOWN_READINESS_CHECKED`: all three nodes observed, healthy core containers, a synchronized three-member Primary Galera cluster with one UUID, healthy RabbitMQ, no active VM domains and no unrecognized running containers. This is a readiness snapshot, not permission to ignore active cloud operations or backups.
+Enter joe's sudo password for each node. Require `SHUTDOWN_READINESS_CHECKED`: all three nodes observed, healthy core containers, a synchronized three-member Primary Galera cluster with one UUID, healthy RabbitMQ, no active VM domains and no unrecognized running containers. This is a readiness snapshot, not permission to ignore active cloud operations.
 
 The check prints one row per node and saves a private TXT/JSON report. If a container name falls outside the shutdown list, it prints the exact name and node, collects the remaining nodes, and returns `SHUTDOWN_CHECK_NEEDS_REVIEW`. This means the **check needs review**, not that a host or service was shut down. The check sends inspection requests only; it cannot request router stops or host poweroff. Do not use `--apply` to bypass a failed check.
 
@@ -300,17 +300,25 @@ The script checks readiness again and asks you to type **`STOP ALL CLOUD SERVICE
 
 | Order | What it does | Plain meaning |
 |---|---|---|
-| 1 | Kolla stops cloud services/proxies/agents, retaining MariaDB and RabbitMQ; then remaining Neutron DHCP/router helpers stop | Stop database/message clients first |
-| 2 | Stops RabbitMQ on node1, node2, then node3 | Finish the message-broker shutdown; node3 is last |
+| 1 | Kolla stops cloud applications/agents, retaining proxies, MariaDB and RabbitMQ; then remaining Neutron DHCP/router helpers stop | Stop clients first |
+| 2 | Stops proxies/VIP services, then RabbitMQ on node1, node2, then node3 | Stop supporting services after their clients; node3 is the last broker stopped |
 | 3 | Stops MariaDB on node1, node2, then node3 | Shut the database down one member at a time; node3 is last |
 | Check | Requires database exit code 0, valid saved Galera positions, and only node3 marked safe to bootstrap | Confirm recorded clean exits before allowing host poweroff |
-| 4 | After another confirmation, schedules normal Ubuntu poweroff on all three nodes in one minute | Let Ubuntu finish shutting down before cutting electricity |
+| Finish | Reports `READY_FOR_MANUAL_POWEROFF` and exits | All three hosts remain powered on; you control host shutdown |
 
-The stop stages use the pinned Kolla `stop` action, never `destroy`. Separate stages keep databases running until their clients have stopped. DHCP helpers (`dnsmasq`/metadata `haproxy`) and router helpers (`keepalived`/metadata `haproxy`) are recognized by their exact Neutron name patterns and network/router UUID. They are stopped only after both DHCP/L3 agents and all other cloud clients have stopped, so those agents cannot restart the helpers. Unknown container names still block shutdown. The usual installed Kolla unit stop timeouts still apply: if MariaDB is killed, exits abnormally or its state file is unclear, the script blocks OS poweroff. A clean shutdown reduces risk; it does not replace backups or guarantee protection against hardware/power faults.
+The stop stages use the pinned Kolla `stop` action, never `destroy`. Separate stages keep databases running until their clients have stopped. DHCP helpers (`dnsmasq`/metadata `haproxy`) and router helpers (`keepalived`/metadata `haproxy`) are recognized by their exact Neutron name patterns and network/router UUID. They are stopped only after both DHCP/L3 agents and all other cloud clients have stopped, so those agents cannot restart the helpers. Unknown container names still block shutdown. The usual installed Kolla unit stop timeouts still apply: if MariaDB is killed, exits abnormally or its state file is unclear, the script does not mark the services ready for manual poweroff. A clean shutdown reduces risk; it does not guarantee protection against hardware/power faults.
 
-**4. Confirm host poweroff.** Only after all stop checks pass, type **`POWER OFF ALL NODES`** when asked. Expect `LAB_POWEROFF_SCHEDULED`. Wait until each physical node is fully off before removing power. Lost SSH alone does not prove a completed shutdown. If you decline this final confirmation, cloud services remain stopped and the script reports that state for review.
+**4. Power off the hosts yourself.** Only after `READY_FOR_MANUAL_POWEROFF`, use normal Ubuntu shutdown on each node. From R2d2:
 
-**If it stops early:** `SHUTDOWN_NEEDS_REVIEW` means some services or hosts may already have stopped. Keep the printed private report and receipt; do not repeat `--apply`, remove the receipt, bootstrap a database or restart everything. An incomplete receipt blocks another attempt. No automatic restart, retry or rollback is performed. Existing VM/migration checkpoints are preserved. Passwords are entered privately and the temporary Kolla authentication file is removed when the script exits normally or handles an error.
+```bash
+ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200 'sudo shutdown -h now'
+ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.201 'sudo shutdown -h now'
+ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.202 'sudo shutdown -h now'
+```
+
+These are your manual host-shutdown commands; the service-stop script cannot send them. Wait until each physical node is fully off before removing power. Lost SSH alone does not prove a completed shutdown.
+
+**If it stops early:** `SHUTDOWN_NEEDS_REVIEW` means some services may already have stopped; the script never powers off hosts. Keep the printed private report and receipt; do not repeat `--apply`, remove the receipt, bootstrap a database or restart everything. An incomplete receipt blocks another attempt. No automatic restart, retry or rollback is performed. Existing VM/migration checkpoints are preserved. Passwords are entered privately and the temporary Kolla authentication file is removed when the script exits normally or handles an error.
 
 **5. Next power-on.** Start **node3 first**, then node2 and node1: node3 was the last RabbitMQ/database member stopped by this procedure. Do not wait for a healthy three-member cluster before starting the other two nodes. After all three hosts are reachable, run:
 
