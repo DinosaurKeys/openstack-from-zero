@@ -11,10 +11,12 @@ Run these steps on **R2d2 as joe**. The nodes are node1 `.200`, node2 `.201`, no
 ```bash
 cd ~/openstack-from-zero
 git pull --ff-only
-/usr/bin/python3 scripts/lab-health.py --check
+/usr/bin/python3 scripts/lab-reboot-verify.py --check
 ```
 
-Enter each node's sudo password. Read the short table and **Needs attention** list. Return the printed TXT summary; you do not need to interpret JSON.
+Enter each node's sudo password. Read the dashboard: containers, Nova services, hypervisors, Neutron agents, Cinder services, Galera, RabbitMQ, router HA roles and HTTPS APIs are shown separately, by node. Return the printed TXT report; you do not need to interpret JSON.
+
+Container cells show **UP/healthy**, **UP/unhealthy**, **DOWN**, **MISSING** or **UNKNOWN**. Service and agent cells show the heartbeat and administrative state separately, such as **UP/enabled** or **DOWN/disabled**. **UNKNOWN** is a failed/unavailable observation, not proof of DOWN. Healthy services need no restart.
 
 | Result | Meaning |
 |---|---|
@@ -51,7 +53,7 @@ After approval of its exact targets:
 
 It restarts one still-unhealthy approved API container at a time and checks it before continuing. Its scope is limited; it is not a general database/compute/network/VM repair tool. A previous apply receipt blocks another apply. On failure or interruption, return its report—do not delete the receipt or rerun it to force progress.
 
-## 3. Finish with ONE combined verification
+## 3. Verify service recovery
 
 Once the service recovery steps are complete:
 
@@ -59,26 +61,30 @@ Once the service recovery steps are complete:
 /usr/bin/python3 scripts/lab-reboot-verify.py --check
 ```
 
-Enter the three node sudo passwords and unlock the existing guest key if asked. Keep the terminal open; the checks may take several minutes.
-
-This command checks:
-
-1. Cluster containers, Galera, RabbitMQ, VIP, HTTPS, Nova/hypervisor/Cinder services, Neutron agents and router API state.
-2. The existing VM's Nova status and whether its UUID is actually running on exactly one hypervisor.
-3. Guest SSH with its existing pinned identity; DHCP, routes, metadata, DNS and outbound HTTPS.
-4. The existing volume's attachment/backend, actual guest disk and filesystem UUID, mount and saved file checksum.
-5. The recorded migration and unchanged existing checkpoints/configuration.
-
-**It only observes.** It never starts/reboots a VM, retries migration, resets Nova state, mounts/formats a disk, changes attachments or clears a pending checkpoint.
-
-If the volume is present but unmounted, it reports that explicitly. Data is **unverified**, not declared lost. A guest with working SSH but Nova `ERROR` is also reported as a mismatch; it is not silently marked recovered.
+Enter the three node sudo passwords. The default scope is **cluster services and agents only**. VM, data and migration checks are paused and do not affect this service result. Existing checkpoints remain unchanged.
 
 Return the printed short TXT summary:
 
-- `REBOOT_RECOVERY_VERIFIED`: all listed checks passed, including the guest/data and outstanding-checkpoint checks.
-- `REBOOT_RECOVERY_NEEDS_REVIEW`: the report identifies what remains unresolved. Approve an exact repair before changes.
+- `REBOOT_SERVICES_HEALTHY`: the collected cluster/service/agent checks passed; no restart is indicated.
+- `REBOOT_SERVICES_NEED_REVIEW`: inspect the visible DOWN/unhealthy/UNKNOWN entries; approve exact repair targets before changing anything.
 
-Browser sign-in, failure testing, storage HA and a successful VM migration are separate from this reboot check. Migration stays paused until its earlier record is reconciled and a new move is separately approved.
+The command only observes; it performs no restart, VM action, attachment change or checkpoint clearing. Container health and service heartbeat are separate checks. RabbitMQ cluster health does not test every application RPC. Browser sign-in, failure tests, storage HA and VM operation are separate.
+
+### Redisplay an existing report without another lab check
+
+```bash
+/usr/bin/python3 scripts/lab-reboot-verify.py --report reports/reboot-verify-TIMESTAMP-ID.json
+```
+
+Replace the filename with the existing JSON sibling of your TXT report. This formats saved evidence into the same readable dashboard: no SSH, passwords, probes or changes. It is clearly labelled **SAVED SNAPSHOT**, not a new measurement.
+
+### VM verification — later, only when requested
+
+```bash
+/usr/bin/python3 scripts/lab-reboot-verify.py --check --with-workload
+```
+
+This optional read-only mode adds actual VM runtime, pinned guest SSH/network/DHCP/metadata/DNS/HTTPS, volume attachment/filesystem/mount/checksum and recorded migration observations. Its VM/migration result is separate from cluster service health. It never starts/reboots a VM, resets Nova state, mounts/formats a disk or clears checkpoints. An unmounted volume is reported as unverified, not automatically mounted. Migration remains paused.
 
 ## 4. Planned maintenance and full shutdown
 
