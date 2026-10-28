@@ -288,6 +288,8 @@ git pull --ff-only
 
 Enter joe's sudo password for each node. Require `SHUTDOWN_READINESS_CHECKED`: all three nodes observed, healthy core containers, a synchronized three-member Primary Galera cluster with one UUID, healthy RabbitMQ, no active VM domains and no unrecognized running containers. This is a readiness snapshot, not permission to ignore active cloud operations or backups.
 
+The check prints one row per node and saves a private TXT/JSON report. If a container name falls outside the shutdown list, it prints the exact name and node, collects the remaining nodes, and returns `SHUTDOWN_CHECK_NEEDS_REVIEW`. This means the **check needs review**, not that a host or service was shut down. The check sends inspection requests only; it cannot request router stops or host poweroff. Do not use `--apply` to bypass a failed check.
+
 **3. Start the planned shutdown:**
 
 ```bash
