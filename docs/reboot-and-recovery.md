@@ -1,10 +1,12 @@
-# Reboot and recovery
+# Reboot and recovery — check → recover → verify
 
-[Home](../README.md) · [Viewing commands](command-glossary.md)
+[Home](../README.md) · [Manual command reference](reboot-recovery-reference.md) · [Command glossary](command-glossary.md)
 
-**Start here after powering the nodes on. Check first; repair only the component that needs it.** This page is for R2d2 and the current three-node lab, with API VIP **192.168.0.151**.
+Run these steps on **R2d2 as joe**. The nodes are node1 `.200`, node2 `.201`, node3 `.202`; the API VIP is **192.168.0.151**.
 
-## 1. Check the cluster — on R2d2 as joe
+**Use one report to choose the next action. Repair needs a reviewed target and approval.**
+
+## 1. Check after power-on
 
 ```bash
 cd ~/openstack-from-zero
@@ -12,186 +14,94 @@ git pull --ff-only
 /usr/bin/python3 scripts/lab-health.py --check
 ```
 
-Enter joe's sudo password for each node when prompted. Read the short table and **Needs attention** list: it names unhealthy containers and unavailable host checks. Return the printed TXT summary; you do not need to interpret the JSON. The private JSON is available for detailed review.
+Enter each node's sudo password. Read the short table and **Needs attention** list. Return the printed TXT summary; you do not need to interpret JSON.
 
-| Check | What we want |
+| Result | Meaning |
 |---|---|
-| Management access | node1 `.200`, node2 `.201`, node3 `.202` reachable with the expected identity |
-| Core containers | Expected services running, including Neutron API/RPC/periodic workers; configured healthchecks passed. Glance is required on node1 only |
-| MariaDB/Galera | All three `Synced`, `Primary`, connected/ready, size `3`, same cluster UUID |
-| RabbitMQ | Application running on each member, no local resource alarms, all three members in each cluster view, no partitions |
-| API VIP | `.151` on exactly one node's management interface |
-| USB / br-ex | Each provider NIC linked, unnumbered and attached to `br-ex` |
-| HTTPS / Horizon | Authentication, service list reads and the Horizon login page work |
-| Nova | Three scheduler, conductor and compute services enabled/up; three hypervisors enabled/up |
-| Neutron | Twelve expected agents alive/enabled; tracked HA router reports one active and two standby agents |
-| Cinder | Three scheduler and volume services enabled/up |
-| Existing VM / volume | Tracked VM ACTIVE with no task, original data volume attached and in-use |
-| Exercise checkpoints | No unresolved migration, volume operation or restoration marker |
+| PASS | That check passed |
+| REVIEW | A measured state differs from the target |
+| UNKNOWN | The check could not obtain evidence; the component is not proven down |
 
-**PASS** means that check passed. **REVIEW** means an observed state differs from the target. **UNKNOWN** means the check could not obtain evidence; it does not mean the service is definitely broken.
+The check order follows the service dependencies: **nodes → MariaDB → ProxySQL/RabbitMQ → APIs → compute/network agents → VM/data**.
 
-`RESULT: CLUSTER_HEALTH_SNAPSHOT_PASSED` means these snapshot checks passed. `CLUSTER_HEALTH_NEEDS_REVIEW` means return the summary before changes. Detailed reasons are in the private JSON. An unresolved migration can require review even when the control services pass. The health script never clears that marker.
+## 2. Recover only what needs it
 
-This check creates only local reports and may unlock the existing management SSH key. It does not restart services, bootstrap a database, change cloud objects or run guest commands. Container/API state does not prove guest traffic, volume contents, successful migration, browser sign-in or failover. RabbitMQ checks do not test every queue or an end-to-end Nova RPC request. Booting services may initially need time; rerun the same check to obtain a fresh snapshot without repairing anything.
-
-## 2. View services and agents — on R2d2
-
-These are separate checks you can run whenever you want. They authenticate through the private HTTPS profile, then only read API data. No OpenStack CLI installation is required.
-
-**Nova services** — the VM scheduler, conductor and compute workers:
-
-```bash
-/usr/bin/python3 scripts/lab-view.py compute-services --table
-```
-
-Target: `enabled` and `up` for all three nodes. **Enabled** means allowed to work; **up** means Nova sees the service heartbeat. A running Docker container alone does not prove this.
-
-If a compute service is disabled, read its **Disabled reason** column before any enable action. The table only reports Nova's recorded reason; it does not enable the service or establish whether that reason is still current. An absent reason is shown as `unknown`.
-
-**Hypervisors** — hosts that run VMs:
-
-```bash
-/usr/bin/python3 scripts/lab-view.py hypervisors --table
-```
-
-Target: node1, node2 and node3, each `enabled` and `up`.
-
-**Neutron agents** — the node workers for VM networking:
-
-```bash
-/usr/bin/python3 scripts/lab-view.py agents --table
-```
-
-Target: twelve agents: DHCP, L3/router, Open vSwitch and metadata on each node. **Alive: yes** means Neutron sees its heartbeat; **Enabled: yes** means it is administratively allowed to work.
-
-**Cinder services** — the volume scheduler and storage workers:
-
-```bash
-/usr/bin/python3 scripts/lab-view.py cinder-services --table
-```
-
-Target: three `cinder-scheduler` and three `cinder-volume` services, each `enabled` and `up`. This does not prove that the VM can read its attached disk.
-
-**Router HA roles**:
-
-```bash
-/usr/bin/python3 scripts/lab-view.py router
-```
-
-Read `hosting_agents`: one `active`, two `standby`, all alive/enabled. Role state is separate from guest traffic.
-
-If an API read fails, its service/agent state is **unknown**. Use the host/container findings and dependency checks below; do not conclude all agents are down. These viewing commands never restart or enable anything.
-
-## 3. Choose the recovery step from the report
-
-| Finding | Next action |
+| Finding | Next step |
 |---|---|
-| A node is unreachable | Check its power, console, management network and SSH first. Do not recover the database with a missing/unobserved node |
-| All three Galera members meet the target | Skip database recovery |
-| A Primary component survives, but a member is absent or syncing | Inspect that member and its logs; do not bootstrap a second cluster |
-| All members stopped after full shutdown, no surviving Primary component, all nodes reachable | Review the database evidence, then approve Kolla MariaDB recovery below |
-| Database checks unavailable or contradictory | Establish the actual state first; container health or a failed SQL query alone is insufficient |
-| Database healthy; ProxySQL or RabbitMQ needs review | Inspect that dependency before restarting Nova or Neutron |
-| Dependencies healthy; one application service remains unhealthy | Inspect its unit and logs; approve a restart of that exact service only |
-| VM ERROR, pending migration, or unavailable data volume | Separate workload recovery review. Do not reset VM state or retry the migration to make the check pass |
+| SSH or sudo unavailable | Fix access to that node before selecting recovery |
+| All three Galera members Synced/Primary, size 3, same UUID | Skip MariaDB recovery |
+| A Primary component survives, but a member is missing or syncing | Inspect that member; do not bootstrap a second cluster |
+| Complete database outage after all nodes stopped; no surviving Primary component and all nodes observable | Review and approve [Kolla MariaDB recovery](reboot-recovery-reference.md#4-mariadb-recovery--only-after-the-condition-above-is-confirmed) |
+| Database/proxy/broker healthy, application APIs unhealthy | Review the [API recovery scope](reboot-recovery-reference.md#5-inspect-one-service-before-a-targeted-restart); skip healthy containers |
+| Compute service down or disabled | Read its disable reason and startup logs; approve only the affected service action |
+| Neutron agent down or router roles incorrect | Inspect the affected agent and router; container health alone does not prove forwarding |
+| VM ERROR, no running VM, data unmounted or checksum unavailable | Separate workload review; do not retry migration, reset state, mount or format automatically |
 
-The check order is **host access → database → database proxy and message broker → APIs and application services → networking and workloads**. This is a diagnosis order, not an instruction to restart every component.
-
-## 4. MariaDB recovery — only after the condition above is confirmed
-
-This is a changing operation, not part of the health check. Review the fresh report and approve it first. Run once from R2d2, against **all three nodes together**:
+For the supported API recovery profile, inspect the plan:
 
 ```bash
-cd ~/openstack-from-zero
-source /home/joe/venvs/kolla/bin/activate
-
-ANSIBLE_BECOME_ASK_PASS=True kolla-ansible mariadb-recovery \
-  --configdir "$HOME/openstack-from-zero/private/phase2/kolla" \
-  -i "$HOME/openstack-from-zero/private/phase2/inventory.ini" \
-  --limit baremetal \
-  --become \
-  -e ansible_python_interpreter=/usr/bin/python3
-```
-
-Kolla performs its recovery-position checks and bootstrap selection. Do not choose a bootstrap host by guessing, edit `grastate.dat` manually or run `galera_new_cluster`. Recovery restores cluster operation; it is not a backup restore and does not guarantee recovery of transactions lost during abrupt power loss.
-
-After completion:
-
-```bash
-/usr/bin/python3 scripts/lab-health.py --check
-```
-
-Require all three database members to meet the Galera target and share their UUID before repairing database-dependent applications. If recovery fails, return its output; do not repeat it or delete database volumes.
-
-## 5. Inspect one service before a targeted restart
-
-For the reviewed API-only scope below, use the locally tested [API recovery helper](../scripts/lab-recover-api.py). It is separate from the read-only health checker:
-
-| Approved container | Allowed nodes |
-|---|---|
-| `placement_api` | node1, node3 |
-| `nova_api`, `nova_metadata` | node1, node2, node3 |
-| `neutron_server`, `cinder_api` | node1, node2, node3 |
-
-On R2d2:
-
-```bash
-cd ~/openstack-from-zero
-git pull --ff-only
 /usr/bin/python3 scripts/lab-recover-api.py --plan
 ```
 
-Read-only plan: enter the three sudo passwords; read which of the approved containers remain unhealthy. The maximum scope is 14 containers. Healthy ones are skipped. Unknown state, missing containers, unexpected failures, unhealthy database/broker/proxy dependencies or changed identities block recovery.
-
-After approving that exact scope, run:
+After approval of its exact targets:
 
 ```bash
 /usr/bin/python3 scripts/lab-recover-api.py --apply
 ```
 
-Apply refreshes the plan, then restarts one still-unhealthy approved API container at a time through its verified Kolla unit. It rechecks dependencies before each action and requires the same container to become healthy before continuing. It records each attempt before sending it. A failure, lost response or interruption stops the sequence; return the printed summary instead of repeating `--apply`.
+It restarts one still-unhealthy approved API container at a time and checks it before continuing. Its scope is limited; it is not a general database/compute/network/VM repair tool. A previous apply receipt blocks another apply. On failure or interruption, return its report—do not delete the receipt or rerun it to force progress.
 
-The helper performs no MariaDB/RabbitMQ/ProxySQL/compute/agent restart, compute enable, VM operation or migration retry. Existing workload and migration checkpoints remain byte-for-byte unchanged. Its separate recovery receipt records only its own actions. A surviving pending migration requires separate review even if the APIs recover. An earlier apply receipt blocks another apply until reviewed; there is no force/reset option.
+## 3. Finish with ONE combined verification
 
-At the end, it checks HTTPS and service state. `APPROVED_API_CONTAINERS_HEALTHY` confirms container checks; `API_AND_SERVICE_CHECKS_PASSED` confirms the listed API/service checks too. Neither means the unresolved VM/migration or guest data has been recovered. Keep and return the report. `--check` delegates to the ordinary read-only cluster checker.
-
-### Manual reference
-
-Example: inspecting **node1 Nova compute**, from R2d2. Substitute only the node/service identified in the reviewed report:
+Once the service recovery steps are complete:
 
 ```bash
-ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200 \
-  'sudo systemctl status kolla-nova_compute-container.service --no-pager; sudo journalctl -u kolla-nova_compute-container.service -n 40 --no-pager'
+/usr/bin/python3 scripts/lab-reboot-verify.py --check
 ```
 
-Use Kolla's systemd unit: `kolla-CONTAINER_NAME-container.service`. Inspect output privately; logs can contain sensitive details. The health check does not collect raw logs or credentials.
+Enter the three node sudo passwords and unlock the existing guest key if asked. Keep the terminal open; the checks may take several minutes.
 
-**Only after approving this exact restart**, with its dependencies healthy:
+This command checks:
+
+1. Cluster containers, Galera, RabbitMQ, VIP, HTTPS, Nova/hypervisor/Cinder services, Neutron agents and router API state.
+2. The existing VM's Nova status and whether its UUID is actually running on exactly one hypervisor.
+3. Guest SSH with its existing pinned identity; DHCP, routes, metadata, DNS and outbound HTTPS.
+4. The existing volume's attachment/backend, actual guest disk and filesystem UUID, mount and saved file checksum.
+5. The recorded migration and unchanged existing checkpoints/configuration.
+
+**It only observes.** It never starts/reboots a VM, retries migration, resets Nova state, mounts/formats a disk, changes attachments or clears a pending checkpoint.
+
+If the volume is present but unmounted, it reports that explicitly. Data is **unverified**, not declared lost. A guest with working SSH but Nova `ERROR` is also reported as a mismatch; it is not silently marked recovered.
+
+Return the printed short TXT summary:
+
+- `REBOOT_RECOVERY_VERIFIED`: all listed checks passed, including the guest/data and outstanding-checkpoint checks.
+- `REBOOT_RECOVERY_NEEDS_REVIEW`: the report identifies what remains unresolved. Approve an exact repair before changes.
+
+Browser sign-in, failure testing, storage HA and a successful VM migration are separate from this reboot check. Migration stays paused until its earlier record is reconciled and a new move is separately approved.
+
+## 4. Planned maintenance and full shutdown
+
+**Rolling reboot:** choose one node, review its workloads/storage, approve the interruption, reboot that node, then complete verification before touching another node.
+
+**Full shutdown:** first finish pending operations and agree on workload shutdown and storage handling. Cleanly unmount application data and shut down guests through the agreed guest/OpenStack procedure, then stop cloud services and finally power down the hosts using a reviewed shutdown plan. This page does not execute a full-cluster shutdown or assume a failed migration is safe to ignore.
+
+Local VM root disks, local Cinder LVM and node1's Glance storage are not replicated. Rebooting their host can interrupt the workload even while other controllers are healthy. The lab has no automatic VM recovery.
+
+After power-on, start at step 1. A full cold boot may need coordinated database recovery; it does not always need it.
+
+## Optional manual views — services and agents
+
+These are reference commands, not extra mandatory steps after the combined check:
 
 ```bash
-ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200 \
-  'sudo systemctl restart kolla-nova_compute-container.service'
-
-/usr/bin/python3 scripts/lab-health.py --check
+/usr/bin/python3 scripts/lab-view.py compute-services --table
+/usr/bin/python3 scripts/lab-view.py hypervisors --table
+/usr/bin/python3 scripts/lab-view.py agents --table
+/usr/bin/python3 scripts/lab-view.py cinder-services --table
+/usr/bin/python3 scripts/lab-view.py router
 ```
 
-Common container names are `proxysql`, `nova_scheduler`, `nova_conductor`, `nova_compute`, `neutron_server`, `neutron_l3_agent`, `neutron_dhcp_agent` and `neutron_openvswitch_agent`. Restarting an L3 agent alone does not prove the router recovered; recheck its HA roles and guest traffic. Do not enable an administratively disabled compute service without reviewing why it was disabled. RabbitMQ reset/redeploy is outside normal reboot recovery and is not automated here.
+Services should be enabled/up; agents Alive/Enabled `yes`; the HA router should have one active and two standby replicas. `Disabled reason: -` means an enabled service has no returned disable reason; `unknown` on a disabled service means no reason was available. Container health, service heartbeat and guest connectivity are separate checks.
 
-## 6. Future maintenance: one node at a time
-
-1. Run the health check and resolve outstanding issues first.
-2. Review the selected node's VMs and storage. Local VM root disks and Cinder LVM are not replicated: rebooting their host can interrupt the VM or its data access. Other healthy controllers cannot replace those local disks. Glance images also live on node1.
-3. Agree on the interruption or complete a separately verified workload move/shutdown plan. Never treat planned migration as successful without its completion report.
-4. Reboot only the selected node. Example for **node1**, after approval:
-
-   ```bash
-   ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200 \
-     'test "$(hostname -s)" = node1 && sudo reboot'
-   ```
-
-5. Wait for that node to return, rerun `scripts/lab-health.py --check`, and review guest network/data checks separately. Proceed to another node only after recovery is confirmed.
-
-A full three-node power-off is a **cold boot**, not a rolling reboot. All database and broker members stop together; startup may need coordinated recovery. After powering on, return to step 1. This page does not provide an unattended full-cluster shutdown script.
-
-[Health script](../scripts/lab-health.py) · [Node collector](../scripts/lab-health-node.py) · [Kolla operations](https://docs.openstack.org/kolla-ansible/latest/user/operating-kolla.html) · [Pinned MariaDB recovery implementation](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/mariadb/tasks/recover_cluster.yml) · [RabbitMQ health checks](https://www.rabbitmq.com/docs/monitoring)
+[Detailed commands and conditional repairs](reboot-recovery-reference.md) · [Viewing glossary](command-glossary.md)
