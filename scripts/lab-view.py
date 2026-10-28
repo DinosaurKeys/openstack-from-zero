@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 
 REPO = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('view_access', REPO/'scripts/phase4-prepare-vm.py')
@@ -21,8 +22,27 @@ QUERIES = {
     'servers': ('compute', 'servers/detail?limit=100', 'servers', ('id', 'name', 'status', 'addresses', 'OS-EXT-SRV-ATTR:host')),
     'volumes': ('block-storage', 'volumes/detail?limit=100', 'volumes', ('id', 'name', 'status', 'size', 'attachments')),
     'compute-services': ('compute', 'os-services', 'services', ('id', 'binary', 'host', 'zone', 'status', 'state')),
+    'hypervisors': ('compute', 'os-hypervisors/detail', 'hypervisors', ('id', 'hypervisor_hostname', 'state', 'status')),
+    'cinder-services': ('block-storage', 'os-services', 'services', ('binary', 'host', 'zone', 'status', 'state')),
     'floating-ips': ('network', 'v2.0/floatingips', 'floatingips', ('id', 'floating_ip_address', 'fixed_ip_address', 'port_id', 'router_id', 'status')),
 }
+TABLES = {
+    'compute-services': ('services', (('Host','host'),('Service','binary'),('Enabled state','status'),('Heartbeat','state'))),
+    'cinder-services': ('services', (('Host','host'),('Service','binary'),('Enabled state','status'),('Heartbeat','state'))),
+    'hypervisors': ('hypervisors', (('Host','hypervisor_hostname'),('Enabled state','status'),('State','state'))),
+    'agents': ('agents', (('Host','host'),('Agent','agent_type'),('Alive','alive'),('Enabled','admin_state_up'))),
+}
+
+
+def table(what, result):
+    key, columns = TABLES[what]
+    def cell(value):
+        if type(value) is bool:return 'yes' if value else 'no'
+        return re.sub(r'[\x00-\x1f\x7f]', '?', str(value if value is not None else 'unknown'))[:100]
+    rows = [[heading for heading,_ in columns]]
+    rows += [[cell(row.get(field)) for _,field in columns] for row in result[key]]
+    widths = [max(len(row[i]) for row in rows) for i in range(len(columns))]
+    return '\n'.join(' | '.join(value.ljust(widths[i]) for i,value in enumerate(row)).rstrip() for row in rows)
 
 
 def collect(api, what):
@@ -43,15 +63,17 @@ def collect(api, what):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('object', choices=['router', *QUERIES]); args = p.parse_args(argv)
+    p.add_argument('object', choices=['router', *QUERIES]); p.add_argument('--table', action='store_true', help='compact services, hypervisors or agents table'); args = p.parse_args(argv)
+    if args.table and args.object not in TABLES:p.error('--table supports compute-services, hypervisors, cinder-services and agents')
     step.deploy.validation.config_step.load_step('view_r2d2', 'phase2-check.py').require_r2d2()
     step.deploy.tools.check_paths(step.ENV)
     if Path(sys.prefix) != step.ENV:
-        os.execve(str(step.ENV/'bin/python'), [str(step.ENV/'bin/python'), str(Path(__file__).resolve()), args.object], step.deploy.tools.tool_environment())
+        os.execve(str(step.ENV/'bin/python'), [str(step.ENV/'bin/python'), str(Path(__file__).resolve()), args.object]+(['--table'] if args.table else []), step.deploy.tools.tool_environment())
     step.deploy.source_guard(); env = step.deploy.tools.tool_environment()
     _, config = step.deploy.validation.local_checks(lambda line: None, env, step.deploy.validation.CA_FINGERPRINT)
     api, _, _ = step.authenticate(config)
-    print(json.dumps(collect(api, args.object), indent=2))
+    result=collect(api, args.object)
+    print(table(args.object,result) if args.table else json.dumps(result, indent=2))
     return 0
 
 
