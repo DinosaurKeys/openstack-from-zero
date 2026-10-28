@@ -220,6 +220,49 @@ def render_brief(details):
     return lines
 
 
+def render_compact(details):
+    """Short operational view; retain every failed/blocked result and its details."""
+    full=render_brief(details);statuses={r['check']:r.get('status') for r in details.get('cluster_summary',[])}
+    nodes=tuple(inv.NODES);lines=['OPENSTACK LAB STATUS — R2d2'];section='';db_shown=False;broker_shown=False
+    host_ok=all(statuses.get(n+' management SSH/identity')=='PASS' for n in nodes)
+    db_values=[details.get('hosts',{}).get(n,{}).get('galera',{}) for n in nodes]
+    db_ok=(all(v.get('observed') and health.member_ok(v.get('value',{})) for v in db_values)
+      and len({v.get('value',{}).get('wsrep_cluster_state_uuid') for v in db_values})==1
+      and statuses.get('Galera: same three-member Primary cluster')=='PASS')
+    brokers=[details.get('hosts',{}).get(n,{}).get('rabbitmq',{}) for n in nodes]
+    broker_ok=all(v.get('observed') and v.get('value',{}).get('healthy') is True for v in brokers)
+    api_labels=('HTTPS authentication','Horizon HTTPS','image HTTPS API read','compute HTTPS API read',
+                'network HTTPS API read','block-storage HTTPS API read','placement HTTPS API read')
+    api_ok=all(statuses.get(label)=='PASS' for label in api_labels)
+    for line in full[1:]:
+        if line.startswith('== '):
+            section=line.strip('= ')
+            if section=='HOSTS' and host_ok:lines.append('PASS    Nodes: 3/3 reachable with expected identities')
+            if section=='DATABASE AND MESSAGING CLUSTERS' and db_ok and not db_shown:lines.append('PASS    Galera: 3/3 Synced/Primary, size 3, same cluster UUID')
+            if section=='DATABASE AND MESSAGING CLUSTERS' and broker_ok and not broker_shown:lines.append('PASS    RabbitMQ cluster: 3/3 running members, no alarms or partitions')
+            if section=='HTTPS API CHECKS' and api_ok:lines.append('PASS    HTTPS: login, Horizon and all five service API reads')
+            continue
+        if not line:continue
+        if section=='HOSTS' and host_ok and ' management SSH/identity OK' in line:continue
+        if section=='CORE CONTAINERS':
+            if db_ok and line=='PASS    MariaDB: 3/3 ready':
+                lines.append('PASS    Galera: 3/3 Synced/Primary, size 3, same cluster UUID');db_shown=True;continue
+            if broker_ok and line=='PASS    RabbitMQ: 3/3 ready':
+                lines.append('PASS    RabbitMQ cluster: 3/3 running members, no alarms or partitions');broker_shown=True;continue
+        if section=='DATABASE AND MESSAGING CLUSTERS':
+            if db_ok and (' Galera:' in line or 'Galera: same synchronized' in line):continue
+            if broker_ok and ' RabbitMQ:' in line:continue
+        if section=='HTTPS API CHECKS' and api_ok:continue
+        if line.startswith('        Ready ='):continue
+        if line.startswith(('PASS checks:','FAIL =','Read-only snapshot.')):continue
+        if line.startswith('NEXT:') and 'No service restart' in line:continue
+        # Keep exact failed component names and safe reasons, including indented detail.
+        lines.append(line)
+    lines.append('BLOCKED = could not verify; it does not mean the service is down.')
+    lines.append('Cluster services only; VM and migration checks remain separate.')
+    return lines
+
+
 def render_report(details,include_workload=False):
     """Render collected evidence only. This function performs no probes or writes."""
     nodes=tuple(inv.NODES);hosts=details.get('hosts',{})
@@ -331,7 +374,7 @@ def render_report(details,include_workload=False):
     return lines
 
 
-def saved_report(path,include_workload=False,detailed=False):
+def saved_report(path,include_workload=False,detailed=False,compact=False):
     path=Path(path).absolute()
     if path.suffix!='.json' or not path.name.startswith('reboot-verify-') or path.resolve().parent!=(REPO/'reports').resolve():
         raise RuntimeError('Choose an existing reboot-verify JSON file directly inside this repository reports directory')
@@ -340,7 +383,8 @@ def saved_report(path,include_workload=False,detailed=False):
     details=json.loads(path.read_text())
     if not isinstance(details,dict):raise RuntimeError('Saved report must contain an object')
     print('SAVED SNAPSHOT: '+cell(path.name)+' — display only; no new lab checks')
-    for line in (render_report(details,include_workload) if detailed or include_workload else render_brief(details)):print(line)
+    rendered=render_report(details,include_workload) if detailed or include_workload else render_compact(details) if compact else render_brief(details)
+    for line in rendered:print(line)
     return 0
 
 
@@ -486,7 +530,7 @@ def workload(nodes,api,project,user,rows,details,log):
         rows.extend({'check':label,'status':'UNKNOWN'} for label in ('Data filesystem/mount','Saved file checksum'))
 
 
-def execute(log,details,include_workload=False,detailed=False):
+def execute(log,details,include_workload=False,detailed=False,compact=False):
     deploy.source_guard();env=deploy.tools.tool_environment()
     inventory,config=deploy.validation.local_checks(lambda _:None,env,deploy.validation.CA_FINGERPRINT)
     before=snapshot();input_hashes=health.access.input_hashes(config,inventory);handles=[];passwords={}
@@ -528,7 +572,7 @@ def execute(log,details,include_workload=False,detailed=False):
             checkpoint_status=next(r['status'] for r in cluster_rows if r['check']=='exercise checkpoints')
             rows.append({'check':'Outstanding exercise checkpoints','status':checkpoint_status})
         details['summary']=rows
-        rendered=render_report(details,include_workload) if detailed or include_workload else render_brief(details)
+        rendered=render_report(details,include_workload) if detailed or include_workload else render_compact(details) if compact else render_brief(details)
         for line in rendered:log(line)
         if not include_workload:return 0 if services_ok and unchanged and 'RESULT: REBOOT_SERVICES_HEALTHY' in rendered else 1
         log('Workload notes:')
@@ -560,23 +604,25 @@ def main(argv=None):
     group.add_argument('--check',action='store_true',help='live cluster service/agent dashboard')
     group.add_argument('--report',type=Path,help='display an existing reboot-verify JSON snapshot without live checks')
     parser.add_argument('--with-workload',action='store_true',help='also inspect VM/data/migration; separate from cluster service health')
-    parser.add_argument('--details',action='store_true',help='show the full by-node tables instead of the grouped summary')
+    display=parser.add_mutually_exclusive_group()
+    display.add_argument('--details',action='store_true',help='show the full by-node tables instead of the grouped summary')
+    display.add_argument('--compact',action='store_true',help='short status display with failed components still named')
     args=parser.parse_args(argv)
     if not args.check and args.report is None:
         if args.with_workload:parser.error('--with-workload requires --check or --report')
         print('PLAN ONLY: services and agents by node. Use --check on R2d2, or --report with an existing private JSON snapshot. No repair mode.');return 0
     deploy.validation.config_step.load_step('reboot_r2d2','phase2-check.py').require_r2d2()
-    if args.report is not None:return saved_report(args.report,args.with_workload,args.details)
+    if args.report is not None:return saved_report(args.report,args.with_workload,args.details,args.compact)
     deploy.tools.check_paths(ENV)
     if not sys.stdin.isatty():raise RuntimeError('Use joe\'s interactive R2d2 terminal')
-    if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--check']+(['--with-workload'] if args.with_workload else [])+(['--details'] if args.details else []),deploy.tools.tool_environment())
+    if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--check']+(['--with-workload'] if args.with_workload else [])+(['--details'] if args.details else [])+(['--compact'] if args.compact else []),deploy.tools.tool_environment())
     os.umask(0o077);reports=REPO/'reports';inv.private_dir(reports);details={}
     fd,name=tempfile.mkstemp(prefix='reboot-verify-'+dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'),suffix='.txt',dir=reports)
     print('Private summary: '+name,flush=True);status=1
     with os.fdopen(fd,'w') as output:
         def log(line):print(line,flush=True);output.write(line+'\n');output.flush()
         log('Reboot service/agent dashboard — existing lab only' if not args.with_workload else 'Reboot service dashboard with separate workload verification')
-        try:status=execute(log,details,args.with_workload,args.details)
+        try:status=execute(log,details,args.with_workload,args.details,args.compact)
         except (Exception,KeyboardInterrupt) as error:
             log('RESULT: REBOOT_RECOVERY_NEEDS_REVIEW');log(str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; collection incomplete')
         with Path(name).with_suffix('.json').open('x') as extra:json.dump(details,extra,indent=2)
