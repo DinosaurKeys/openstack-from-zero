@@ -1,58 +1,37 @@
-# Reboot and recovery
+# Shutdown, power-on and recovery
 
 [Home](../README.md) · [Command glossary](command-glossary.md)
 
-Run these commands on **R2d2 as joe**, from `~/openstack-from-zero`. R2d2 stays running when the three OpenStack nodes shut down.
+Use this page for a **whole-lab shutdown and startup**. Run commands on **R2d2 as joe**, from `~/openstack-from-zero`. Keep R2d2 running.
 
-- [After power-on: check the cluster](#after-power-on-check-the-cluster)
-- [Normal shutdown: two steps](#normal-shutdown-two-steps)
-- [Only if shutdown is interrupted](#only-if-shutdown-is-interrupted)
-- [If a cluster check fails](#if-a-cluster-check-fails)
-- [Optional reference](#optional-reference)
+| Order | Action | Command / result |
+|---|---|---|
+| 1 | Stop OpenStack services | `python3 scripts/lab-shutdown.py --apply` → wait for `READY_FOR_MANUAL_POWEROFF` |
+| 2 | Power off the three hosts | `bash scripts/lab-poweroff.sh --apply` |
+| 3 | Power the hosts on | node3 first, then node2 and node1; let all three boot |
+| 4 | Read the live dashboard | `bash scripts/lab-recover.sh --check` |
+| 5 | If repair is needed | `bash scripts/lab-recover.sh --apply` → review, confirm, repair, final check |
 
-To get the current scripts:
+- [Shutdown: stop services, then power off](#normal-shutdown-two-steps)
+- [Power on and check the cluster](#after-power-on-check-the-cluster)
+- [Recover only what needs repair](#recover-only-what-needs-repair)
+- [What a healthy result means](#what-a-healthy-result-means)
+- [If shutdown is interrupted](#only-if-shutdown-is-interrupted)
+- [Manual commands and extra views](#manual-reference)
+
+Get the current scripts before starting:
 
 ```bash
 cd ~/openstack-from-zero
 git pull --ff-only
 ```
 
-<a id="1-check-after-power-on"></a>
-
-## After power-on: check the cluster
-
-Start **node3**, then **node2 and node1**. Node3 is the last database/broker member stopped by the shutdown procedure below. Let all three hosts boot; do not wait for a healthy cluster before starting the other hosts.
-
-Run:
-
-```bash
-/usr/bin/python3 scripts/lab-reboot-verify.py --check
-```
-
-Enter joe's sudo password for each node. The checker groups containers and services into **PASS / FAIL / BLOCKED** lines, with counts such as `MariaDB: 3/3 ready`. Failed groups show the affected **node, container and observed state**. Host collection progress is printed as each node finishes. It does not restart anything.
-
-- **PASS:** the stated check passed.
-- **FAIL:** an observed check did not pass; `starting` means not ready yet, not necessarily a permanent failure.
-- **BLOCKED:** the check could not run or complete. For example, failed authentication blocks API service/agent reads; it does not prove those agents are down.
-
-Database query errors are classified without exposing credentials. When available, a recent Galera log view is shown with its log time; it is labelled as log evidence, not a live SQL result.
-
-| Result | What to do |
-|---|---|
-| `REBOOT_SERVICES_HEALTHY` | The service checks passed. No service restart is needed. |
-| `REBOOT_SERVICES_NEED_REVIEW` | Read the affected rows and use the recovery reference below. |
-| `REBOOT_RECOVERY_NEEDS_REVIEW` | The check could not finish. Review its error; do not assume the cluster is healthy or stopped. |
-
-The terminal prints the private TXT report path under `reports/`. If a check needs review, share that report; you do not need to interpret the JSON file.
-
-This does not start VMs, repair services or retry migrations. VM/data checks are separate. Starting node3 first does not automatically bootstrap Galera; choose recovery from the fresh report.
-
 <a id="7-future-reboot-and-shutdown"></a>
 <a id="full-shutdown--node1-node2-and-node3"></a>
 
 ## Normal shutdown: two steps
 
-First finish cloud/storage operations and cleanly shut down any running VMs. The service-stop script **blocks if VM domains are active**, including paused VMs; it does not shut down guests for you.
+Finish active cloud/storage operations and **cleanly shut down running VMs first**. These scripts do not shut down guests. The service-stop check blocks active VM domains, including paused VMs. Leave the hosts powered on while services are stopping.
 
 ### 1. Stop OpenStack services
 
@@ -60,23 +39,25 @@ First finish cloud/storage operations and cleanly shut down any running VMs. The
 /usr/bin/python3 scripts/lab-shutdown.py --apply
 ```
 
-This already checks readiness, so a separate shutdown `--check` is **optional**. If readiness fails, it does not start stopping services.
+Enter joe's sudo passwords. The script checks all three nodes before making changes. If readiness fails, it does not begin stopping services. Type **`STOP ALL CLOUD SERVICES`** to approve.
 
-Type **`STOP ALL CLOUD SERVICES`** when asked. The script stops:
+| Stage | What stops | Why this order |
+|---|---|---|
+| 1 | OpenStack applications, workers, agents and remaining DHCP/router helpers | Stop the users of the database and messaging first. |
+| 2 | Proxies/API VIP services, then RabbitMQ | Applications have stopped using these services. |
+| 3 | MariaDB on node1, then node2, then node3 | Stop the database last and record each member's clean exit and position. |
 
-1. Applications and agents, then remaining DHCP/router helpers.
-2. Proxies/VIP services and RabbitMQ.
-3. MariaDB, one member at a time: node1 → node2 → node3.
-
-It verifies clean database exits and saved Galera positions. This can take several minutes. Ubuntu remains powered on. Wait for:
+This can take several minutes. Progress and a private report are printed. **Ubuntu is still running at this point.** Wait for:
 
 ```text
 RESULT: READY_FOR_MANUAL_POWEROFF
 ```
 
-If it reports `SHUTDOWN_NEEDS_REVIEW`, **do not power off or repeat `--apply`**. Follow the interrupted-shutdown section below.
+This means the service-stop and database-position checks passed. **Node3 was the last database/broker member stopped.** It does not mean the hosts are powered off.
 
-### 2. Power off the hosts
+If you get `SHUTDOWN_NEEDS_REVIEW`, leave the hosts on and keep the report. Use [the interrupted-shutdown section](#only-if-shutdown-is-interrupted); do not repeat the normal apply or proceed to poweroff.
+
+### 2. Power off Ubuntu
 
 Only after `READY_FOR_MANUAL_POWEROFF`:
 
@@ -84,48 +65,138 @@ Only after `READY_FOR_MANUAL_POWEROFF`:
 bash scripts/lab-poweroff.sh --apply
 ```
 
-The Bash script first checks the saved service-stop record. Type **`POWER OFF ALL NODES`** when asked, then enter joe's sudo password for each node. It checks each host before scheduling its normal Ubuntu poweroff in **one minute**.
+Type **`POWER OFF ALL NODES`** and enter joe's sudo passwords. The script checks the completed service-stop record, verifies that containers and VM processes are stopped, then schedules normal Ubuntu poweroff in **one minute** on each node.
 
-It requires no running containers/VM processes and clean MariaDB/RabbitMQ exit states. A failed check or unacknowledged request stops the script; earlier hosts may already have shutdown scheduled. Wait until the physical hosts are fully off before removing electricity. An acknowledged request or lost SSH alone is not proof of completed poweroff.
+Wait until **all three physical hosts are off** before removing electricity. Acknowledged shutdown requests are not proof that the machines have finished powering off. If a request fails, earlier hosts may already have poweroff scheduled; keep the output and review it.
 
-**That is the normal sequence: `lab-shutdown.py --apply` → wait for READY → `lab-poweroff.sh --apply`.** Do not run `--finish` during a normal successful shutdown.
+A separate `lab-shutdown.py --check` is optional: `--apply` already checks readiness. **`--finish` is not part of a normal successful shutdown.**
+
+<a id="1-check-after-power-on"></a>
+
+## After power-on: check the cluster
+
+### 3. Start the hosts
+
+1. Power on **node3** first: it was the last database/broker member stopped by the procedure above.
+2. Power on **node2 and node1**. Do not wait for a healthy database before starting them.
+3. Let all three Ubuntu hosts boot, then run the check from R2d2.
+
+Starting node3 first does **not** itself bootstrap Galera. A complete database shutdown can require coordinated recovery to form a Primary cluster again. This is different from losing just one member while the others remain online.
+
+### 4. Read the live dashboard
+
+```bash
+bash scripts/lab-recover.sh --check
+```
+
+This uses the existing `lab-reboot-verify.py --check` dashboard. It changes no services. Enter joe's sudo password for each node.
+
+| Output | Plain meaning |
+|---|---|
+| `PASS` | That check passed. |
+| `FAIL` | The observed check did not pass. The affected node/container is shown. |
+| `BLOCKED` | The check could not finish or its dependency was unavailable. It does not prove the service is down. |
+| `EXITED exit=0` | The container stopped without reporting an error; it is not currently serving requests. |
+| `running/unhealthy` | A process is running, but its configured healthcheck is failing. |
+| `running/starting` | Startup has not finished yet. |
+
+Read **MariaDB/Galera first**, then APIs and service/agent heartbeats. If the database is unavailable, several API checks can fail together; that alone does not establish a separate fault in each service. `Horizon` showing a login page is not enough to prove the cloud is working.
+
+- **`REBOOT_SERVICES_HEALTHY`:** stop here; no repair is needed.
+- **`REBOOT_SERVICES_NEED_REVIEW`:** use the recovery step below for supported failures.
+- **`REBOOT_RECOVERY_NEEDS_REVIEW`:** the checker could not finish; read its error first.
+
+The report path is printed under `reports/`. Share the short **TXT** report when review is needed; you do not need to read the JSON.
+
+## Recover only what needs repair
+
+### 5. Run one guided recovery command
+
+```bash
+bash scripts/lab-recover.sh --apply
+```
+
+It takes **fresh checks**, displays the proposed changes and asks before performing them. You do not need to run a separate plan command first.
+
+| Step inside the command | What happens |
+|---|---|
+| Check access and dependencies | Require all three nodes, expected identities, clock/USB checks, RabbitMQ, proxies and one API VIP. Unavailable evidence blocks repair. |
+| Check MariaDB | If all three members are healthy, synchronized and Primary with one UUID, **leave MariaDB running**. |
+| Recover a confirmed stopped database | Only if all three MariaDB containers are confirmed stopped with exit 0, ask for **`RECOVER MARIADB`**, then run standard Kolla coordinated recovery once. |
+| Confirm the database | Require all three Synced/Primary/connected/ready, size 3, same cluster UUID. No control-service restart proceeds without this. |
+| Build the control-service plan | Briefly wait for services already starting. List only the supported containers still needing a restart. |
+| Approve and repair | Ask for **`RESTART LISTED SERVICES`**. Restart one listed container at a time and require it to become healthy before continuing. Healthy containers are skipped. |
+| Final verification | Show the live PASS/FAIL/BLOCKED dashboard again, including APIs, services and agents. |
+
+**Do not restart all database members manually and then run recovery.** The coordinated Kolla command already handles the database recovery sequence and selects its starting member from recovery positions. If a Primary survives, members are syncing, or the state is unclear, the helper stops for review instead of selecting a bootstrap host.
+
+The supported control containers, on node1/node2/node3, are:
+
+| Group | Containers |
+|---|---|
+| Placement | `placement_api` |
+| Nova control | `nova_conductor`, `nova_scheduler`, `nova_api`, `nova_metadata` |
+| Neutron control | `neutron_server`, `neutron_rpc_server`, `neutron_periodic_worker` |
+| Cinder API | `cinder_api` |
+
+This is a maximum of **27 candidates**, not 27 automatic restarts. The actual plan comes from the current checks. Healthy databases, brokers, proxies, compute services and network agents stay running. Compute services are not automatically enabled. The helper does not repair infrastructure outside its stated database/control scope.
+
+If a restart fails or its outcome is unavailable, the command stops and keeps its progress record. Return the report instead of repeatedly applying or deleting that record. A previously attempted failed restart cannot be repeated automatically during the same boot.
+
+For a preview with no changes, optionally use `bash scripts/lab-recover.sh --plan`.
+
+## What a healthy result means
+
+Successful verification ends with:
+
+```text
+RESULT: REBOOT_SERVICES_HEALTHY
+```
+
+| Component | Required result |
+|---|---|
+| Hosts | node1/node2/node3 accessible; expected clock and USB/br-ex checks pass |
+| MariaDB/Galera | 3 Synced/Primary members, connected/ready, size 3, same UUID |
+| RabbitMQ | 3 running members, no alarms or partitions |
+| API VIP | Exactly one owner of `192.168.0.151` |
+| Core containers | Running and healthy where a healthcheck exists; Glance on node1 only |
+| HTTPS | Authentication, Horizon and the image/compute/network/volume/placement reads pass |
+| Nova and hypervisors | 9 expected Nova services and 3 hypervisors up/enabled |
+| Cinder | 6 expected scheduler/volume services up/enabled |
+| Neutron | 12 expected agents alive/enabled; router one active and two standby |
+
+This confirms **cluster service recovery**. It does not start a VM, repair a migration, prove guest traffic, or verify guest data. Those remain separate exercises. If APIs pass but an agent heartbeat is down, the final result still needs review; the helper does not silently restart that agent.
 
 <a id="finish-an-interrupted-network-helper-stop"></a>
 
 ## Only if shutdown is interrupted
 
-Keep the private TXT report and saved progress file (the receipt). Some services may already be stopped. Do not restart everything, delete the saved progress file or repeat the normal `--apply` command.
+<details>
+<summary>Open only for a reviewed interruption in the DHCP/router-helper shutdown stage</summary>
 
-For a **reviewed interruption in the DHCP/router-helper stage**, run:
+Keep the private TXT report and saved progress file. Some services may already be stopped.
 
 ```bash
 /usr/bin/python3 scripts/lab-shutdown.py --finish
 ```
 
-`--finish` means **continue the interrupted service shutdown**. It checks all three nodes and the saved stage, then asks for confirmation. It skips the completed initial service-stop stage and handles the remaining helpers, proxies, RabbitMQ and MariaDB. It leaves Ubuntu powered on.
+`--finish` checks the saved stage and current state on all three nodes, then asks for confirmation. It skips the completed first service-stop stage and continues with the remaining helpers, proxies, RabbitMQ and MariaDB. Ubuntu stays on.
 
-It is not a general retry: another failure stage, unhealthy dependencies, running VMs/clients or an unclear receipt blocks it. Review those findings before taking another action.
+It is not a general retry: another failure stage, unhealthy dependencies, active VMs/clients or unclear progress blocks it. Do not delete the saved progress file. After `READY_FOR_MANUAL_POWEROFF`, use **step 2**. If it fails, keep the hosts on and return the report.
 
-After `READY_FOR_MANUAL_POWEROFF`, return to **step 2** above. If `--finish` fails, leave the hosts powered on and return its report.
+</details>
 
 <a id="2-read-the-result-and-choose-the-action"></a>
+<a id="if-a-cluster-check-fails"></a>
 
-## If a cluster check fails
+## Manual reference
 
-Use a **fresh** `lab-reboot-verify.py --check` report, not an old saved snapshot.
+Use these commands only for a separately reviewed component. The normal recovery command above already checks and verifies its supported repairs.
 
-| Finding | Meaning / next step |
-|---|---|
-| PASS group, `running/healthy`, service/agent `UP/enabled` | Leave it running. |
-| Container `EXITED`, `running/unhealthy`, or detailed-table `DOWN` | Inspect its unit, logs and dependencies before selecting a restart. |
-| Healthy container, heartbeat `DOWN` | The application is not reporting; inspect database/RPC/libvirt dependencies. |
-| BLOCKED, detailed-table `UNKNOWN`, or `NOT LISTED` | Read the reason. Unavailable observations are not proof the service is down. |
-| `starting` | Let initialization finish before deciding whether it failed. |
-| `disabled` | Read the disable reason. A restart does not authorize enabling it. |
-
-`running/no-check` (or detailed-table `UP/no-check`) means the process is running without a configured container healthcheck. It is not proof that the application works. Glance is checked on **node1 only**; its absence on node2/node3 is expected.
-
-Check dependencies in this order: **host access → MariaDB → ProxySQL/RabbitMQ → APIs → compute/network agents**. Healthy services need no repair. The references below are conditional, not extra steps to run after every boot.
+- A healthy container with a `DOWN` service heartbeat needs application/dependency review.
+- `disabled` needs its disable reason reviewed; restarting does not authorize enabling it.
+- `running/no-check` means process-only evidence, not a successful application healthcheck.
+- Recent Galera log views are labelled with their log time; they are not live SQL status.
 
 <a id="3-restart-one-failed-service-or-agent"></a>
 
@@ -217,41 +288,24 @@ After completion, run `/usr/bin/python3 scripts/lab-reboot-verify.py --check`. R
 
 <a id="4-supported-api-recovery-helper"></a>
 
-### Limited API recovery helper
+### Earlier limited API helper
 
 <details>
-<summary>Advanced reference — not a general restart-all command</summary>
+<summary>For readers with an existing lab-recover-api.py receipt</summary>
 
-`lab-recover-api.py` supports only this fixed profile:
+Use **lab-recover.sh** for the reboot procedure on this page. The earlier `lab-recover-api.py` has a separate fixed 14-container scope and does not include all Nova control workers. It retains its original scope and progress file; do not delete that file or rerun a completed apply to force another repair.
 
-| Containers | Nodes |
-|---|---|
-| `placement_api` | node1, node3 |
-| `nova_api`, `nova_metadata`, `neutron_server`, `cinder_api` | node1, node2, node3 |
-
-Inspect the live plan:
-
-```bash
-/usr/bin/python3 scripts/lab-recover-api.py --plan
-```
-
-Only after reviewing and approving those exact targets:
-
-```bash
-/usr/bin/python3 scripts/lab-recover-api.py --apply
-```
-
-It checks healthy dependencies, skips healthy targets and restarts each still-failed approved container once. Unknown/starting/missing state or failures outside scope block it. An earlier apply receipt blocks repetition; do not delete it. This helper does not repair databases, brokers, computes, agents, VMs or migrations. Verify afterward with the live dashboard.
+The reboot helper keeps its own progress records and preserves the earlier API and VM/migration records.
 
 </details>
 
 <a id="6-confirm-service-recovery"></a>
 
-After any approved repair, use the **same live cluster check at the top of this page** to confirm recovery. A healthy container alone does not prove application operation.
+The recovery command already performs a final service/agent dashboard. For a later independent snapshot, run `bash scripts/lab-recover.sh --check`. A healthy container alone does not prove application operation.
 
 <a id="8-optional-service-and-agent-views"></a>
 
-## Optional reference
+### Extra checks and component views
 
 <details>
 <summary>Extra checks, saved reports and individual component views</summary>
