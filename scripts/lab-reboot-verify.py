@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One read-only post-reboot verification of services, existing VM, network and data."""
+"""Read-only reboot dashboard for services and agents, with optional workload checks."""
 import sys
 sys.dont_write_bytecode=True
 import argparse
@@ -13,6 +13,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -24,6 +25,159 @@ def load(name,file):
 health=load('reboot_health','lab-health.py');move=load('reboot_migration','phase5-move-vm.py')
 inspection=move.inspection;volume=inspection.volume;boot=volume.boot;prep=volume.prep
 deploy=health.deploy;inv=health.inv;ENV=health.ENV
+
+
+def cell(value):
+    return re.sub(r'[\x00-\x1f\x7f]', '?', str(value if value is not None else '-'))[:120]
+
+
+def table(title,headers,rows):
+    values=[[cell(v) for v in headers]]+[[cell(v) for v in row] for row in rows]
+    widths=[max(len(row[i]) for row in values) for i in range(len(headers))]
+    return ['',title]+[' | '.join(value.ljust(widths[i]) for i,value in enumerate(row)).rstrip() for row in values]
+
+
+def cluster_result(details):
+    rows=[r for r in details.get('cluster_summary',[]) if r.get('check') not in ('existing VM/volume API state','exercise checkpoints')]
+    if not rows:return 'UNKNOWN'
+    return 'HEALTHY' if all(r.get('status')=='PASS' for r in rows) else 'NEEDS REVIEW'
+
+
+def reported(value,key,node,identify='binary'):
+    if not isinstance(value,list):return None
+    found=[r for r in value if r.get(identify)==key and str(r.get('host','')).split('@')[0].split('.')[0]==node]
+    if not found:return 'NOT LISTED'
+    return found[0] if len(found)==1 else 'DUPLICATE'
+
+
+def service_cell(value):
+    if not isinstance(value,dict):return value or 'UNKNOWN'
+    state=value.get('state');status=value.get('status')
+    return (str(state).upper() if state in ('up','down') else 'UNKNOWN')+'/'+(status if status in ('enabled','disabled') else 'unknown')
+
+
+def render_report(details,include_workload=False):
+    """Render collected evidence only. This function performs no probes or writes."""
+    nodes=tuple(inv.NODES);hosts=details.get('hosts',{})
+    cluster_status={r['check']:r.get('status','UNKNOWN') for r in details.get('cluster_summary',[])}
+    rows=details.get('summary',[]);workload_status={r['check']:r.get('status','UNKNOWN') for r in rows}
+    lines=['CLUSTER SERVICES: '+cluster_result(details)]
+    def check_text(status):return {'PASS':'OK','REVIEW':'NEEDS REVIEW','UNKNOWN':'UNKNOWN'}.get(status,'UNKNOWN')
+    lines+=table('HOST ACCESS AND NETWORK',['Node','SSH/identity','Clock','USB / br-ex'],[
+      [node,*[check_text(cluster_status.get(node+' '+label)) for label in ('management SSH/identity','clock sync','USB/br-ex')]] for node in nodes])
+    database=[]
+    for node in nodes:
+        value=hosts.get(node,{}).get('galera',{})
+        observed=value.get('observed') is True;data=value.get('value',{}) if observed else {}
+        database.append([node,data.get('wsrep_local_state_comment','UNKNOWN'),data.get('wsrep_cluster_status','UNKNOWN'),data.get('wsrep_cluster_size','UNKNOWN'),data.get('wsrep_connected','UNKNOWN'),data.get('wsrep_ready','UNKNOWN')])
+    lines+=table('MARIADB / GALERA',['Node','State','Component','Members','Connected','Ready'],database)
+    lines.append('Same three-member cluster: '+check_text(cluster_status.get('Galera: same three-member Primary cluster')))
+    names=('mariadb','proxysql','rabbitmq','haproxy','keepalived','keystone_api','keystone_fernet','keystone_ssh','glance_api',
+      'placement_api','nova_api','nova_metadata','nova_scheduler','nova_conductor','nova_compute','nova_libvirt',
+      'neutron_server','neutron_rpc_server','neutron_periodic_worker','neutron_openvswitch_agent','neutron_l3_agent','neutron_dhcp_agent','neutron_metadata_agent',
+      'openvswitch_db','openvswitch_vswitchd','cinder_api','cinder_scheduler','cinder_volume','horizon')
+    def container_state(node,name):
+        if name=='glance_api' and node!='node1':return 'N/A (placement)'
+        record=hosts.get(node,{})
+        value=record.get('containers',{})
+        if value.get('observed') is not True:return 'UNKNOWN'
+        contents=value.get('value',{})
+        if name in contents.get('missing',[]):return 'MISSING'
+        state=contents.get('containers',{}).get(name)
+        if not isinstance(state,dict):return 'UNKNOWN'
+        running=state.get('running')
+        up='UP' if running is True else ('DOWN' if running is False else 'UNKNOWN')
+        health=state.get('health')
+        return up+'/'+('no-check' if health=='not configured' else health if health in ('healthy','unhealthy','starting') else 'unknown')
+    lines+=table('CONTAINERS — process / healthcheck',['Container',*nodes],[[name,*[container_state(node,name) for node in nodes]] for name in names])
+    rabbit=[]
+    for node in nodes:
+        value=hosts.get(node,{}).get('rabbitmq',{});data=value.get('value',{})
+        cluster=data.get('cluster',{})
+        rabbit.append([node,'OK' if data.get('checks',{}).get('check_running') is True else 'UNKNOWN/FAIL',
+          len(cluster['running_nodes']) if isinstance(cluster.get('running_nodes'),list) else 'UNKNOWN',
+          'NONE' if cluster.get('alarms')==[] else 'UNKNOWN/ALARM',
+          'NONE' if cluster.get('partitions') in ({},[]) else 'UNKNOWN/PARTITION',
+          'OK' if data.get('healthy') is True else 'NEEDS REVIEW'])
+    lines+=table('RABBITMQ CLUSTER',['Node','Application','Running members','Alarms','Partitions','Result'],rabbit)
+    owners=details.get('API VIP: exactly one owner',{}).get('owners',[])
+    lines.append('API VIP 192.168.0.151: '+(', '.join(owners) if owners else 'owner UNKNOWN')+' | '+check_text(cluster_status.get('API VIP: exactly one owner')))
+    for title,key,binaries in [('NOVA SERVICES — heartbeat / admin','Nova services',('nova-scheduler','nova-conductor','nova-compute')),
+      ('CINDER SERVICES — heartbeat / admin','Cinder services',('cinder-scheduler','cinder-volume'))]:
+        values=details.get(key)
+        lines+=table(title,['Service',*nodes],[[binary,*[service_cell(reported(values,binary,node)) for node in nodes]] for binary in binaries])
+    hypers=details.get('hypervisors');hyper_rows=[]
+    for node in nodes:
+        matches=[v for v in hypers if str(v.get('hypervisor_hostname','')).split('.')[0]==node] if isinstance(hypers,list) else None
+        selected=matches[0] if matches and len(matches)==1 else ('DUPLICATE' if matches else 'NOT LISTED' if matches==[] else None)
+        hyper_rows.append([node,service_cell(selected)])
+    lines+=table('HYPERVISORS — API state / admin',['Node','State'],hyper_rows)
+    def agent_cell(value):
+        if not isinstance(value,dict):return value or 'UNKNOWN'
+        alive=value.get('alive');enabled=value.get('admin_state_up')
+        return ('UP' if alive is True else 'DOWN' if alive is False else 'UNKNOWN')+'/'+('enabled' if enabled is True else 'disabled' if enabled is False else 'unknown')
+    agents=details.get('Neutron agents')
+    agent_types=(('DHCP','neutron-dhcp-agent'),('Router (L3)','neutron-l3-agent'),('Open vSwitch','neutron-openvswitch-agent'),('Metadata','neutron-metadata-agent'))
+    lines+=table('NEUTRON AGENTS — heartbeat / admin',['Agent',*nodes],[[label,*[agent_cell(reported(agents,binary,node)) for node in nodes]] for label,binary in agent_types])
+    router=details.get('router HA (API state)',{});router_agents=router.get('agents') if isinstance(router,dict) else None
+    router_rows=[]
+    for node in nodes:
+        matches=[a for a in router_agents if str(a.get('host','')).split('.')[0]==node] if isinstance(router_agents,list) else None
+        value=matches[0] if matches and len(matches)==1 else None
+        router_rows.append([node,value.get('ha_state','UNKNOWN').upper() if value and isinstance(value.get('ha_state'),str) else 'UNKNOWN',agent_cell(value)])
+    lines+=table('VIRTUAL ROUTER — API placement',['Node','HA role','Agent heartbeat / admin'],router_rows)
+    api_rows=[]
+    for label,key in [('Login','HTTPS authentication'),('Horizon','Horizon HTTPS'),('Images','image HTTPS API read'),('Compute','compute HTTPS API read'),('Network','network HTTPS API read'),('Volumes','block-storage HTTPS API read'),('Placement','placement HTTPS API read')]:
+        result=check_text(cluster_status.get(key));detail=details.get(key,{})
+        if result=='UNKNOWN' and isinstance(detail,dict) and str(detail.get('error','')).startswith('HTTP '):result=str(detail['error']).split(';')[0]
+        api_rows.append([label,result])
+    lines+=table('HTTPS API READS',['API','Result'],api_rows)
+    lines.append('CLUSTER RESULT: '+cluster_result(details))
+    lines.append('Container UP = process running; service/agent UP = reported heartbeat. UNKNOWN is not proof of DOWN.')
+    lines.append('no-check = no container healthcheck configured; N/A (placement) = Glance runs on node1 only.')
+    if not include_workload:
+        lines.append('Saved checkpoints/config: '+check_text(workload_status.get('Existing checkpoints/config preserved')))
+        passed=cluster_result(details)=='HEALTHY' and workload_status.get('Existing checkpoints/config preserved')=='PASS'
+        lines.append('ACTION: '+('No service restart indicated by this snapshot.' if passed else 'Review DOWN/unhealthy/UNKNOWN entries; approve exact targets before a restart.'))
+        lines.append('Scope: cluster services and agents only. VM/migration checks paused; existing records preserved.')
+        lines.append('RESULT: '+('REBOOT_SERVICES_HEALTHY' if passed else 'REBOOT_SERVICES_NEED_REVIEW'))
+        return lines
+    current=details.get('VM identity',{});physical=details.get('VM runtime',{})
+    lines+=table('VM / MIGRATION — SEPARATE FROM CLUSTER',['Item','Observed state'],[
+      ['Existing VM',boot.PLAN['server_name']],['Nova VM status',current.get('server_status','UNKNOWN')],['Nova assigned host',current.get('host','UNKNOWN')],
+      *[['Actual domain on '+node,str(physical.get('nodes',{}).get(node,{}).get('domain_state') or 'UNKNOWN').upper()] for node in nodes],
+      ['Data volume attached','YES' if current.get('volume_attached') is True else 'NO' if current.get('volume_attached') is False else 'UNKNOWN'],
+      ['Data backend',current.get('backend','UNKNOWN')],
+      *[[label,{'PASS':'OK','REVIEW':'NEEDS REVIEW','UNKNOWN':'NOT VERIFIED'}.get(workload_status.get(label),'NOT VERIFIED')] for label in
+         ('Guest SSH/identity','Guest network/DHCP/DNS/HTTPS','Data filesystem/mount','Saved file checksum')]])
+    migration=details.get('Migration record (preserved)',{});snap=migration.get('snapshot',{});item=snap.get('migration') or {}
+    lines+=table('RECORDED MIGRATION',['Status','Source','Destination','Local checkpoint'],[[item.get('status','UNKNOWN'),item.get('source_compute'),item.get('dest_compute'),'PENDING (preserved)' if migration.get('pending') else 'none pending' if migration.get('present') is False else 'preserved / see result']])
+    work_rows=[v for v in rows if v.get('check') not in ('Cluster services/APIs/agents','Existing checkpoints/config preserved')]
+    work_ok=bool(work_rows) and all(v.get('status')=='PASS' for v in work_rows)
+    lines.append('WORKLOAD RESULT: '+('VERIFIED' if work_ok else 'NEEDS REVIEW'))
+    lines.append('Saved checkpoints/config: '+check_text(workload_status.get('Existing checkpoints/config preserved')))
+    lines.append('ACTION SUMMARY')
+    if cluster_result(details)=='HEALTHY':lines.append('Cluster services/agents passed. No service restart is indicated by this snapshot.')
+    else:lines.append('Cluster has failed or unavailable checks. Review the DOWN/unhealthy/UNKNOWN entries before selecting a repair.')
+    if not work_ok:lines.append('VM/migration/data are not fully verified. VM recovery is separate and requires approval.')
+    if details.get('Guest data',{}).get('issue'):lines.append(cell(details['Guest data']['issue']))
+    if details.get('Workload verification',{}).get('issue'):lines.append(cell(details['Workload verification']['issue']))
+    passed=bool(rows) and all(row.get('status')=='PASS' for row in rows)
+    lines.append('RESULT: '+('REBOOT_RECOVERY_VERIFIED' if passed else 'REBOOT_RECOVERY_NEEDS_REVIEW'))
+    return lines
+
+
+def saved_report(path,include_workload=False):
+    path=Path(path).absolute()
+    if path.suffix!='.json' or not path.name.startswith('reboot-verify-') or path.resolve().parent!=(REPO/'reports').resolve():
+        raise RuntimeError('Choose an existing reboot-verify JSON file directly inside this repository reports directory')
+    deploy.validation.private_file(path)
+    if path.stat().st_size>5_000_000:raise RuntimeError('Saved report exceeds the read limit')
+    details=json.loads(path.read_text())
+    if not isinstance(details,dict):raise RuntimeError('Saved report must contain an object')
+    print('SAVED SNAPSHOT: '+cell(path.name)+' — display only; no new lab checks')
+    for line in render_report(details,include_workload):print(line)
+    return 0
 
 
 def snapshot():
@@ -168,7 +322,7 @@ def workload(nodes,api,project,user,rows,details,log):
         rows.extend({'check':label,'status':'UNKNOWN'} for label in ('Data filesystem/mount','Saved file checksum'))
 
 
-def execute(log,details):
+def execute(log,details,include_workload=False):
     deploy.source_guard();env=deploy.tools.tool_environment()
     inventory,config=deploy.validation.local_checks(lambda _:None,env,deploy.validation.CA_FINGERPRINT)
     before=snapshot();input_hashes=health.access.input_hashes(config,inventory);handles=[];passwords={}
@@ -181,37 +335,38 @@ def execute(log,details):
             except BlockingIOError:raise RuntimeError('Another lab/recovery action is running; no verification during changes') from None
         inv.ensure_agent(env,log)
         for node in inv.NODES:passwords[node]=getpass.getpass('Joe sudo password on '+node+' (hidden): ')
-        log('1/3 Checking all three hosts and OpenStack services…')
+        log('1/3 Checking all three hosts and OpenStack services…' if include_workload else '1/2 Checking all three hosts, APIs, services and agents…')
         with ThreadPoolExecutor(max_workers=3) as pool:
             jobs={n:pool.submit(health.host_observe,n,passwords[n],env) for n in inv.NODES}
             hosts={n:j.result() for n,j in jobs.items()}
         details['hosts']=hosts;cluster_rows=[]
-        health.host_rows(hosts,cluster_rows,details);health.api_checks(cluster_rows,details,env);health.checkpoint_checks(cluster_rows,details)
+        health.host_rows(hosts,cluster_rows,details);health.api_checks(cluster_rows,details,env,include_workload=include_workload)
+        if include_workload:health.checkpoint_checks(cluster_rows,details)
         service_rows=[r for r in cluster_rows if r['check'] not in ('existing VM/volume API state','exercise checkpoints')]
         services_ok=all(r['status']=='PASS' for r in service_rows);details['cluster_summary']=cluster_rows
         rows=[{'check':'Cluster services/APIs/agents','status':'PASS' if services_ok else 'REVIEW'}]
-        log('2/3 Checking the existing VM, actual hypervisor and migration record…')
-        try:
-            original,project,user=prep.authenticate(config)
-            api=volume.ReadOnlyAPI(original.client,original.urls,original.token)
-            workload(inspection.Nodes(env,passwords),api,project,user,rows,details,log)
-        except Exception as error:
-            rows.append({'check':'VM/network/data verification','status':'UNKNOWN'})
-            details['Workload verification']={'issue':move.safe_message(str(error)) if isinstance(error,RuntimeError) else type(error).__name__+'; tracked identity/API unavailable; no repair attempted'}
-        log('3/3 Confirming all saved checkpoints and deployment inputs are unchanged…')
+        if include_workload:
+            log('2/3 Checking the existing VM, actual hypervisor and migration record…')
+            try:
+                original,project,user=prep.authenticate(config)
+                api=volume.ReadOnlyAPI(original.client,original.urls,original.token)
+                workload(inspection.Nodes(env,passwords),api,project,user,rows,details,log)
+            except Exception as error:
+                rows.append({'check':'VM/network/data verification','status':'UNKNOWN'})
+                details['Workload verification']={'issue':move.safe_message(str(error)) if isinstance(error,RuntimeError) else type(error).__name__+'; tracked identity/API unavailable; no repair attempted'}
+        log('3/3 Confirming saved checkpoints and deployment inputs are unchanged…' if include_workload else '2/2 Confirming saved checkpoints and deployment inputs are unchanged…')
         unchanged=snapshot()==before and health.access.input_hashes(config,inventory)==input_hashes
         rows.append({'check':'Existing checkpoints/config preserved','status':'PASS' if unchanged else 'REVIEW'})
-        checkpoint_status=next(r['status'] for r in cluster_rows if r['check']=='exercise checkpoints')
-        rows.append({'check':'Outstanding exercise checkpoints','status':checkpoint_status})
-        log('Check | Result')
-        for row in rows:log(row['check']+' | '+row['status'])
-        log('Needs attention:')
+        if include_workload:
+            checkpoint_status=next(r['status'] for r in cluster_rows if r['check']=='exercise checkpoints')
+            rows.append({'check':'Outstanding exercise checkpoints','status':checkpoint_status})
+        details['summary']=rows
+        for line in render_report(details,include_workload):log(line)
+        if not include_workload:return 0 if services_ok and unchanged else 1
+        log('Workload notes:')
         attention=[]
-        if not services_ok:attention.extend(health.summary_lines(cluster_rows,details)[-20:])
         current=details.get('VM identity',{})
         if current and (current['server_status']!='ACTIVE' or current['task'] is not None):attention.append('Nova VM status='+str(current['server_status'])+', task='+str(current['task'])+'. Actual runtime and guest checks are reported separately; no state reset.')
-        physical=details.get('VM runtime',{})
-        if physical and (not physical['observed'] or len(physical['running_hosts'])!=1):attention.append('Actual VM runtime needs review: '+json.dumps({'complete':physical['observed'],'running_hosts':physical['running_hosts'],'states':{n:v.get('domain_state','unavailable') for n,v in physical.get('nodes',{}).items()}}))
         for key in ('Guest checks','Guest data','Workload verification'):
             value=details.get(key,{})
             if value.get('issue'):attention.append(value['issue'])
@@ -221,11 +376,10 @@ def execute(log,details):
         if failed:attention.append('Guest network checks needing review: '+', '.join(failed))
         if guest_network.get('error'):attention.append('Guest network read: '+str(move.safe_message(guest_network['error'])))
         migration=details.get('Migration record (preserved)',{})
-        if migration.get('pending'):attention.append('Earlier migration remains pending locally; latest Nova record: '+json.dumps(migration.get('snapshot',{}))+'. Preserved for a separate approved reconciliation.')
+        if migration.get('pending'):attention.append('Earlier migration remains pending locally. The recorded state is shown above; reconciliation requires separate approval.')
         if any(r['status']!='PASS' for r in rows) and not attention:attention.append('Review the non-PASS rows. No automatic repair was attempted.')
         for line in attention or ['None in these verification checks.']:log(line)
         details['summary']=rows;passed=all(r['status']=='PASS' for r in rows)
-        log('RESULT: '+('REBOOT_RECOVERY_VERIFIED' if passed else 'REBOOT_RECOVERY_NEEDS_REVIEW'))
         log('Read-only verification. No restart, VM start/reset/migration, mount, format, attachment change or checkpoint clearing. Browser sign-in/failover/storage HA are not tested.')
         return 0 if passed else 1
     finally:
@@ -234,18 +388,26 @@ def execute(log,details):
 
 
 def main(argv=None):
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--check',action='store_true');args=parser.parse_args(argv)
-    if not args.check:print('PLAN ONLY: one combined cluster/VM/runtime/network/data/migration verification. Use --check on R2d2. No repair mode.');return 0
-    deploy.validation.config_step.load_step('reboot_r2d2','phase2-check.py').require_r2d2();deploy.tools.check_paths(ENV)
+    parser=argparse.ArgumentParser(description=__doc__);group=parser.add_mutually_exclusive_group()
+    group.add_argument('--check',action='store_true',help='live cluster service/agent dashboard')
+    group.add_argument('--report',type=Path,help='display an existing reboot-verify JSON snapshot without live checks')
+    parser.add_argument('--with-workload',action='store_true',help='also inspect VM/data/migration; separate from cluster service health')
+    args=parser.parse_args(argv)
+    if not args.check and args.report is None:
+        if args.with_workload:parser.error('--with-workload requires --check or --report')
+        print('PLAN ONLY: services and agents by node. Use --check on R2d2, or --report with an existing private JSON snapshot. No repair mode.');return 0
+    deploy.validation.config_step.load_step('reboot_r2d2','phase2-check.py').require_r2d2()
+    if args.report is not None:return saved_report(args.report,args.with_workload)
+    deploy.tools.check_paths(ENV)
     if not sys.stdin.isatty():raise RuntimeError('Use joe\'s interactive R2d2 terminal')
-    if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--check'],deploy.tools.tool_environment())
+    if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--check']+(['--with-workload'] if args.with_workload else []),deploy.tools.tool_environment())
     os.umask(0o077);reports=REPO/'reports';inv.private_dir(reports);details={}
     fd,name=tempfile.mkstemp(prefix='reboot-verify-'+dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'),suffix='.txt',dir=reports)
     print('Private summary: '+name,flush=True);status=1
     with os.fdopen(fd,'w') as output:
         def log(line):print(line,flush=True);output.write(line+'\n');output.flush()
-        log('Final reboot verification — existing lab only')
-        try:status=execute(log,details)
+        log('Reboot service/agent dashboard — existing lab only' if not args.with_workload else 'Reboot service dashboard with separate workload verification')
+        try:status=execute(log,details,args.with_workload)
         except (Exception,KeyboardInterrupt) as error:
             log('RESULT: REBOOT_RECOVERY_NEEDS_REVIEW');log(str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; collection incomplete')
         with Path(name).with_suffix('.json').open('x') as extra:json.dump(details,extra,indent=2)
@@ -254,5 +416,5 @@ def main(argv=None):
 
 if __name__=='__main__':
     try:sys.exit(main())
-    except (RuntimeError,OSError) as error:
+    except (RuntimeError,OSError,ValueError,TypeError,KeyError) as error:
         print('Stopped: '+type(error).__name__+'; local inputs unavailable; no repair requested',file=sys.stderr);sys.exit(1)
