@@ -1,6 +1,6 @@
 # Lab command glossary
 
-[Home](../README.md) · [Phase 4](phase-04/README.md) · [Reboot and recovery](reboot-and-recovery.md)
+[Home](../README.md) · [Phase 4](phase-04/README.md) · [Reboot and recovery](reboot-and-recovery.md) · [Restart a failed service/agent](reboot-and-recovery.md#3-restart-one-failed-service-or-agent)
 
 The viewing sections inspect the lab without creating/deleting resources or restarting services. The manual API VIP exercise in section 6 explicitly includes service stop/start commands and requires an approved test. The API helper authenticates normally, then sends GET requests; it uses the existing private profile and CA, so no OpenStack CLI installation is required.
 
