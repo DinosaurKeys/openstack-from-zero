@@ -16,6 +16,10 @@ import time
 ALLOWED={'node1':('placement_api','nova_api','nova_metadata','neutron_server','cinder_api'),
          'node2':('nova_api','nova_metadata','neutron_server','cinder_api'),
          'node3':('placement_api','nova_api','nova_metadata','neutron_server','cinder_api')}
+CONTROL_ORDER=('placement_api','nova_conductor','nova_scheduler','nova_api','nova_metadata',
+               'neutron_server','neutron_rpc_server','neutron_periodic_worker','cinder_api')
+CONTROL_ALLOWED={node:CONTROL_ORDER for node in ALLOWED}
+PROFILES={'approved-api':ALLOWED,'reboot-control':CONTROL_ALLOWED}
 
 
 def run(args,timeout=25):
@@ -33,10 +37,11 @@ def inspector():
 
 
 def container(name):
-    if name not in {s for names in ALLOWED.values() for s in names}:raise RuntimeError('Unapproved service')
+    if name not in CONTROL_ORDER:raise RuntimeError('Unapproved service')
     fmt='{"id":{{json .Id}},"image":{{json .Config.Image}},"running":{{json .State.Running}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}"not configured"{{end}}}'
     result=json.loads(run(['docker','inspect','--format',fmt,name]))
-    image='nova-api' if name=='nova_metadata' else name.replace('_','-')
+    image={'nova_metadata':'nova-api','neutron_rpc_server':'neutron-server',
+           'neutron_periodic_worker':'neutron-server'}.get(name,name.replace('_','-'))
     if result.get('image')!='quay.io/openstack.kolla/'+image+':2026.2-ubuntu-noble' or not re.fullmatch(r'[a-f0-9]{64}',result.get('id','')):
         raise RuntimeError('Unreviewed container image/identity: '+name)
     if type(result.get('running')) is not bool or result.get('health') not in ('healthy','unhealthy','starting'):
@@ -48,7 +53,7 @@ def healthy(value):return value.get('running') is True and value.get('health')==
 
 
 def unit(name):
-    if name not in {s for names in ALLOWED.values() for s in names}:raise RuntimeError('Unapproved unit')
+    if name not in CONTROL_ORDER:raise RuntimeError('Unapproved unit')
     service='kolla-'+name+'-container.service';expected='/etc/systemd/system/'+service
     props=dict(line.split('=',1) for line in run(['systemctl','show',service,'--property=LoadState,ActiveState,FragmentPath,DropInPaths','--no-pager']).splitlines() if '=' in line)
     if props.get('LoadState')!='loaded' or props.get('FragmentPath')!=expected or props.get('DropInPaths'):
@@ -76,14 +81,16 @@ def dependencies(record,cluster_uuid):
         if not healthy(states.get(name,{})):raise RuntimeError(name+' dependency is not healthy')
 
 
-def execute(node,action,name=None,expected_id=None,unit_sha=None,cluster_uuid=None):
+def execute(node,action,name=None,expected_id=None,unit_sha=None,cluster_uuid=None,profile='approved-api'):
     if node not in ALLOWED or os.geteuid()!=0 or os.environ.get('SUDO_USER')!='joe' or socket.gethostname().split('.')[0]!=node:
         raise RuntimeError('Expected approved node identity and sudo from joe')
     if action not in ('inspect','restart'):raise RuntimeError('Unknown operation')
+    if profile not in PROFILES:raise RuntimeError('Unknown recovery profile')
+    names=PROFILES[profile][node]
     health=inspector();record=health['collect'](node)
     if action=='inspect':
-        return {'node':node,'host':record,'targets':{n:{'container':container(n),'unit':unit(n)} for n in ALLOWED[node]}}
-    if name not in ALLOWED[node]:raise RuntimeError('Restart outside the approved node/service scope')
+        return {'node':node,'host':record,'targets':{n:{'container':container(n),'unit':unit(n)} for n in names}}
+    if name not in names:raise RuntimeError('Restart outside the approved node/service scope')
     dependencies(record,cluster_uuid)
     before=container(name);definition=unit(name)
     if before['id']!=expected_id or definition['sha256']!=unit_sha:raise RuntimeError('Container or unit identity changed; no restart')
@@ -102,9 +109,10 @@ def execute(node,action,name=None,expected_id=None,unit_sha=None,cluster_uuid=No
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--node',choices=ALLOWED,required=True);parser.add_argument('--action',choices=('inspect','restart'),required=True)
+    parser.add_argument('--profile',choices=PROFILES,default='approved-api')
     for name in ('service','container-id','unit-sha','cluster-uuid'):parser.add_argument('--'+name)
     args=parser.parse_args()
-    try:result=dict(execute(args.node,args.action,args.service,args.container_id,args.unit_sha,args.cluster_uuid),passed=True)
+    try:result=dict(execute(args.node,args.action,args.service,args.container_id,args.unit_sha,args.cluster_uuid,args.profile),passed=True)
     except (Exception,KeyboardInterrupt) as error:
         result={'node':args.node,'passed':False,'error':str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; recovery outcome needs review'}
     print(json.dumps(result));return 0 if result['passed'] else 1
