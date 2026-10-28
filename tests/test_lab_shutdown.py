@@ -149,19 +149,66 @@ class ShutdownTests(unittest.TestCase):
     def test_dhcp_and_router_children_stopped_after_parents_without_deletion(self):
         children=['neutron_dhcp_agent_'+service+'_qdhcp-'+UUID for service in ('dnsmasq','haproxy')]
         children+=['neutron_l3_agent_'+service+'_qrouter-'+UUID for service in ('keepalived','haproxy')]
-        calls=[]
-        def run(args):
-            calls.append(args)
-            if args[:2]==['docker','inspect']:return json.dumps({'Running':False,'ExitCode':0,'OOMKilled':False})
-            return ''
-        with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq']+children),patch.object(n,'run',side_effect=run):
+        with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq']+children),patch.object(n,'stop_child') as stop:
             self.assertEqual(n.action('node1','network-children'),{'network_children_stopped':4})
-        self.assertEqual([c for c in calls if c[:2]==['docker','stop']], [['docker','stop','--time','60',name] for name in children])
-        self.assertFalse(any('rm' in c or 'mariadb' in c or 'rabbitmq' in c for c in calls))
+            self.assertEqual([c.args[0] for c in stop.call_args_list],children)
     def test_killed_network_child_blocks_further_shutdown(self):
         child='neutron_dhcp_agent_dnsmasq_qdhcp-'+UUID
-        with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq',child]),patch.object(n,'run',side_effect=['',json.dumps({'Running':False,'ExitCode':137,'OOMKilled':False})]):
+        with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq',child]),patch.object(n,'stop_child',side_effect=RuntimeError('exit 137')):
             self.assertRaises(RuntimeError,n.action,'node1','network-children')
+    def child_stop(self,auto=True,exit_code='0',destroy=True,oom=False,wrong_id=False):
+        name='neutron_dhcp_agent_dnsmasq_qdhcp-'+UUID;cid='a'*64;calls=[]
+        def run(args):
+            calls.append(args)
+            if args[:2]==['docker','stop']:return ''
+            if args[:2]==['docker','events']:
+                events=[{'Action':'die','Actor':{'ID':'b'*64 if wrong_id else cid,'Attributes':{'name':name,'exitCode':exit_code}}}]
+                for action in (['destroy'] if destroy else [])+(['oom'] if oom else []):
+                    events.append({'Action':action,'Actor':{'ID':cid,'Attributes':{'name':name}}})
+                return '\n'.join(map(json.dumps,events))
+            if args[-1]==name:return json.dumps({'id':cid,'name':'/'+name,'auto_remove':auto})
+            return json.dumps({'Status':'exited','Running':False,'ExitCode':int(exit_code),'OOMKilled':oom})
+        with patch.object(n,'run',side_effect=run):n.stop_child(name)
+        return calls
+    def test_autoremoved_success_uses_die_destroy_events_not_missing_inspect(self):
+        calls=self.child_stop()
+        self.assertEqual(sum(c[:2]==['docker','inspect'] for c in calls),1)
+        self.assertIn(['docker','stop','--time','60','a'*64],calls)
+        self.assertTrue(any(c[:2]==['docker','events'] for c in calls))
+    def test_retained_helper_uses_exit_state(self):
+        calls=self.child_stop(auto=False)
+        self.assertEqual(sum(c[:2]==['docker','inspect'] for c in calls),2)
+        self.assertFalse(any(c[:2]==['docker','events'] for c in calls))
+    def test_missing_bad_or_foreign_events_block(self):
+        for kwargs in ({'exit_code':'137'},{'destroy':False},{'oom':True},{'wrong_id':True}):
+            self.assertRaises(RuntimeError,self.child_stop,**kwargs)
+    def partial(self):
+        state={'pending':True,'database':{},'cluster_uuid':UUID,
+          'stage':'1/3 Stop remaining DHCP/router helpers on node1',
+          'attempts':['1/3 Stop cloud clients and agents; retain database, broker and proxies','1/3 Stop remaining DHCP/router helpers on node1']}
+        r={node:{'vm_processes':0,'database':records()[node]['host']['galera']['value'],
+          'broker':{'healthy':True},'running':list(s.RETAIN),
+          'support':{name:{'running':True,'health':'healthy'} for name in s.RETAIN}} for node in s.NODES}
+        return state,r
+    def test_finish_validates_exact_partial_phase_and_all_nodes(self):
+        state,r=self.partial();s.continuation(state,r)
+        for field,value in [('stage','2/3 Stop RabbitMQ on node1'),('pending',False),('database',{'node1':{}}),('cluster_uuid','different')]:
+            bad=copy.deepcopy(state);bad[field]=value;self.assertRaises(RuntimeError,s.continuation,bad,r)
+        del r['node3'];self.assertRaises(RuntimeError,s.continuation,state,r)
+    def test_finish_blocks_new_clients_vms_db_or_broker_failures(self):
+        for key,value in [('vm_processes',1),('database',{}),('broker',{}),('support',{}),('running',list(s.RETAIN)+['nova_api'])]:
+            state,r=self.partial();r['node2'][key]=value;self.assertRaises(RuntimeError,s.continuation,state,r)
+    def test_finish_workflow_never_repeats_cloud_stop(self):
+        state,_=self.partial();calls=[];stages=[]
+        def remote(node,action):
+            if action=='database':return positions()[node]
+            if action=='running':
+                if any(c[0]=='mariadb' for c in calls):return {'running':[]}
+                return {'running':['mariadb','rabbitmq'] if ('loadbalancer',node) in calls else list(s.RETAIN)}
+            return {}
+        s.workflow(remote,lambda service,node:calls.append((service,node)),lambda _:None,stages.append,UUID,previous=state)
+        self.assertNotIn((None,None),calls)
+        self.assertEqual(calls[:3],[('loadbalancer',node) for node in s.NODES])
     def test_poweroff_is_not_an_available_node_action(self):
         with patch.object(n,'guard'),patch.object(n,'run') as run:
             self.assertRaises(RuntimeError,n.action,'node1','poweroff');run.assert_not_called()
