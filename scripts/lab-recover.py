@@ -94,8 +94,14 @@ def validate_controls(records,boots,cluster):
         helper.dependencies(record['host'],cluster)
         bad=set(record['host']['containers']['value'].get('unhealthy',[]))-set(ALLOWED[node])
         if bad:raise RuntimeError(node+': failed containers outside control recovery: '+', '.join(sorted(bad)))
-        if any(t['container'].get('health')=='starting' for t in record['targets'].values()):
-            raise RuntimeError(node+': control services are still starting; no repeated restart')
+
+
+def starting(value):
+    return value.get('running') is True and value.get('health')=='starting'
+
+
+def state_label(value):
+    return 'running/'+str(value.get('health')) if value.get('running') is True else 'stopped'
 
 
 def planned(records):
@@ -110,9 +116,17 @@ def plan_lines(records):
       'Control-service decisions will be made from fresh checks after database recovery.']
     actions=planned(records)
     lines=['PASS  MariaDB: three Synced/Primary members; leave running.',
-      'Node  | Container | Proposed action']
-    lines += [node+' | '+name+' | restart once, wait for healthy' for node,name,_ in actions]
-    lines += ['Proposed restarts: '+str(len(actions))+'; healthy containers are skipped.']
+      'Container                | node1              | node2              | node3']
+    for name in ORDER:
+        if not any(service==name for _,service,_ in actions):continue
+        cells=[]
+        for node in ALLOWED:
+            value=records[node]['targets'][name]['container']
+            cells.append('healthy / skip' if helper.healthy(value) else 'starting / wait' if starting(value)
+                         else ('unhealthy' if value.get('running') else 'stopped')+' / restart')
+        lines.append(name.ljust(24)+' | '+' | '.join(cell.ljust(18) for cell in cells).rstrip())
+    lines += ['Recovery targets: '+str(len(actions))+'; healthy containers are skipped.',
+      'Restart once per listed failed target. Starting targets are observed first; other approved repairs can proceed.']
     return lines
 
 
@@ -130,7 +144,8 @@ def prior_guard(earlier,boots,actions):
     for path,state in earlier:
         if state.get('complete') is not True:
             raise RuntimeError('Earlier reboot recovery needs review: '+path.name+'; do not delete or repeat it')
-        attempted={(v.get('node'),v.get('service')) for v in state.get('attempts',[]) if v.get('kind')=='restart'}
+        attempted={(v.get('node'),v.get('service')) for v in state.get('attempts',[])
+                   if v.get('kind')=='restart' and v.get('outcome')!='not_sent'}
         if state.get('boots')==boots and actions is None and any(v.get('kind')=='mariadb-recovery' for v in state.get('attempts',[])):
             raise RuntimeError('MariaDB recovery was already attempted during this boot; review earlier report')
         if state.get('boots')==boots and any((node,name) in attempted for node,name,_ in (actions or [])):
@@ -152,22 +167,34 @@ def check_recap(raw):
             raise RuntimeError(node+': MariaDB recovery recap needs review; no retry')
 
 
-def settle(nodes,records,boots,log,unchanged,seconds=90):
+def approved_snapshot(records,boots,cluster,actions,node,name,target):
+    validate_controls(records,boots,cluster)
+    current=records[node]['targets'][name]
+    if current['container']['id']!=target['container']['id'] or current['unit']['sha256']!=target['unit']['sha256']:
+        raise RuntimeError(node+'/'+name+': identity changed; no restart')
+    approved={(n,s) for n,s,_ in actions}
+    if any((n,s) not in approved for n,s,_ in planned(records)):
+        raise RuntimeError('A new failure is outside the displayed plan; stop for review')
+    return current
+
+
+def settle_target(nodes,records,boots,cluster,actions,node,name,target,log,unchanged,seconds=90):
+    """Wait for this target only; independent container reads need not be simultaneous."""
     deadline=time.monotonic()+seconds
     while True:
         unchanged()
-        if host_baseline(records)!=boots:raise RuntimeError('Node boot identity changed')
-        starting=[node+'/'+name for node,r in records.items() for name,v in r['host']['containers']['value']['containers'].items()
-                  if v.get('running') is True and v.get('health')=='starting']
-        if not starting:return records
-        if time.monotonic()>=deadline:raise RuntimeError('Still starting: '+', '.join(starting)+'; no restart requested')
-        log('WAIT  Initializing: '+', '.join(starting))
+        current=approved_snapshot(records,boots,cluster,actions,node,name,target)
+        if not starting(current['container']):return records,current
+        if time.monotonic()>=deadline:
+            log('DEFER  '+node+'/'+name+': still starting; no restart sent. Continue other approved targets.')
+            return records,None
+        log('WAIT   '+node+'/'+name+': starting; observing this target only…')
         time.sleep(5);records=nodes.all()
 
 
 def workflow(nodes,records,apply,confirm,save,log,unchanged,recover_db,prior=lambda *_:None):
     boots=host_baseline(records);mode,cluster=database_state(records)
-    state={'boots':boots,'complete':False,'pending':False,'attempts':[],'stage':'review'}
+    state={'boots':boots,'complete':False,'pending':False,'attempts':[],'deferred':[],'stage':'review'}
     prior(boots,planned(records) if mode=='healthy' else None)
     if mode=='stopped':
         for line in plan_lines(records):log(line)
@@ -184,7 +211,6 @@ def workflow(nodes,records,apply,confirm,save,log,unchanged,recover_db,prior=lam
         if mode!='healthy':raise RuntimeError('MariaDB recovery did not establish a healthy three-member cluster')
         state.update(pending=False,stage='MariaDB verified');save(copy.deepcopy(state))
         log('PASS  MariaDB: all three synchronized and Primary.')
-    if apply:records=settle(nodes,records,boots,log,unchanged)
     validate_controls(records,boots,cluster)
     for line in plan_lines(records):log(line)
     actions=planned(records);prior(boots,actions)
@@ -193,25 +219,34 @@ def workflow(nodes,records,apply,confirm,save,log,unchanged,recover_db,prior=lam
         if state['attempts']:state.update(complete=True,stage='Database recovered; control restarts declined');save(copy.deepcopy(state))
         log('Control restarts cancelled.');return None
     for node,name,target in actions:
-        unchanged();fresh=nodes.all();validate_controls(fresh,boots,cluster)
-        current=fresh[node]['targets'][name]
-        if current['container']['id']!=target['container']['id'] or current['unit']['sha256']!=target['unit']['sha256']:
-            raise RuntimeError(node+'/'+name+': identity changed; no restart')
+        unchanged();fresh=nodes.all()
+        fresh,current=settle_target(nodes,fresh,boots,cluster,actions,node,name,target,log,unchanged)
+        if current is None:
+            state['deferred'].append({'node':node,'service':name,'reason':'still starting; no restart sent'})
+            continue
         if helper.healthy(current['container']):log('SKIP  '+node+'/'+name+': now healthy');continue
-        # New failures are reported; they cannot silently expand the approved list.
-        approved={(n,s) for n,s,_ in actions}
-        if any((n,s) not in approved for n,s,_ in planned(fresh)):raise RuntimeError('A new failure is outside the displayed plan; stop for review')
-        state['attempts'].append({'kind':'restart','node':node,'service':name,'container_id':target['container']['id']})
+        state['attempts'].append({'kind':'restart','node':node,'service':name,'container_id':target['container']['id'],'outcome':'pending'})
         state.update(pending=True,stage='Restart '+node+'/'+name+' outcome pending');save(copy.deepcopy(state))
         log('RESTART  '+node+'/'+name+'; waiting for healthy…')
         result=nodes.call(node,'restart',name,target,cluster)
+        if result.get('deferred') is True and result.get('changed') is False and starting(result.get('container',{})):
+            # The root helper observed startup after the last SSH snapshot and sent no restart.
+            state['attempts'][-1]['outcome']='not_sent'
+            state['deferred'].append({'node':node,'service':name,'reason':'starting at final node check; no restart sent'})
+            unchanged();state.update(pending=False,stage=node+'/'+name+' deferred without restart');save(copy.deepcopy(state))
+            log('DEFER    '+node+'/'+name+': started before the final node check; no restart sent.')
+            continue
         if not helper.healthy(result.get('container',{})):raise RuntimeError('Restart did not confirm container health')
+        state['attempts'][-1]['outcome']='not_sent' if result.get('changed') is False else 'verified'
         unchanged();state.update(pending=False,stage=node+'/'+name+' healthy');save(copy.deepcopy(state))
         log('PASS     '+node+'/'+name+' healthy')
     final=nodes.all();validate_controls(final,boots,cluster)
-    if planned(final):raise RuntimeError('Control containers still need review; no repeated restarts')
+    remaining=planned(final)
+    for node,name,target in remaining:log('REVIEW  '+node+'/'+name+': '+state_label(target['container'])+'; no further restart sent.')
     unchanged()
-    if state['attempts']:state.update(complete=True,pending=False,stage='All selected service actions verified');save(copy.deepcopy(state))
+    if state['attempts']:
+        state.update(complete=True,pending=False,stage='All sent actions verified; '+str(len(remaining))+' control targets still need review')
+        save(copy.deepcopy(state))
     return final
 
 
@@ -275,7 +310,7 @@ def execute(mode,log,details,report):
         rows=[];hosts={n:r['host'] for n,r in final.items()};details['hosts']=hosts;health.host_rows(hosts,rows,details)
         health.api_checks(rows,details,env,include_workload=False);details['cluster_summary']=rows;unchanged()
         details['summary']=[{'check':'Existing checkpoints/config preserved','status':'PASS'}]
-        rendered=dashboard.render_brief(details);ready='RESULT: REBOOT_SERVICES_HEALTHY' in rendered
+        rendered=dashboard.render_compact(details);ready='RESULT: REBOOT_SERVICES_HEALTHY' in rendered
         for line in rendered:
             if line.startswith('Read-only snapshot.'):line='Verification snapshot after the approved actions listed above.'
             if line.startswith('RESULT:') and not ready:line='RESULT: RECOVERY_NEEDS_REVIEW'
@@ -292,7 +327,7 @@ def main(argv=None):
     modes=parser.add_mutually_exclusive_group()
     for name in ('check','plan','apply'):modes.add_argument('--'+name,action='store_true')
     args=parser.parse_args(argv);mode=next((n for n in ('check','plan','apply') if getattr(args,n)),'check')
-    if mode=='check':return dashboard.main(['--check'])
+    if mode=='check':return dashboard.main(['--check','--compact'])
     deploy.validation.config_step.load_step('recovery_r2d2','phase2-check.py').require_r2d2();deploy.tools.check_paths(ENV)
     if not sys.stdin.isatty():raise RuntimeError('Use joe\'s interactive R2d2 terminal')
     if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--'+mode],deploy.tools.tool_environment())
