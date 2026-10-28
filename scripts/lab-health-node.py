@@ -24,6 +24,14 @@ WSREP = ('wsrep_local_state_comment','wsrep_cluster_size','wsrep_cluster_state_u
 def run(args, timeout=20):
     p = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     if p.returncode:
+        if args[:2]==['docker','exec'] and '--defaults-file=/etc/mysql/healthcheck.cnf' in args:
+            error=p.stderr.lower()
+            if 'is not running' in error:reason='database container not running'
+            elif '1045' in error or 'access denied' in error:reason='database query authentication rejected'
+            elif '1047' in error or 'wsrep has not yet prepared' in error:reason='database not ready for queries'
+            elif '2002' in error or '2003' in error:reason='database connection unavailable'
+            else:reason='database status query failed'
+            raise RuntimeError(reason+' (exit '+str(p.returncode)+')')
         raise RuntimeError(args[0]+' read query exited '+str(p.returncode))
     return p.stdout.strip()
 
@@ -38,7 +46,7 @@ def containers(node):
     required = REQUIRED + (('glance_api',) if node == 'node1' else ())
     names = set(run(['docker','ps','-a','--format','{{.Names}}']).splitlines())
     found = [n for n in required if n in names]
-    fmt = '{"name":{{json .Name}},"running":{{json .State.Running}},"status":{{json .State.Status}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}"not configured"{{end}}}'
+    fmt = '{"name":{{json .Name}},"running":{{json .State.Running}},"status":{{json .State.Status}},"exit_code":{{json .State.ExitCode}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}"not configured"{{end}}}'
     rows = [json.loads(line) for line in run(['docker','inspect','--format',fmt,*found]).splitlines()] if found else []
     if len(rows) != len(found): raise RuntimeError('Incomplete container observation')
     values = {r['name'].lstrip('/'):r for r in rows}
@@ -78,6 +86,15 @@ def broker():
               and selected.get('partitions') in ({},[]) and selected.get('alarms')==[]}
 
 
+def recent_galera_view():
+    raw=run(['docker','exec','--user','root','mariadb','tail','-n','60','/var/log/kolla/mariadb/mariadb.log'])
+    result={}
+    for line in raw.splitlines():
+        match=re.search(r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d).*WSREP: view\(view_id\((NON_PRIM|PRIM),',line)
+        if match:result={'log_time':match[1],'view':match[2],'scope':'recent log entry, not a live SQL result'}
+    return result
+
+
 def network(node, addresses):
     ip,usb = NODES[node]
     by_name = {a['ifname']:a for a in addresses}; provider = by_name.get(usb,{})
@@ -106,6 +123,9 @@ def collect(node):
     result['containers'] = query(lambda:containers(node))
     # Independent queries: a stopped database must not hide the other checks.
     result['galera'] = query(lambda:galera(NODES[node][0]))
+    state=result.get('containers',{}).get('value',{}).get('containers',{}).get('mariadb',{})
+    if not result['galera']['observed'] and state.get('running') is True:
+        result['galera_log']=query(recent_galera_view)
     result['rabbitmq'] = query(broker)
     result['provider_network'] = query(lambda:network(node,addresses))
     return result
