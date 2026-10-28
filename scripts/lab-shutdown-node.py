@@ -11,6 +11,10 @@ import tarfile
 import re
 
 NODES={'node1':'192.168.0.200','node2':'192.168.0.201','node3':'192.168.0.202'}
+UUID_PATTERN=r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+
+def network_child(name):
+    return re.fullmatch(r'(?:neutron_l3_agent_(?:haproxy|keepalived)_qrouter-|neutron_dhcp_agent_(?:dnsmasq|haproxy)_qdhcp-)'+UUID_PATTERN,name) is not None
 
 def run(args, binary=False):
     p=subprocess.run(args,capture_output=True,text=not binary,timeout=60)
@@ -57,19 +61,19 @@ def action(node,mode):
         domains=run(['docker','exec','nova_libvirt','virsh','--readonly','list','--uuid']).splitlines()
         return {'host':host,'active_domains':domains,'running':running()}
     if mode=='running':return {'running':running()}
-    if mode=='routers':
-        # The L3 agents have already stopped. Their separately managed router
-        # children are not ordinary Kolla service-stop targets.
+    if mode=='network-children':
+        # Kolla must first stop BOTH L3 and DHCP agents/other clients, so their
+        # process monitors cannot respawn these separately managed children.
         current=running()
-        names=[n for n in current if re.fullmatch(r'neutron_l3_agent_(?:haproxy|keepalived)_qrouter-[0-9a-f-]{36}',n)]
+        names=[n for n in current if network_child(n)]
         if set(current)-set(names)-{'mariadb','rabbitmq'}:
-            raise RuntimeError('Cloud clients/L3 agents still running; no router child stop')
+            raise RuntimeError('Cloud clients/agents or unknown containers still running; no network helper stop')
         for name in names:
             run(['docker','stop','--time','60',name])
             state=json.loads(run(['docker','inspect','--format','{{json .State}}',name]))
             if state.get('Running') or state.get('ExitCode') not in (0,143) or state.get('OOMKilled'):
-                raise RuntimeError('Router child clean stop unavailable; no further shutdown')
-        return {'router_children_stopped':len(names)}
+                raise RuntimeError('Network helper clean stop unavailable; no further shutdown')
+        return {'network_children_stopped':len(names)}
     if mode=='broker':return stopped('rabbitmq')
     if mode=='database':return database()
     if mode=='poweroff':
@@ -81,7 +85,7 @@ def action(node,mode):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--node',choices=NODES,required=True)
-    parser.add_argument('--action',choices=('inspect','running','routers','broker','database','poweroff'),required=True)
+    parser.add_argument('--action',choices=('inspect','running','network-children','broker','database','poweroff'),required=True)
     args=parser.parse_args()
     try:
         print(json.dumps({'node':args.node,'ok':True,'value':action(args.node,args.action)}))
