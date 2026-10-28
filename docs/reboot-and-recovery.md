@@ -12,7 +12,7 @@ git pull --ff-only
 /usr/bin/python3 scripts/lab-health.py --check
 ```
 
-Enter joe's sudo password for each node when prompted. The script checks all three nodes independently, then tries HTTPS and OpenStack reads. It continues collecting evidence if MariaDB or an API is unavailable. It saves a short TXT summary and private JSON details in `reports/`; run the printed `cat` command and return the summary for review.
+Enter joe's sudo password for each node when prompted. Read the short table and **Needs attention** list: it names unhealthy containers and unavailable host checks. Return the printed TXT summary; you do not need to interpret the JSON. The private JSON is available for detailed review.
 
 | Check | What we want |
 |---|---|
@@ -35,7 +35,53 @@ Enter joe's sudo password for each node when prompted. The script checks all thr
 
 This check creates only local reports and may unlock the existing management SSH key. It does not restart services, bootstrap a database, change cloud objects or run guest commands. Container/API state does not prove guest traffic, volume contents, successful migration, browser sign-in or failover. RabbitMQ checks do not test every queue or an end-to-end Nova RPC request. Booting services may initially need time; rerun the same check to obtain a fresh snapshot without repairing anything.
 
-## 2. Choose the recovery step from the report
+## 2. View services and agents — on R2d2
+
+These are separate checks you can run whenever you want. They authenticate through the private HTTPS profile, then only read API data. No OpenStack CLI installation is required.
+
+**Nova services** — the VM scheduler, conductor and compute workers:
+
+```bash
+/usr/bin/python3 scripts/lab-view.py compute-services --table
+```
+
+Target: `enabled` and `up` for all three nodes. **Enabled** means allowed to work; **up** means Nova sees the service heartbeat. A running Docker container alone does not prove this.
+
+**Hypervisors** — hosts that run VMs:
+
+```bash
+/usr/bin/python3 scripts/lab-view.py hypervisors --table
+```
+
+Target: node1, node2 and node3, each `enabled` and `up`.
+
+**Neutron agents** — the node workers for VM networking:
+
+```bash
+/usr/bin/python3 scripts/lab-view.py agents --table
+```
+
+Target: twelve agents: DHCP, L3/router, Open vSwitch and metadata on each node. **Alive: yes** means Neutron sees its heartbeat; **Enabled: yes** means it is administratively allowed to work.
+
+**Cinder services** — the volume scheduler and storage workers:
+
+```bash
+/usr/bin/python3 scripts/lab-view.py cinder-services --table
+```
+
+Target: three `cinder-scheduler` and three `cinder-volume` services, each `enabled` and `up`. This does not prove that the VM can read its attached disk.
+
+**Router HA roles**:
+
+```bash
+/usr/bin/python3 scripts/lab-view.py router
+```
+
+Read `hosting_agents`: one `active`, two `standby`, all alive/enabled. Role state is separate from guest traffic.
+
+If an API read fails, its service/agent state is **unknown**. Use the host/container findings and dependency checks below; do not conclude all agents are down. These viewing commands never restart or enable anything.
+
+## 3. Choose the recovery step from the report
 
 | Finding | Next action |
 |---|---|
@@ -50,7 +96,7 @@ This check creates only local reports and may unlock the existing management SSH
 
 The check order is **host access → database → database proxy and message broker → APIs and application services → networking and workloads**. This is a diagnosis order, not an instruction to restart every component.
 
-## 3. MariaDB recovery — only after the condition above is confirmed
+## 4. MariaDB recovery — only after the condition above is confirmed
 
 This is a changing operation, not part of the health check. Review the fresh report and approve it first. Run once from R2d2, against **all three nodes together**:
 
@@ -76,7 +122,7 @@ After completion:
 
 Require all three database members to meet the Galera target and share their UUID before repairing database-dependent applications. If recovery fails, return its output; do not repeat it or delete database volumes.
 
-## 4. Inspect one service before a targeted restart
+## 5. Inspect one service before a targeted restart
 
 Example: inspecting **node1 Nova compute**, from R2d2. Substitute only the node/service identified in the reviewed report:
 
@@ -98,7 +144,7 @@ ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200 \
 
 Common container names are `proxysql`, `nova_scheduler`, `nova_conductor`, `nova_compute`, `neutron_server`, `neutron_l3_agent`, `neutron_dhcp_agent` and `neutron_openvswitch_agent`. Restarting an L3 agent alone does not prove the router recovered; recheck its HA roles and guest traffic. Do not enable an administratively disabled compute service without reviewing why it was disabled. RabbitMQ reset/redeploy is outside normal reboot recovery and is not automated here.
 
-## 5. Future maintenance: one node at a time
+## 6. Future maintenance: one node at a time
 
 1. Run the health check and resolve outstanding issues first.
 2. Review the selected node's VMs and storage. Local VM root disks and Cinder LVM are not replicated: rebooting their host can interrupt the VM or its data access. Other healthy controllers cannot replace those local disks. Glance images also live on node1.
