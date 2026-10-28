@@ -4,7 +4,7 @@
 
 **Goal:** check that another service takes over when one stops, then move a running VM for planned maintenance.
 
-Phase 4's VM networking and Cinder persistence reports passed. Reviewed live reports passed B (API VIP), C (MariaDB) and D (virtual-router HA), including restoration. D confirmed node3-to-node2 router takeover and healthy final guest traffic/data and host/API/database checks; one sampled network probe failed, so uninterrupted traffic is not claimed. **E is paused: migration completion is not verified.** Finish [reboot recovery](../reboot-and-recovery.md) and review the existing migration checkpoint before any new preparation or move. Repeating a completed fault test requires fresh preparation and review.
+Phase 4's VM networking and Cinder persistence reports passed. Reviewed live reports passed B (API VIP), C (MariaDB) and D (virtual-router HA), including restoration. Reboot service recovery also passed. **E now plans live/cold compute and storage migration with a numbered menu.** Fresh VM/storage readiness, any pending record and each exact move require review before execution. Repeating a completed fault test requires fresh preparation and review.
 
 | Chapter | Simple purpose | Status |
 |---|---|---|
@@ -12,7 +12,7 @@ Phase 4's VM networking and Cinder persistence reports passed. Reviewed live rep
 | [B — API VIP](B-api-vip.md) | Keep the cloud's front-door address working | Complete — reviewed API VIP takeover and restoration passed |
 | [C — MariaDB](C-mariadb.md) | Keep the database working with one member stopped | Complete — one-member stop, surviving cluster/API reads and three-member restoration passed |
 | [D — Virtual router](D-router.md) | Keep the VM's network path working after takeover | Complete — router takeover, link restoration and final checks passed |
-| [E — VM migration](E-vm-migration.md) | Move a VM between healthy compute nodes | Paused — finish reboot/workload verification and reconcile the pending record first |
+| [E — VM and storage migration](E-vm-migration.md) | Choose live/cold compute moves and separate data-volume moves | Menu ready; current VM/storage readiness and live results pending |
 
 For each exercise:
 
