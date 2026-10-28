@@ -46,6 +46,52 @@ class RebootVerificationTests(unittest.TestCase):
         details['cluster_summary'] += [{'check':label,'status':'PASS'} for label in ('Galera: same three-member Primary cluster','API VIP: exactly one owner','HTTPS authentication','Horizon HTTPS','image HTTPS API read','compute HTTPS API read','network HTTPS API read','block-storage HTTPS API read','placement HTTPS API read','Nova services','Neutron agents','Cinder services','hypervisors','router HA (API state)')]
         return details
 
+    def test_compact_healthy_preserves_result_with_shorter_output(self):
+        details=self.dashboard();compact=r.render_compact(details);full=r.render_brief(details)
+        self.assertLess(len(compact),len(full));self.assertLessEqual(len(compact),32)
+        for value in ('PASS    Galera: 3/3 Synced/Primary, size 3, same cluster UUID',
+          'PASS    RabbitMQ cluster: 3/3 running members, no alarms or partitions',
+          'PASS    HTTPS: login, Horizon and all five service API reads','RESULT: REBOOT_SERVICES_HEALTHY'):
+            self.assertIn(value,compact)
+        self.assertNotIn('VM in Nova','\n'.join(compact))
+        self.assertLess(next(i for i,v in enumerate(compact) if 'PASS    Galera:' in v),
+                        next(i for i,v in enumerate(compact) if 'PASS    Placement:' in v))
+
+    def test_compact_keeps_each_named_failure_and_safe_api_error(self):
+        details=self.dashboard()
+        details['hosts']['node3']['containers']['value']['containers']['nova_conductor'].update(running=False,status='exited',exit_code=1,health='unhealthy')
+        next(v for v in details['cluster_summary'] if v['check']=='compute HTTPS API read')['status']='UNKNOWN'
+        details['compute HTTPS API read']={'error':'HTTP 503 password=do-not-print'}
+        text='\n'.join(r.render_compact(details))
+        self.assertIn('node3: nova_conductor=EXITED exit=1',text);self.assertIn('BLOCKED Compute: HTTP 503',text)
+        self.assertNotIn('do-not-print',text);self.assertIn('RESULT: REBOOT_SERVICES_NEED_REVIEW',text)
+
+    def test_compact_does_not_hide_database_mismatch_or_missing_host(self):
+        details=self.dashboard()
+        details['hosts']['node1']['galera']['value']['wsrep_cluster_size']='2'
+        details['hosts']['node2']={'observed':False,'error':'SSH key authentication rejected'}
+        next(v for v in details['cluster_summary'] if v['check']=='node2 management SSH/identity')['status']='UNKNOWN'
+        text='\n'.join(r.render_compact(details))
+        self.assertIn('members=2',text);self.assertIn('node2 management SSH/identity: SSH key authentication rejected',text)
+        self.assertNotIn('PASS    Nodes: 3/3',text);self.assertNotIn('PASS    Galera: 3/3 Synced',text)
+        self.assertIn('RESULT: REBOOT_SERVICES_NEED_REVIEW',text)
+
+    def test_compact_changed_protected_input_cannot_pass(self):
+        details=self.dashboard()
+        next(v for v in details['summary'] if v['check']=='Existing checkpoints/config preserved')['status']='REVIEW'
+        self.assertIn('FAIL    Saved checkpoints/config preserved',r.render_compact(details))
+        self.assertNotIn('RESULT: REBOOT_SERVICES_HEALTHY',r.render_compact(details))
+
+    def test_saved_compact_snapshot_has_no_remote_reads_or_file_changes(self):
+        with tempfile.TemporaryDirectory() as directory,patch.object(r,'REPO',Path(directory)):
+            reports=Path(directory)/'reports';reports.mkdir()
+            path=reports/'reboot-verify-example.json';path.write_text(json.dumps(self.dashboard()));path.chmod(0o600)
+            raw=path.read_bytes()
+            with patch.object(r.health,'host_observe',side_effect=AssertionError('no SSH')),contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(r.saved_report(path,compact=True),0)
+            self.assertIn('SAVED SNAPSHOT:',output.getvalue());self.assertIn('RESULT: REBOOT_SERVICES_HEALTHY',output.getvalue())
+            self.assertEqual(path.read_bytes(),raw)
+
     def test_brief_healthy_groups_counts_and_glance_placement(self):
         text='\n'.join(r.render_brief(self.dashboard()))
         for value in ('PASS    MariaDB: 3/3 ready','PASS    Glance: 1/1 ready (node1 only)',
