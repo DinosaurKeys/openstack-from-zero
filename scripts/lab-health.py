@@ -160,7 +160,7 @@ def read_private(path):
     return json.loads(path.read_text())
 
 
-def api_checks(rows,details,env):
+def api_checks(rows,details,env,include_workload=True):
     try:
         _,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
         original,project,user=prep.authenticate(config)
@@ -168,7 +168,7 @@ def api_checks(rows,details,env):
     except Exception as error:
         rows.append({'check':'HTTPS authentication','status':'UNKNOWN'})
         details['HTTPS authentication']={'error':type(error).__name__+'; API or local client profile unavailable; token withheld'}
-        for label in ('Horizon HTTPS','public service APIs','Nova services','hypervisors','Neutron agents','router HA (API state)','Cinder services','existing VM/volume API state'):
+        for label in ('Horizon HTTPS','public service APIs','Nova services','hypervisors','Neutron agents','router HA (API state)','Cinder services')+(('existing VM/volume API state',) if include_workload else ()):
             rows.append({'check':label,'status':'UNKNOWN'})
         return
     rows.append({'check':'HTTPS authentication','status':'PASS'})
@@ -217,7 +217,7 @@ def api_checks(rows,details,env):
         return ok,{'server_id':server_id,'status':server.get('status'),'compute_host':server.get('OS-EXT-SRV-ATTR:host'),
           'task':server.get('OS-EXT-STS:task_state'),'volume_id':volume_id,'volume_status':disk.get('status'),
           'storage_backend':disk.get('os-vol-host-attr:host'),'limit':'API snapshot; guest SSH, mount and data not checked'}
-    checked(rows,details,'existing VM/volume API state',workload)
+    if include_workload:checked(rows,details,'existing VM/volume API state',workload)
 
 
 def checkpoint_checks(rows,details):
