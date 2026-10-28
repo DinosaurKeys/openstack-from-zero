@@ -37,6 +37,13 @@ class ViewingTableTests(unittest.TestCase):
             text=view.table(name,{'services':[{'host':'node1','binary':'worker','status':'enabled','state':'down'}]})
             self.assertIn('Heartbeat',text);self.assertIn('enabled',text);self.assertIn('down',text)
 
+    def test_enabled_service_without_disable_reason_shows_dash(self):
+        text=view.table('compute-services',{'services':[{'host':'node1','binary':'nova-compute','status':'enabled','state':'up','disabled_reason':None}]})
+        self.assertTrue(text.splitlines()[1].endswith('| -'))
+        self.assertNotIn('unknown',text)
+        text=view.table('compute-services',{'services':[{'host':'node2','binary':'nova-compute','status':'disabled','state':'down'}]})
+        self.assertIn('unknown',text)
+
     def test_new_views_are_read_queries_and_fields_selected(self):
         for name in ('hypervisors','cinder-services'):
             service,path,key,fields=view.QUERIES[name]
