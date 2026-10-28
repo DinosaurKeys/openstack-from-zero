@@ -10,7 +10,8 @@ Use this page for a **whole-lab shutdown and startup**. Run commands on **R2d2 a
 | 2 | Power off the three hosts | `bash scripts/lab-poweroff.sh --apply` |
 | 3 | Power the hosts on | node3 first, then node2 and node1; let all three boot |
 | 4 | Read the live dashboard | `bash scripts/lab-recover.sh --check` |
-| 5 | If repair is needed | `bash scripts/lab-recover.sh --apply` → review, confirm, repair, final check |
+| 5 | Only if MariaDB needs recovery | Use the coordinated database command in step 5; skip it when Galera is healthy |
+| 6 | Recover failed control services | `bash scripts/lab-recover.sh --apply` → review, confirm, repair, final check |
 
 - [Shutdown: stop services, then power off](#normal-shutdown-two-steps)
 - [Power on and check the cluster](#after-power-on-check-the-cluster)
@@ -89,7 +90,7 @@ Starting node3 first does **not** itself bootstrap Galera. A complete database s
 bash scripts/lab-recover.sh --check
 ```
 
-This uses the existing `lab-reboot-verify.py --check` dashboard. It changes no services. Enter joe's sudo password for each node.
+This collects the existing service/agent checks and displays a short summary. It changes no services. Enter joe's sudo password for each node. Healthy groups show one PASS line; failed groups name the node and container. The full by-node tables remain available in the optional reference.
 
 | Output | Plain meaning |
 |---|---|
@@ -110,40 +111,64 @@ The report path is printed under `reports/`. Share the short **TXT** report when
 
 ## Recover only what needs repair
 
-### 5. Run one guided recovery command
+Follow the same dependency order as the [previous lab's runbook](https://github.com/DinosaurKeys/openstack-zero-to-hero/blob/main/docs/openstack-reboot-and-recovery-runbook.md): **MariaDB → ProxySQL → Placement → control services → API and agent checks**.
+
+<a id="5-mariadb-cold-boot-recovery"></a>
+
+### 5. Recover the database — only if needed
+
+| MariaDB/Galera result | Action |
+|---|---|
+| All three Synced/Primary, connected/ready, size 3 and same UUID | **Skip this step.** Leave the database running. |
+| All three database containers confirmed stopped, with exit 0, after a whole-lab shutdown | Review this state, then run coordinated Kolla recovery below. |
+| A Primary survives, a node is unreachable, or the state is partial/starting/unclear | Return the report for review. Do not select a bootstrap member or restart all database members blindly. |
+
+For the reviewed complete database outage, run once from R2d2:
+
+```bash
+source /home/joe/venvs/kolla/bin/activate
+ANSIBLE_BECOME_ASK_PASS=True kolla-ansible mariadb-recovery \
+  --configdir "$HOME/openstack-from-zero/private/phase2/kolla" \
+  -i "$HOME/openstack-from-zero/private/phase2/inventory.ini" \
+  --limit baremetal --become \
+  -e ansible_python_interpreter=/usr/bin/python3
+```
+
+Kolla checks the recovery positions, chooses the starting member and rejoins the others. **No separate manual MariaDB restart is needed first.** Do not edit `grastate.dat`, force `safe_to_bootstrap`, or run `galera_new_cluster` yourself.
+
+Require `failed=0` and `unreachable=0` for all three nodes, then check:
+
+```bash
+bash scripts/lab-recover.sh --check
+```
+
+Continue only when Galera is **3/3 Synced/Primary, size 3, connected/ready, same UUID**, and ProxySQL/RabbitMQ checks pass. If recovery fails, keep the output and return it; do not repeat recovery or delete database volumes.
+
+### 6. Recover failed control services
+
+When the database is healthy but control services remain stopped or unhealthy:
 
 ```bash
 bash scripts/lab-recover.sh --apply
 ```
 
-It takes **fresh checks**, displays the proposed changes and asks before performing them. You do not need to run a separate plan command first.
+The command checks all three nodes again, leaves healthy MariaDB running, and prints a small plan table. Each cell shows the observed state and proposed action:
 
-| Step inside the command | What happens |
+| Cell | What it will do |
 |---|---|
-| Check access and dependencies | Require all three nodes, expected identities, clock/USB checks, RabbitMQ, proxies and one API VIP. Unavailable evidence blocks repair. |
-| Check MariaDB | If all three members are healthy, synchronized and Primary with one UUID, **leave MariaDB running**. |
-| Recover a confirmed stopped database | Only if all three MariaDB containers are confirmed stopped with exit 0, ask for **`RECOVER MARIADB`**, then run standard Kolla coordinated recovery once. |
-| Confirm the database | Require all three Synced/Primary/connected/ready, size 3, same cluster UUID. No control-service restart proceeds without this. |
-| Build the control-service plan | Briefly wait for services already starting. List only the supported containers still needing a restart. |
-| Approve and repair | Ask for **`RESTART LISTED SERVICES`**. Restart one listed container at a time and require it to become healthy before continuing. Healthy containers are skipped. |
-| Final verification | Show the live PASS/FAIL/BLOCKED dashboard again, including APIs, services and agents. |
+| `healthy / skip` | Leave that service running. |
+| `unhealthy / restart` or `stopped / restart` | Request one restart of that exact Kolla service, then wait for it to become healthy. |
+| `starting / wait` | Observe this service when its turn comes. If it becomes healthy, skip it. If it stops or becomes unhealthy, it is eligible for one approved restart. |
 
-**Do not restart all database members manually and then run recovery.** The coordinated Kolla command already handles the database recovery sequence and selects its starting member from recovery positions. If a Primary survives, members are syncing, or the state is unclear, the helper stops for review instead of selecting a bootstrap host.
+Review the named containers and nodes, then type **`RESTART LISTED SERVICES`** to approve. For a preview without changes, `bash scripts/lab-recover.sh --plan` is optional; a separate plan run is not required.
 
-The supported control containers, on node1/node2/node3, are:
+The supported containers are **Placement; Nova API, metadata, conductor and scheduler; Neutron server, RPC server and periodic worker; Cinder API**. There are at most 27 candidates across the three nodes; healthy services are skipped. Placement and the failed APIs are handled before the background workers.
 
-| Group | Containers |
-|---|---|
-| Placement | `placement_api` |
-| Nova control | `nova_conductor`, `nova_scheduler`, `nova_api`, `nova_metadata` |
-| Neutron control | `neutron_server`, `neutron_rpc_server`, `neutron_periodic_worker` |
-| Cinder API | `cinder_api` |
+A starting control worker does not block unrelated approved repairs. The command waits up to 90 seconds for a starting target at its turn. If it is still starting, it prints **DEFER**, sends no restart for that target, and continues the other approved repairs. The root helper checks again immediately before restarting, so a newly starting process is also left alone.
 
-This is a maximum of **27 candidates**, not 27 automatic restarts. The actual plan comes from the current checks. Healthy databases, brokers, proxies, compute services and network agents stay running. Compute services are not automatically enabled. The helper does not repair infrastructure outside its stated database/control scope.
+The final dashboard still reports deferred or failed services as needing attention. **DEFER does not mean repaired.** Missing observations, changed identities or failed database/broker/proxy dependencies stop the procedure. A failed restart or unknown outcome stops further repairs and preserves its progress record; return the report instead of repeatedly applying or deleting that record.
 
-If a restart fails or its outcome is unavailable, the command stops and keeps its progress record. Return the report instead of repeatedly applying or deleting that record. A previously attempted failed restart cannot be repeated automatically during the same boot.
-
-For a preview with no changes, optionally use `bash scripts/lab-recover.sh --plan`.
+This step does not restart ProxySQL, RabbitMQ, compute/libvirt, network agents or Cinder volume services, and does not enable disabled computes. Those require separate review if their checks fail. VM and migration records remain unchanged.
 
 ## What a healthy result means
 
@@ -258,44 +283,16 @@ For these main containers, the unit pattern is **`kolla-CONTAINER_NAME-container
 
 </details>
 
-<a id="5-mariadb-cold-boot-recovery"></a>
-
-### MariaDB cold-boot recovery
-
-<details>
-<summary>Open only for a reviewed, fully stopped database cluster</summary>
-
-- All three Synced/Primary, size 3, same UUID: **skip recovery**.
-- A Primary component survives, or a member is absent/syncing: inspect that state; **do not bootstrap another cluster**.
-- All database members are stopped, no Primary survives and all nodes are observable: review and approve coordinated recovery.
-
-Run once on R2d2, against all three nodes together:
-
-```bash
-source /home/joe/venvs/kolla/bin/activate
-ANSIBLE_BECOME_ASK_PASS=True kolla-ansible mariadb-recovery \
-  --configdir "$HOME/openstack-from-zero/private/phase2/kolla" \
-  -i "$HOME/openstack-from-zero/private/phase2/inventory.ini" \
-  --limit baremetal --become \
-  -e ansible_python_interpreter=/usr/bin/python3
-```
-
-Kolla checks recovery positions and chooses the bootstrap member. Do not guess a host, edit `grastate.dat` or run `galera_new_cluster` manually. If recovery fails, return its output; do not repeat it or delete database volumes.
-
-After completion, run `/usr/bin/python3 scripts/lab-reboot-verify.py --check`. Require all three members Synced/Primary/connected/ready, size 3 and the same UUID before choosing any API repair. Recovery restores database operation; it does not guarantee transactions lost during abrupt power failure can be recovered.
-
-</details>
-
 <a id="4-supported-api-recovery-helper"></a>
 
-### Earlier limited API helper
+### Fixed API recovery profile
 
 <details>
-<summary>For readers with an existing lab-recover-api.py receipt</summary>
+<summary>Special-purpose helper; use lab-recover.sh for this runbook</summary>
 
-Use **lab-recover.sh** for the reboot procedure on this page. The earlier `lab-recover-api.py` has a separate fixed 14-container scope and does not include all Nova control workers. It retains its original scope and progress file; do not delete that file or rerun a completed apply to force another repair.
+Use **lab-recover.sh** for the reboot procedure on this page. `lab-recover-api.py` has a separate fixed 14-container scope and does not include all Nova control workers. It retains its original scope and progress file; do not delete that file or rerun a completed apply to force another repair.
 
-The reboot helper keeps its own progress records and preserves the earlier API and VM/migration records.
+The reboot helper keeps its own progress records and preserves existing API and VM/migration records.
 
 </details>
 
