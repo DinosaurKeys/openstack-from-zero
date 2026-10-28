@@ -106,12 +106,32 @@ def stop_args(config,inventory,options,service=None,node=None):
     else:args+=['-e',json.dumps({'skip_stop_containers':list(RETAIN)})]
     return args
 
-def workflow(remote,stop,save,log,cluster):
-    state={'pending':True,'stage':'before first service stop','cluster_uuid':cluster,'database':{},'attempts':[]}
+def continuation(state,records):
+    attempts=state.get('attempts',[])
+    if state.get('pending') is not True or state.get('database')!={} or not attempts or attempts[0]!='1/3 Stop cloud clients and agents; retain database, broker and proxies' or not re.fullmatch('1/3 Stop remaining DHCP/router helpers on node[123]',state.get('stage','')):
+        raise RuntimeError('This receipt is not an interrupted network-helper stage; manual review required')
+    if set(records)!=set(NODES):raise RuntimeError('All three nodes must be observed before finishing')
+    for node,r in records.items():
+        if r.get('vm_processes')!=0:raise RuntimeError(node+': VM runtime not confirmed empty')
+        if not health.member_ok(r.get('database',{})) or r['database']['wsrep_cluster_state_uuid']!=state.get('cluster_uuid'):
+            raise RuntimeError(node+': require the original healthy three-member database cluster')
+        if not r.get('broker',{}).get('healthy'):raise RuntimeError(node+': require healthy three-member RabbitMQ')
+        names=set(r.get('running',[]))
+        if not set(RETAIN).issubset(names) or any(name not in RETAIN and not network_child(name) for name in names):
+            raise RuntimeError(node+': clients or unexpected containers remain running')
+        for name in RETAIN:
+            support=r.get('support',{}).get(name,{})
+            if support.get('running') is not True or (name!='keepalived' and support.get('health')!='healthy'):
+                raise RuntimeError(node+'/'+name+': supporting service needs review')
+
+def workflow(remote,stop,save,log,cluster,previous=None):
+    state=previous if previous is not None else {'pending':True,'stage':'before first service stop','cluster_uuid':cluster,'database':{},'attempts':[]}
     def attempt(stage,call):
         state['stage']=stage;state['attempts'].append(stage);save(state)
         log(stage);return call()
-    attempt('1/3 Stop cloud clients and agents; retain database, broker and proxies',lambda:stop(None,None))
+    if previous is None:
+        attempt('1/3 Stop cloud clients and agents; retain database, broker and proxies',lambda:stop(None,None))
+    else:log('Continue verified partial shutdown; initial cloud-service stop is not repeated.')
     for node in NODES:
         attempt('1/3 Stop remaining DHCP/router helpers on '+node,lambda n=node:remote(n,'network-children'))
     for node in NODES:
@@ -142,14 +162,15 @@ def finish(state,save,log):
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__);modes=parser.add_mutually_exclusive_group()
-    modes.add_argument('--check',action='store_true');modes.add_argument('--apply',action='store_true');args=parser.parse_args(argv)
-    if not args.check and not args.apply:
-        print('Prepare node1/node2/node3 for manual poweroff. --check reads readiness only. --apply rechecks, requires confirmation, stops services and verifies clean database exits. Hosts remain powered on. No guest stop, migration, deletion or recovery.');return 0
+    modes.add_argument('--check',action='store_true');modes.add_argument('--apply',action='store_true');modes.add_argument('--finish',action='store_true');args=parser.parse_args(argv)
+    if not args.check and not args.apply and not args.finish:
+        print('Prepare node1/node2/node3 for manual poweroff. --check reads readiness only. --apply starts service stops. --finish explicitly continues a reviewed interrupted network-helper stage after fresh all-node checks. Hosts remain powered on.');return 0
     health.deploy.validation.config_step.load_step('shutdown_r2d2','phase2-check.py').require_r2d2()
     health.deploy.tools.check_paths(health.ENV)
     if not sys.stdin.isatty():raise RuntimeError('Use joe\'s interactive R2d2 terminal')
     if Path(sys.prefix)!=health.ENV:
-        os.execve(str(health.ENV/'bin/python'),[str(health.ENV/'bin/python'),str(Path(__file__).resolve()),'--apply' if args.apply else '--check'],health.deploy.tools.tool_environment())
+        mode='--finish' if args.finish else '--apply' if args.apply else '--check'
+        os.execve(str(health.ENV/'bin/python'),[str(health.ENV/'bin/python'),str(Path(__file__).resolve()),mode],health.deploy.tools.tool_environment())
     os.umask(0o077);env=health.deploy.tools.tool_environment();health.deploy.source_guard()
     for name,digest in json.loads((REPO/'scripts/lab-shutdown-sources.json').read_text()).items():
         path=health.ENV/name
@@ -168,9 +189,14 @@ def main(argv=None):
             handle=path.open('a');handles.append(handle);os.chmod(path,0o600)
             try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:raise RuntimeError('Another lab operation is running') from None
+        pending=[];previous=None
         for path in folder.glob('shutdown-*.json'):
             value=health.read_private(path)
-            if value.get('pending'):raise RuntimeError('Earlier shutdown is incomplete: '+path.name+'. Review its report; do not repeat --apply.')
+            if value.get('pending'):pending.append((path,value))
+        if args.finish:
+            if len(pending)!=1:raise RuntimeError('Finish requires exactly one interrupted shutdown receipt')
+            receipt,previous=pending[0]
+        elif pending:raise RuntimeError('Earlier shutdown is incomplete: '+pending[0][0].name+'. Do not repeat --apply.')
         for name in ('api-vip-state.json','mariadb-state.json','router-state.json'):
             path=folder/name
             if path.exists() and health.read_private(path).get('restore_required'):raise RuntimeError('An HA exercise requires restoration first')
@@ -192,7 +218,7 @@ def main(argv=None):
                 return r['value']
             except (OSError,ValueError,subprocess.TimeoutExpired):raise RuntimeError(node+': SSH/outcome unavailable; no retry') from None
         print('Checking nodes, database/broker and actual VM runtime…',flush=True)
-        records=collect_checks(remote)
+        records={node:remote(node,'partial') for node in NODES} if args.finish else collect_checks(remote)
         if args.check:
             ready,lines=check_lines(records)
             fd,name=tempfile.mkstemp(prefix='shutdown-check-'+dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'),suffix='.txt',dir=reports)
@@ -201,16 +227,18 @@ def main(argv=None):
             for line in lines:print(line)
             print('Private report: '+name)
             return 0 if ready else 1
-        cluster=baseline(records)
+        if args.finish:continuation(previous,records);cluster=previous['cluster_uuid']
+        else:cluster=baseline(records)
         print('Node  | Galera | RabbitMQ | Core containers | Active VMs')
         for n in NODES:print(n+' | OK     | OK       | OK              | 0')
         print('This stops ALL cloud services only. Ubuntu hosts and R2d2 stay powered on.\nConfirm no active cloud/storage operations and all guests cleanly shut down.\nThe script does not stop guests.')
         if input('Type STOP ALL CLOUD SERVICES to proceed: ')!='STOP ALL CLOUD SERVICES':raise RuntimeError('Cancelled before service changes')
         # Fresh readiness immediately before the first mutation.
-        cluster=baseline({n:remote(n,'inspect') for n in NODES})
+        if args.finish:continuation(previous,{n:remote(n,'partial') for n in NODES})
+        else:cluster=baseline({n:remote(n,'inspect') for n in NODES})
         stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-')
         fd,report=tempfile.mkstemp(prefix='shutdown-'+stamp,suffix='.txt',dir=reports)
-        receipt=folder/(Path(report).stem+'.json')
+        if not args.finish:receipt=folder/(Path(report).stem+'.json')
         print('Private report: '+report,flush=True)
         with os.fdopen(fd,'w') as out:
             def log(line):print(line,flush=True);out.write(line+'\n');out.flush()
@@ -230,7 +258,7 @@ def main(argv=None):
                 if rc:raise RuntimeError('Kolla stop failed; see private log '+logfile.name)
                 unchanged()
             try:
-                state=workflow(remote,stop,save,log,cluster)
+                state=workflow(remote,stop,save,log,cluster,previous)
                 finish(state,save,log)
                 return 0
             except BaseException:
