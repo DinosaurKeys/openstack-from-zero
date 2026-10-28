@@ -22,6 +22,10 @@ spec=importlib.util.spec_from_file_location('shutdown_health',REPO/'scripts/lab-
 health=importlib.util.module_from_spec(spec);spec.loader.exec_module(health)
 NODES=tuple(health.NODES)
 EXTRAS={'cron','fluentd','kolla_toolbox','memcached','tgtd','iscsid','nova_ssh','nova_novncproxy','glance_api'}
+UUID_PATTERN=r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+
+def network_child(name):
+    return re.fullmatch(r'(?:neutron_l3_agent_(?:haproxy|keepalived)_qrouter-|neutron_dhcp_agent_(?:dnsmasq|haproxy)_qdhcp-)'+UUID_PATTERN,name) is not None
 
 def allowed(name):
     required={'mariadb','proxysql','rabbitmq','haproxy','keepalived','keystone_api','keystone_fernet','keystone_ssh',
@@ -29,7 +33,7 @@ def allowed(name):
       'neutron_server','neutron_rpc_server','neutron_periodic_worker','neutron_openvswitch_agent','neutron_l3_agent',
       'neutron_dhcp_agent','neutron_metadata_agent','openvswitch_db','openvswitch_vswitchd','cinder_api',
       'cinder_scheduler','cinder_volume','horizon'}
-    return name in required|EXTRAS or re.fullmatch(r'neutron_l3_agent_(?:haproxy|keepalived)_qrouter-[0-9a-f-]{36}',name) is not None
+    return name in required|EXTRAS or network_child(name)
 
 def node_baseline(node,r):
     host=r.get('host',{})
@@ -108,7 +112,7 @@ def workflow(remote,stop,save,log,cluster):
         log(stage);return call()
     attempt('1/4 Stop cloud clients, proxies and agents; retain MariaDB/RabbitMQ',lambda:stop(None,None))
     for node in NODES:
-        attempt('1/4 Stop remaining per-router children on '+node,lambda n=node:remote(n,'routers'))
+        attempt('1/4 Stop remaining DHCP/router helpers on '+node,lambda n=node:remote(n,'network-children'))
     for node in NODES:
         if set(remote(node,'running')['running'])!={'mariadb','rabbitmq'}:
             raise RuntimeError(node+': unexpected containers after cloud stop; no further stop/poweroff')
