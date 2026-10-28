@@ -272,14 +272,53 @@ Use the actual existing JSON sibling of your TXT report. This formats saved evid
 
 4. Wait for its return, run the dashboard again, and review any agreed workload checks before touching the next node.
 
-**Full shutdown — all hosts stop:**
+### Full shutdown — node1, node2 and node3
 
-1. Finish pending operations and agree on workload/storage shutdown.
-2. Cleanly unmount application data and shut down guests through the agreed procedure.
-3. Stop cloud services and then power down the hosts using a reviewed shutdown plan.
-4. After power-on, return to section 1. A full cold boot may need coordinated MariaDB recovery; it does not always need it.
+Use [lab-shutdown.py](../scripts/lab-shutdown.py) from **R2d2 as joe**. This is a planned whole-lab outage. It leaves R2d2 running. It stops services and schedules normal Ubuntu poweroff; it does not delete containers, databases, disks or cloud objects.
 
-These instructions do not execute an unattended shutdown. Local VM root disks, local Cinder LVM and node1's Glance storage are not replicated. Other healthy controllers cannot replace those local disks. The lab has no automatic VM recovery.
+**1. Prepare.** Finish cloud/storage operations, confirm a usable database backup, and cleanly shut down any running VMs through an agreed guest procedure. The script checks all hypervisors and blocks if any domain is still active, including paused guests. It does not stop or repair guests, resolve migration records, or create the backup for you.
+
+**2. Check readiness — no services are stopped:**
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/lab-shutdown.py --check
+```
+
+Enter joe's sudo password for each node. Require `SHUTDOWN_READINESS_CHECKED`: all three nodes observed, healthy core containers, a synchronized three-member Primary Galera cluster with one UUID, healthy RabbitMQ, no active VM domains and no unrecognized running containers. This is a readiness snapshot, not permission to ignore active cloud operations or backups.
+
+**3. Start the planned shutdown:**
+
+```bash
+/usr/bin/python3 scripts/lab-shutdown.py --apply
+```
+
+The script checks readiness again and asks you to type **`STOP ALL CLOUD SERVICES`** before making changes.
+
+| Order | What it does | Plain meaning |
+|---|---|---|
+| 1 | Kolla stops cloud services/proxies/agents, retaining MariaDB and RabbitMQ; then remaining Neutron router children stop | Stop database/message clients first |
+| 2 | Stops RabbitMQ on node1, node2, then node3 | Finish the message-broker shutdown; node3 is last |
+| 3 | Stops MariaDB on node1, node2, then node3 | Shut the database down one member at a time; node3 is last |
+| Check | Requires database exit code 0, valid saved Galera positions, and only node3 marked safe to bootstrap | Confirm recorded clean exits before allowing host poweroff |
+| 4 | After another confirmation, schedules normal Ubuntu poweroff on all three nodes in one minute | Let Ubuntu finish shutting down before cutting electricity |
+
+The stop stages use the pinned Kolla `stop` action, never `destroy`. Separate stages keep databases running until their clients have stopped. Per-router child containers are stopped only after the cloud/L3-agent stage has finished. The usual installed Kolla unit stop timeouts still apply: if MariaDB is killed, exits abnormally or its state file is unclear, the script blocks OS poweroff. A clean shutdown reduces risk; it does not replace backups or guarantee protection against hardware/power faults.
+
+**4. Confirm host poweroff.** Only after all stop checks pass, type **`POWER OFF ALL NODES`** when asked. Expect `LAB_POWEROFF_SCHEDULED`. Wait until each physical node is fully off before removing power. Lost SSH alone does not prove a completed shutdown. If you decline this final confirmation, cloud services remain stopped and the script reports that state for review.
+
+**If it stops early:** `SHUTDOWN_NEEDS_REVIEW` means some services or hosts may already have stopped. Keep the printed private report and receipt; do not repeat `--apply`, remove the receipt, bootstrap a database or restart everything. An incomplete receipt blocks another attempt. No automatic restart, retry or rollback is performed. Existing VM/migration checkpoints are preserved. Passwords are entered privately and the temporary Kolla authentication file is removed when the script exits normally or handles an error.
+
+**5. Next power-on.** Start **node3 first**, then node2 and node1: node3 was the last RabbitMQ/database member stopped by this procedure. Do not wait for a healthy three-member cluster before starting the other two nodes. After all three hosts are reachable, run:
+
+```bash
+/usr/bin/python3 scripts/lab-reboot-verify.py --check
+```
+
+Use the fresh dashboard to choose any recovery. Starting node3 first does not itself bootstrap Galera or guarantee clean API startup. Use [section 5](#5-mariadb-cold-boot-recovery) only if the observed database state calls for coordinated recovery; do not edit `safe_to_bootstrap` yourself. VM/data recovery remains a separate step.
+
+The shutdown script is locally tested with simulated healthy/failure cases and checked against the pinned Kolla sources. **A live shutdown/power-on cycle in this lab is not yet verified.** Local VM root disks, local Cinder LVM and node1's Glance storage are not replicated; this procedure does not add storage HA or automatic VM recovery.
 
 ## 8. Optional service and agent views
 
