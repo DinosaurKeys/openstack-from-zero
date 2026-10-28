@@ -3,6 +3,7 @@ import contextlib
 import copy
 import importlib.util
 import io
+import itertools
 import json
 import os
 from pathlib import Path
@@ -58,8 +59,8 @@ class Nodes:
         if action!='restart' or name not in r.ALLOWED[node] or cluster!=CLUSTER:raise AssertionError('Unapproved operation')
         self.calls.append((node,name))
         if self.fail:raise self.fail
-        self.data[node]['targets'][name]['container']['health']='healthy'
-        self.data[node]['host']['containers']['value']['containers'][name]['health']='healthy'
+        self.data[node]['targets'][name]['container'].update(running=True,health='healthy')
+        self.data[node]['host']['containers']['value']['containers'][name].update(running=True,health='healthy')
         self.data[node]['host']['containers']['value']['unhealthy'].remove(name)
         return {'container':copy.deepcopy(self.data[node]['targets'][name]['container'])}
 
@@ -83,7 +84,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(len(actions),21)
         self.assertEqual({name for _,name,_ in actions},{'placement_api','nova_api','nova_metadata','nova_scheduler','nova_conductor','neutron_server','cinder_api'})
         self.assertEqual(len([x for x in actions if x[1]=='placement_api']),3)
-        self.assertIn('Proposed restarts: 21; healthy containers are skipped.',r.plan_lines(data))
+        self.assertIn('Recovery targets: 21; healthy containers are skipped.',r.plan_lines(data))
 
     def test_plan_is_read_only_and_healthy_database_is_not_recovered(self):
         nodes=Nodes();_,saves,logs,questions,db=self.workflow(nodes,False)
@@ -175,9 +176,123 @@ class RecoveryTests(unittest.TestCase):
     def test_waiting_on_starting_does_not_restart_it(self):
         nodes=Nodes();nodes.data['node2']['targets']['nova_scheduler']['container']['health']='starting'
         nodes.data['node2']['host']['containers']['value']['containers']['nova_scheduler']['health']='starting'
-        with patch.object(r.time,'monotonic',side_effect=[0,91]),self.assertRaisesRegex(RuntimeError,'Still starting'):
-            self.workflow(nodes)
-        self.assertFalse(nodes.calls)
+        with patch.object(r.time,'monotonic',side_effect=itertools.count(0,91)):
+            final,saves,logs,questions,db=self.workflow(nodes)
+        self.assertEqual(len(nodes.calls),20);self.assertNotIn(('node2','nova_scheduler'),nodes.calls)
+        self.assertEqual(len(r.planned(final)),1);self.assertFalse(db)
+        self.assertTrue(saves[-1]['complete']);self.assertFalse(saves[-1]['pending'])
+        self.assertTrue(any('DEFER' in value and 'node2/nova_scheduler' in value for value in logs))
+        self.assertEqual(questions,['RESTART LISTED SERVICES'])
+
+    def test_independent_host_and_target_reads_do_not_block_unrelated_recovery(self):
+        nodes=Nodes()
+        host=nodes.data['node1']['host']['containers']['value']['containers']['nova_scheduler']
+        host.update(running=False,status='exited',exit_code=1,health='unhealthy')
+        # The worker started between the host collection and the later target inspection.
+        nodes.data['node1']['targets']['nova_scheduler']['container'].update(running=True,health='starting')
+        with patch.object(r.time,'monotonic',side_effect=itertools.count(0,91)):
+            _,saves,_,questions,_=self.workflow(nodes)
+        self.assertEqual(nodes.calls[:3],[(node,'placement_api') for node in r.ALLOWED])
+        self.assertNotIn(('node1','nova_scheduler'),nodes.calls);self.assertEqual(len(nodes.calls),20)
+        self.assertEqual(questions,['RESTART LISTED SERVICES']);self.assertTrue(saves[-1]['complete'])
+
+    def test_changing_worker_states_across_nodes_do_not_prevent_api_repairs(self):
+        class ChangingNodes(Nodes):
+            def all(self):
+                value=super().all()
+                for node in r.ALLOWED:
+                    for name in ('nova_scheduler','nova_conductor'):
+                        if (node,name) in self.calls:continue
+                        state=value[node]['targets'][name]['container']
+                        state.update(running=self.reads%2==1,health='starting' if self.reads%2==1 else 'unhealthy')
+                        # The earlier general observation can differ from the target read.
+                        value[node]['host']['containers']['value']['containers'][name].update(running=False,health='unhealthy',status='exited',exit_code=1)
+                return value
+        nodes=ChangingNodes()
+        with patch.object(r.time,'sleep'),patch.object(r.time,'monotonic',side_effect=itertools.count(0,5)):
+            final,saves,_,_,db=self.workflow(nodes)
+        self.assertFalse(db);self.assertFalse(r.planned(final));self.assertEqual(len(nodes.calls),21)
+        self.assertEqual(nodes.calls[:3],[(node,'placement_api') for node in r.ALLOWED])
+        self.assertEqual(len(set(nodes.calls)),21);self.assertFalse(saves[-1]['pending'])
+
+    def test_target_that_becomes_healthy_during_wait_is_skipped(self):
+        nodes=Nodes()
+        nodes.data['node1']['targets']['nova_scheduler']['container']['health']='starting'
+        target=copy.deepcopy(nodes.data['node1']['targets']['nova_scheduler']);initial=nodes.all()
+        nodes.data['node1']['targets']['nova_scheduler']['container']['health']='healthy'
+        with patch.object(r.time,'sleep'):
+            _,current=r.settle_target(nodes,initial,BOOT,CLUSTER,r.planned(initial),'node1','nova_scheduler',target,lambda _:None,lambda:None)
+        self.assertTrue(n.healthy(current['container']));self.assertFalse(nodes.calls)
+
+    def test_stopped_target_with_old_starting_health_is_eligible_for_one_restart(self):
+        nodes=Nodes();nodes.data['node1']['targets']['nova_scheduler']['container'].update(running=False,health='starting')
+        self.workflow(nodes)
+        self.assertEqual(nodes.calls.count(('node1','nova_scheduler')),1)
+
+    def test_starting_race_at_root_check_sends_no_systemctl_command(self):
+        value={'id':'a'*64,'running':True,'health':'starting'}
+        unit={'name':'kolla-nova_scheduler-container.service','sha256':'b'*64,'active':'active'}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.object(n.os,'geteuid',return_value=0));stack.enter_context(patch.dict(os.environ,{'SUDO_USER':'joe'}))
+            stack.enter_context(patch.object(n.socket,'gethostname',return_value='node1'))
+            stack.enter_context(patch.object(n,'inspector',return_value={'collect':lambda _:records()['node1']['host']}))
+            stack.enter_context(patch.object(n,'container',return_value=value));stack.enter_context(patch.object(n,'unit',return_value=unit))
+            command=stack.enter_context(patch.object(n,'run',side_effect=AssertionError('no restart')))
+            result=n.execute('node1','restart','nova_scheduler','a'*64,'b'*64,CLUSTER,'reboot-control')
+        self.assertTrue(result['deferred']);self.assertIs(result['changed'],False);command.assert_not_called()
+
+    def test_known_deferred_response_is_not_recorded_as_a_sent_restart(self):
+        nodes=Nodes();original=nodes.call
+        def call(node,action,name,target,cluster):
+            if (node,name)==('node1','nova_scheduler'):
+                return {'deferred':True,'changed':False,'container':dict(target['container'],running=True,health='starting')}
+            return original(node,action,name,target,cluster)
+        with patch.object(nodes,'call',side_effect=call):_,saves,_,_,_=self.workflow(nodes)
+        state=saves[-1];attempt=next(a for a in state['attempts'] if a.get('node')=='node1' and a.get('service')=='nova_scheduler')
+        self.assertEqual(attempt['outcome'],'not_sent');self.assertFalse(state['pending']);self.assertTrue(state['complete'])
+        # A later approved first restart of this target is permitted; prior actual restarts still block repeats.
+        r.prior_guard([(Path('receipt.json'),state)],BOOT,[('node1','nova_scheduler',{})])
+
+    def test_plan_with_starting_target_still_reaches_review_without_changes(self):
+        nodes=Nodes();nodes.data['node1']['targets']['nova_scheduler']['container']['health']='starting'
+        _,saves,logs,questions,db=self.workflow(nodes,False)
+        self.assertTrue(any('starting / wait' in value for value in logs))
+        self.assertEqual((nodes.calls,saves,questions,db),([],[],[],[]))
+
+    def test_complete_apply_returns_healthy_and_preserves_workload_checkpoint(self):
+        class ObservedNodes(Nodes):
+            def all(self):
+                value=super().all()
+                for record in value.values():
+                    state=record['host']['containers']['value']
+                    state['healthy']=not state['unhealthy']
+                return value
+        nodes=ObservedNodes();logs=[];details={}
+        def api_checks(rows,value,env,include_workload=True):
+            self.assertIs(include_workload,False)
+            for label in ('HTTPS authentication','Horizon HTTPS','image HTTPS API read','compute HTTPS API read',
+              'network HTTPS API read','block-storage HTTPS API read','placement HTTPS API read','Nova services',
+              'Cinder services','hypervisors','Neutron agents','router HA (API state)'):
+                rows.append({'check':label,'status':'PASS'})
+        with tempfile.TemporaryDirectory() as directory,patch.object(r,'REPO',Path(directory)),contextlib.ExitStack() as stack:
+            root=Path(directory);(root/'private/phase4').mkdir(parents=True);(root/'private/phase5').mkdir();(root/'reports').mkdir()
+            checkpoint=root/'private/phase5/move-vm-state.json';raw=b'{"pending":true,"migration":"preserved"}'
+            checkpoint.write_bytes(raw);checkpoint.chmod(0o600)
+            stack.enter_context(patch.object(r.deploy,'source_guard'))
+            stack.enter_context(patch.object(r.deploy.tools,'tool_environment',return_value={}))
+            stack.enter_context(patch.object(r.deploy.validation,'local_checks',return_value=('inventory','config')))
+            stack.enter_context(patch.object(r.inv,'ensure_agent'))
+            stack.enter_context(patch.object(r.health.access,'input_hashes',return_value={'input':'unchanged'}))
+            stack.enter_context(patch.object(r.getpass,'getpass',return_value='hidden'))
+            stack.enter_context(patch.object(r,'Nodes',return_value=nodes))
+            stack.enter_context(patch('builtins.input',return_value='RESTART LISTED SERVICES'))
+            stack.enter_context(patch.object(r.health,'api_checks',side_effect=api_checks))
+            with patch.object(r.subprocess,'Popen',side_effect=AssertionError('No database recovery')):
+                self.assertEqual(r.execute('apply',logs.append,details,root/'reports/reboot-recovery-test.txt'),0)
+            self.assertEqual(len(nodes.calls),21);self.assertEqual(checkpoint.read_bytes(),raw)
+            self.assertIn('RESULT: REBOOT_SERVICES_HEALTHY',logs)
+            receipt=json.loads((root/'private/phase5/reboot-recovery-test.json').read_text())
+            self.assertTrue(receipt['complete']);self.assertFalse(receipt['pending'])
 
     def test_scope_profiles_keep_old_14_approval_and_reject_infrastructure_or_compute(self):
         self.assertEqual(sum(map(len,n.ALLOWED.values())),14)
@@ -256,7 +371,7 @@ class RecoveryTests(unittest.TestCase):
 
     def test_check_uses_existing_dashboard_and_help_has_no_probes(self):
         with patch.object(r.dashboard,'main',return_value=0) as check:self.assertEqual(r.main(['--check']),0)
-        check.assert_called_once_with(['--check'])
+        check.assert_called_once_with(['--check','--compact'])
         with patch.object(r.subprocess,'run',side_effect=AssertionError('no I/O')),contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaises(SystemExit) as result:r.main(['--help'])
         self.assertEqual(result.exception.code,0)
