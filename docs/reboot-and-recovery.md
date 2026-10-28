@@ -300,13 +300,13 @@ The script checks readiness again and asks you to type **`STOP ALL CLOUD SERVICE
 
 | Order | What it does | Plain meaning |
 |---|---|---|
-| 1 | Kolla stops cloud services/proxies/agents, retaining MariaDB and RabbitMQ; then remaining Neutron router children stop | Stop database/message clients first |
+| 1 | Kolla stops cloud services/proxies/agents, retaining MariaDB and RabbitMQ; then remaining Neutron DHCP/router helpers stop | Stop database/message clients first |
 | 2 | Stops RabbitMQ on node1, node2, then node3 | Finish the message-broker shutdown; node3 is last |
 | 3 | Stops MariaDB on node1, node2, then node3 | Shut the database down one member at a time; node3 is last |
 | Check | Requires database exit code 0, valid saved Galera positions, and only node3 marked safe to bootstrap | Confirm recorded clean exits before allowing host poweroff |
 | 4 | After another confirmation, schedules normal Ubuntu poweroff on all three nodes in one minute | Let Ubuntu finish shutting down before cutting electricity |
 
-The stop stages use the pinned Kolla `stop` action, never `destroy`. Separate stages keep databases running until their clients have stopped. Per-router child containers are stopped only after the cloud/L3-agent stage has finished. The usual installed Kolla unit stop timeouts still apply: if MariaDB is killed, exits abnormally or its state file is unclear, the script blocks OS poweroff. A clean shutdown reduces risk; it does not replace backups or guarantee protection against hardware/power faults.
+The stop stages use the pinned Kolla `stop` action, never `destroy`. Separate stages keep databases running until their clients have stopped. DHCP helpers (`dnsmasq`/metadata `haproxy`) and router helpers (`keepalived`/metadata `haproxy`) are recognized by their exact Neutron name patterns and network/router UUID. They are stopped only after both DHCP/L3 agents and all other cloud clients have stopped, so those agents cannot restart the helpers. Unknown container names still block shutdown. The usual installed Kolla unit stop timeouts still apply: if MariaDB is killed, exits abnormally or its state file is unclear, the script blocks OS poweroff. A clean shutdown reduces risk; it does not replace backups or guarantee protection against hardware/power faults.
 
 **4. Confirm host poweroff.** Only after all stop checks pass, type **`POWER OFF ALL NODES`** when asked. Expect `LAB_POWEROFF_SCHEDULED`. Wait until each physical node is fully off before removing power. Lost SSH alone does not prove a completed shutdown. If you decline this final confirmation, cloud services remain stopped and the script reports that state for review.
 
