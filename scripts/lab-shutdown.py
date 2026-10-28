@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Planned full-lab shutdown. Default: explain; --check: read; --apply: stop then poweroff."""
+"""Prepare all lab nodes for manual poweroff. --check reads; --apply stops services only."""
 import sys
 sys.dont_write_bytecode=True
 import argparse
@@ -22,6 +22,7 @@ spec=importlib.util.spec_from_file_location('shutdown_health',REPO/'scripts/lab-
 health=importlib.util.module_from_spec(spec);spec.loader.exec_module(health)
 NODES=tuple(health.NODES)
 EXTRAS={'cron','fluentd','kolla_toolbox','memcached','tgtd','iscsid','nova_ssh','nova_novncproxy','glance_api'}
+RETAIN=('mariadb','rabbitmq','proxysql','haproxy','keepalived')
 UUID_PATTERN=r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
 
 def network_child(name):
@@ -102,7 +103,7 @@ def stop_args(config,inventory,options,service=None,node=None):
       '--limit',node or 'baremetal','--become','-e','@'+str(options),'-e','ansible_python_interpreter=/usr/bin/python3',
       '--yes-i-really-really-mean-it']
     if service:args+=['--tags',service]
-    else:args+=['-e',json.dumps({'skip_stop_containers':['mariadb','rabbitmq']})]
+    else:args+=['-e',json.dumps({'skip_stop_containers':list(RETAIN)})]
     return args
 
 def workflow(remote,stop,save,log,cluster):
@@ -110,17 +111,21 @@ def workflow(remote,stop,save,log,cluster):
     def attempt(stage,call):
         state['stage']=stage;state['attempts'].append(stage);save(state)
         log(stage);return call()
-    attempt('1/4 Stop cloud clients, proxies and agents; retain MariaDB/RabbitMQ',lambda:stop(None,None))
+    attempt('1/3 Stop cloud clients and agents; retain database, broker and proxies',lambda:stop(None,None))
     for node in NODES:
-        attempt('1/4 Stop remaining DHCP/router helpers on '+node,lambda n=node:remote(n,'network-children'))
+        attempt('1/3 Stop remaining DHCP/router helpers on '+node,lambda n=node:remote(n,'network-children'))
     for node in NODES:
-        if set(remote(node,'running')['running'])!={'mariadb','rabbitmq'}:
+        if set(remote(node,'running')['running'])!=set(RETAIN):
             raise RuntimeError(node+': unexpected containers after cloud stop; no further stop/poweroff')
     for node in NODES:
-        attempt('2/4 Stop RabbitMQ on '+node,lambda n=node:stop('rabbitmq',n))
+        attempt('2/3 Stop proxies/VIP services on '+node,lambda n=node:stop('loadbalancer',n))
+        if set(remote(node,'running')['running'])!={'mariadb','rabbitmq'}:
+            raise RuntimeError(node+': proxy stop not confirmed; no further service stop')
+    for node in NODES:
+        attempt('2/3 Stop RabbitMQ on '+node,lambda n=node:stop('rabbitmq',n))
         remote(node,'broker')
     for node in NODES:
-        attempt('3/4 Stop MariaDB on '+node,lambda n=node:stop('mariadb',n))
+        attempt('3/3 Stop MariaDB on '+node,lambda n=node:stop('mariadb',n))
         state['database'][node]=remote(node,'database');save(state)
     positions(state['database'],cluster)
     for node in NODES:
@@ -129,11 +134,17 @@ def workflow(remote,stop,save,log,cluster):
     log('All cloud containers stopped. Last database member: node3. No host powered off yet.')
     return state
 
+def finish(state,save,log):
+    state.update(pending=False,stage='services stopped and database verified; manual OS poweroff remains')
+    save(state)
+    log('RESULT: READY_FOR_MANUAL_POWEROFF')
+    log('Services are stopped. All three Ubuntu hosts remain powered on. You may now shut down Ubuntu manually. Last database/broker member stopped: node3.')
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__);modes=parser.add_mutually_exclusive_group()
     modes.add_argument('--check',action='store_true');modes.add_argument('--apply',action='store_true');args=parser.parse_args(argv)
     if not args.check and not args.apply:
-        print('Full planned shutdown of node1/node2/node3. --check reads readiness only. --apply rechecks, requires confirmation, stops services, verifies clean database exits, then asks before scheduling OS poweroff. No guest stop, migration, deletion or recovery.');return 0
+        print('Prepare node1/node2/node3 for manual poweroff. --check reads readiness only. --apply rechecks, requires confirmation, stops services and verifies clean database exits. Hosts remain powered on. No guest stop, migration, deletion or recovery.');return 0
     health.deploy.validation.config_step.load_step('shutdown_r2d2','phase2-check.py').require_r2d2()
     health.deploy.tools.check_paths(health.ENV)
     if not sys.stdin.isatty():raise RuntimeError('Use joe\'s interactive R2d2 terminal')
@@ -193,7 +204,7 @@ def main(argv=None):
         cluster=baseline(records)
         print('Node  | Galera | RabbitMQ | Core containers | Active VMs')
         for n in NODES:print(n+' | OK     | OK       | OK              | 0')
-        print('This stops ALL cloud services and will offer OS poweroff. R2d2 stays running.\nConfirm a usable database backup, no active cloud/storage operations, and all guests cleanly shut down.\nThe script does not create a backup or stop guests.')
+        print('This stops ALL cloud services only. Ubuntu hosts and R2d2 stay powered on.\nConfirm no active cloud/storage operations and all guests cleanly shut down.\nThe script does not stop guests.')
         if input('Type STOP ALL CLOUD SERVICES to proceed: ')!='STOP ALL CLOUD SERVICES':raise RuntimeError('Cancelled before service changes')
         # Fresh readiness immediately before the first mutation.
         cluster=baseline({n:remote(n,'inspect') for n in NODES})
@@ -220,19 +231,10 @@ def main(argv=None):
                 unchanged()
             try:
                 state=workflow(remote,stop,save,log,cluster)
-                if input('Type POWER OFF ALL NODES to schedule shutdown in one minute: ')!='POWER OFF ALL NODES':
-                    raise RuntimeError('Poweroff not requested. Services remain stopped; review report before any next action.')
-                state['poweroff']={}
-                for node in NODES:
-                    state['stage']='poweroff request for '+node;save(state)
-                    state['poweroff'][node]=remote(node,'poweroff');save(state)
-                    log('4/4 '+node+': OS poweroff scheduled in one minute')
-                state.update(pending=False,stage='all OS poweroff requests acknowledged');save(state)
-                log('RESULT: LAB_POWEROFF_SCHEDULED')
-                log('Wait until each physical host is off before removing power. SSH loss alone is not proof of completed shutdown. Start node3 first next time, then node2 and node1; use the reboot guide.')
+                finish(state,save,log)
                 return 0
             except BaseException:
-                log('RESULT: SHUTDOWN_NEEDS_REVIEW\nStop here. Some services/hosts may already be stopped. No automatic retry, restart, rollback or bootstrap. Keep the receipt and report.')
+                log('RESULT: SHUTDOWN_NEEDS_REVIEW\nStop here. Some services may already be stopped. No host poweroff is performed. No automatic retry, restart, rollback or bootstrap. Keep the receipt and report.')
                 raise
     finally:
         if options is not None:options.unlink(missing_ok=True)
