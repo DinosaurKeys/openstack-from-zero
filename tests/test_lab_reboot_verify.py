@@ -25,6 +25,91 @@ EXPECTED={'server_id':SERVER,'volume_id':VOLUME,'filesystem_uuid':FS,'nonce':NON
 
 
 class RebootVerificationTests(unittest.TestCase):
+    def dashboard(self):
+        details={'hosts':{},'cluster_summary':[],'summary':[{'check':'Existing checkpoints/config preserved','status':'PASS'},
+          {'check':'VM in Nova','status':'REVIEW'}],
+          'Nova services':[],'Cinder services':[],'hypervisors':[],'Neutron agents':[],
+          'router HA (API state)':{'agents':[]},'API VIP: exactly one owner':{'owners':['node3']},
+          'VM identity':{'server_status':'ERROR','host':'node1'},'Migration record (preserved)':{'present':True,'pending':True,'snapshot':{'migration':{'status':'error','source_compute':'node1','dest_compute':None}}}}
+        required=load('dashboard_node_fixture','lab-health-node.py').REQUIRED
+        for node in r.inv.NODES:
+            names=required+(('glance_api',) if node=='node1' else ())
+            details['hosts'][node]={'galera':{'observed':True,'value':{'wsrep_local_state_comment':'Synced','wsrep_cluster_status':'Primary','wsrep_cluster_size':'3','wsrep_connected':'ON','wsrep_ready':'ON'}},
+              'containers':{'observed':True,'value':{'containers':{name:{'running':True,'health':'not configured' if name in ('keepalived','neutron_metadata_agent') else 'healthy'} for name in names},'missing':[]}},
+              'rabbitmq':{'observed':True,'value':{'checks':{'check_running':True},'healthy':True,'cluster':{'running_nodes':['rabbit@'+n for n in r.inv.NODES],'partitions':{},'alarms':[]}}}}
+            details['cluster_summary'] += [{'check':node+' '+name,'status':'PASS'} for name in ('management SSH/identity','clock sync','USB/br-ex')]
+            details['Nova services'] += [{'host':node,'binary':name,'state':'up','status':'enabled'} for name in ('nova-scheduler','nova-conductor','nova-compute')]
+            details['Cinder services'] += [{'host':node,'binary':name,'state':'up','status':'enabled'} for name in ('cinder-scheduler','cinder-volume')]
+            details['hypervisors'].append({'hypervisor_hostname':node,'state':'up','status':'enabled'})
+            details['Neutron agents'] += [{'host':node,'binary':name,'alive':True,'admin_state_up':True} for name in ('neutron-dhcp-agent','neutron-l3-agent','neutron-openvswitch-agent','neutron-metadata-agent')]
+            details['router HA (API state)']['agents'].append({'host':node,'ha_state':'active' if node=='node3' else 'standby','alive':True,'admin_state_up':True})
+        details['cluster_summary'] += [{'check':label,'status':'PASS'} for label in ('Galera: same three-member Primary cluster','API VIP: exactly one owner','HTTPS authentication','Horizon HTTPS','image HTTPS API read','compute HTTPS API read','network HTTPS API read','block-storage HTTPS API read','placement HTTPS API read','Nova services','Neutron agents','Cinder services','hypervisors','router HA (API state)')]
+        return details
+
+    def test_dashboard_shows_actual_service_agent_and_container_states(self):
+        details=self.dashboard();details['Nova services'][2].update(state='down',status='disabled')
+        details['Neutron agents'][0].update(alive=False,admin_state_up=True)
+        details['hosts']['node2']['containers']['value']['containers']['nova_api']={'running':False,'health':'unhealthy'}
+        for row in details['cluster_summary']:
+            if row['check'] in ('Nova services','Neutron agents'):row['status']='REVIEW'
+        text='\n'.join(r.render_report(details))
+        for expected in ('NOVA SERVICES','nova-compute','DOWN/disabled','NEUTRON AGENTS','DHCP','DOWN/enabled','DOWN/unhealthy','CINDER SERVICES','HYPERVISORS','ACTIVE','STANDBY','HTTPS API READS'):
+            self.assertIn(expected,text)
+        self.assertIn('REBOOT_SERVICES_NEED_REVIEW',text)
+        self.assertNotIn('VM / MIGRATION',text)
+
+    def test_cluster_pass_is_separate_from_vm_migration_failure(self):
+        details=self.dashboard();text='\n'.join(r.render_report(details))
+        self.assertIn('CLUSTER SERVICES: HEALTHY',text);self.assertIn('RESULT: REBOOT_SERVICES_HEALTHY',text)
+        self.assertNotIn('Nova VM status',text);self.assertNotIn('PENDING (preserved)',text)
+        full='\n'.join(r.render_report(details,True))
+        self.assertIn('CLUSTER RESULT: HEALTHY',full);self.assertIn('WORKLOAD RESULT: NEEDS REVIEW',full)
+        self.assertIn('ERROR',full);self.assertIn('PENDING (preserved)',full)
+        self.assertNotIn('"server_status":',full)
+
+    def test_unknown_is_not_down_and_glance_placement_is_not_missing(self):
+        details=self.dashboard();details['Nova services']={'error':'read unavailable'}
+        details['hosts']['node2']['containers']={'observed':False}
+        text='\n'.join(r.render_report(details))
+        line=next(line for line in text.splitlines() if line.startswith('nova-compute '))
+        self.assertIn('UNKNOWN',line);self.assertNotIn('DOWN',line)
+        glance=next(line for line in text.splitlines() if line.startswith('glance_api '))
+        self.assertIn('N/A (placement)',glance);self.assertNotIn('MISSING',glance)
+
+    def test_duplicate_services_not_silently_selected(self):
+        details=self.dashboard();details['Nova services'].append(dict(details['Nova services'][0]))
+        self.assertIn('DUPLICATE','\n'.join(r.render_report(details)))
+
+    def test_saved_snapshot_renders_without_probes_or_passwords_or_write(self):
+        with tempfile.TemporaryDirectory() as folder,patch.object(r,'REPO',Path(folder)):
+            reports=Path(folder)/'reports';reports.mkdir();path=reports/'reboot-verify-20261028T114755Z-test.json'
+            raw=json.dumps(self.dashboard());path.write_text(raw);path.chmod(0o600)
+            with patch.object(r.subprocess,'run',side_effect=AssertionError('No probe')),patch.object(r.getpass,'getpass',side_effect=AssertionError('No password')),contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(r.saved_report(path),0)
+            self.assertIn('SAVED SNAPSHOT',out.getvalue());self.assertIn('NEUTRON AGENTS',out.getvalue());self.assertEqual(path.read_text(),raw)
+
+    def test_service_only_api_checks_do_not_query_vm_or_volume_identity(self):
+        health_test=load('health_module_tests_for_reboot','lab-health.py')
+        rows=[];details={}
+        with patch.object(health_test.deploy.validation,'local_checks',side_effect=RuntimeError('unavailable')):
+            health_test.api_checks(rows,details,{},include_workload=False)
+        self.assertNotIn('existing VM/volume API state',[row['check'] for row in rows])
+
+    def test_default_live_check_skips_vm_guest_migration_and_checkpoint_interpretation(self):
+        fixture=self.dashboard()
+        with tempfile.TemporaryDirectory() as folder,patch.object(r,'REPO',Path(folder)):
+            for name in ('phase4','phase5'):(Path(folder)/'private'/name).mkdir(parents=True)
+            def hosts(records,rows,details):
+                details.update(fixture)
+                rows.extend(fixture['cluster_summary'])
+            def apis(rows,details,env,include_workload=True):
+                self.assertFalse(include_workload)
+            with patch.object(r.deploy,'source_guard'),patch.object(r.deploy.tools,'tool_environment',return_value={}),patch.object(r.deploy.validation,'local_checks',return_value=('inv','config')),patch.object(r.health.access,'input_hashes',return_value={}),patch.object(r.inv,'ensure_agent'),patch.object(r.getpass,'getpass',return_value='sudo'),patch.object(r.health,'host_observe',side_effect=lambda node,*args:fixture['hosts'][node]),patch.object(r.health,'host_rows',side_effect=hosts),patch.object(r.health,'api_checks',side_effect=apis),patch.object(r.health,'checkpoint_checks',side_effect=AssertionError('No migration/checkpoint interpretation')),patch.object(r,'workload',side_effect=AssertionError('No VM/guest checks')),patch.object(r.prep,'authenticate',side_effect=AssertionError('No additional workload authentication')):
+                output=[];details={};self.assertEqual(r.execute(output.append,details),0)
+            text='\n'.join(output)
+            self.assertIn('REBOOT_SERVICES_HEALTHY',text);self.assertNotIn('Checking the existing VM',text)
+            self.assertNotIn('WORKLOAD RESULT',text)
+
     def test_paused_domain_is_not_reported_as_running(self):
         helper=load('reboot_runtime_node_test','phase5-migration-node.py')
         for state,expected in [('running',True),('paused',False)]:
