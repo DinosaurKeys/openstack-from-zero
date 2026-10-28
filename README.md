@@ -47,7 +47,7 @@ Next: [Phase 5 — HA validation and VM migration](docs/phase-05/README.md). Beg
 | 6 — Application | Planned after Phase 5 |
 | 7 — Monitoring | Planned after the application |
 
-[Architecture and limits](docs/architecture.md) · [Viewing-command glossary](docs/command-glossary.md) · [Goal and learning plan](docs/00-goal-and-plan.md)
+[Architecture and limits](docs/architecture.md) · [Viewing-command glossary](docs/command-glossary.md) · [Reboot, health checks and recovery](docs/reboot-and-recovery.md) · [Goal and learning plan](docs/00-goal-and-plan.md)
 
 ## Fresh installation on the existing prepared hosts
 
