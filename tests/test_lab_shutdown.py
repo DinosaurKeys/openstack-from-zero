@@ -79,7 +79,7 @@ class ShutdownTests(unittest.TestCase):
     def test_commands_never_destroy_or_ignore_missing(self):
         args=s.stop_args('/config','/inventory','/private/options')
         self.assertEqual(args[1],'stop');self.assertNotIn('destroy',args);self.assertNotIn('--ignore-missing',args)
-        self.assertIn(json.dumps({'skip_stop_containers':['mariadb','rabbitmq']}),args)
+        self.assertIn(json.dumps({'skip_stop_containers':list(s.RETAIN)}),args)
         args=s.stop_args('/config','/inventory','/private/options','mariadb','node2')
         self.assertEqual(args[args.index('--limit')+1],'node2');self.assertEqual(args[-2:],['--tags','mariadb'])
     def workflow(self,fail=False,remaining=False,bad_db=False):
@@ -87,7 +87,10 @@ class ShutdownTests(unittest.TestCase):
         if bad_db:db['node3']['safe_to_bootstrap']=0
         def remote(node,action):
             calls.append((node,action))
-            if action=='running':return {'running':['mariadb','rabbitmq'] if len([c for c in calls if c[1]=='database'])==0 else []}
+            if action=='running':
+                if any(c[1]=='database' for c in calls):return {'running':[]}
+                if ('stop','loadbalancer',node) in calls:return {'running':['mariadb','rabbitmq']}
+                return {'running':list(s.RETAIN)}
             if action=='database':return db[node]
             return {}
         def stop(service,node):
@@ -103,7 +106,7 @@ class ShutdownTests(unittest.TestCase):
         return result,calls,saves
     def test_dependency_order_and_no_poweroff_in_stop_workflow(self):
         result,calls,saves=self.workflow()
-        self.assertEqual([c for c in calls if c[0]=='stop'],[('stop',None,None)]+[('stop','rabbitmq',n) for n in s.NODES]+[('stop','mariadb',n) for n in s.NODES])
+        self.assertEqual([c for c in calls if c[0]=='stop'],[('stop',None,None)]+[('stop','loadbalancer',n) for n in s.NODES]+[('stop','rabbitmq',n) for n in s.NODES]+[('stop','mariadb',n) for n in s.NODES])
         self.assertFalse(any(c[1]=='poweroff' for c in calls));self.assertTrue(result['pending'])
         self.assertEqual(set(result['database']),set(s.NODES))
     def test_lost_outcome_never_retries(self):self.assertRaisesRegex(RuntimeError,'lost response',self.workflow,fail=True)
@@ -159,11 +162,17 @@ class ShutdownTests(unittest.TestCase):
         child='neutron_dhcp_agent_dnsmasq_qdhcp-'+UUID
         with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq',child]),patch.object(n,'run',side_effect=['',json.dumps({'Running':False,'ExitCode':137,'OOMKilled':False})]):
             self.assertRaises(RuntimeError,n.action,'node1','network-children')
-    def test_poweroff_requires_no_containers_and_clean_database(self):
-        with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb']),patch.object(n,'run') as run:
+    def test_poweroff_is_not_an_available_node_action(self):
+        with patch.object(n,'guard'),patch.object(n,'run') as run:
             self.assertRaises(RuntimeError,n.action,'node1','poweroff');run.assert_not_called()
-        with patch.object(n,'guard'),patch.object(n,'running',return_value=[]),patch.object(n,'database',side_effect=RuntimeError('bad')),patch.object(n,'run') as run:
-            self.assertRaises(RuntimeError,n.action,'node1','poweroff');run.assert_not_called()
+        self.assertNotIn('/usr/sbin/shutdown',(ROOT/'scripts/lab-shutdown-node.py').read_text())
+    def test_success_finishes_without_host_shutdown(self):
+        state,calls,saves=self.workflow();logs=[]
+        s.finish(state,lambda v:saves.append(copy.deepcopy(v)),logs.append)
+        self.assertFalse(state['pending'])
+        self.assertIn('RESULT: READY_FOR_MANUAL_POWEROFF',logs)
+        self.assertIn('All three Ubuntu hosts remain powered on.',logs[-1])
+        self.assertFalse(any(c[1]=='poweroff' for c in calls))
     def test_help_default_has_no_lab_access(self):
         with patch.object(s.health.inv,'ensure_agent') as agent,patch('builtins.print'):
             self.assertEqual(s.main([]),0);agent.assert_not_called()
