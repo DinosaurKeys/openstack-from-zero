@@ -42,6 +42,33 @@ def agents():
 
 
 class HealthTests(unittest.TestCase):
+    def test_short_summary_names_actual_failures_and_preserves_uncertainty(self):
+        records={node:host(node) for node in h.NODES}
+        failed=['placement_api','nova_api','nova_metadata','nova_scheduler','nova_conductor','neutron_server','cinder_api']
+        for node in ('node1','node3'):
+            records[node]['containers']['value'].update(healthy=False,unhealthy=failed,missing=[])
+        records['node2']={'node':'node2','observed':False,'error':'SSH/sudo or structured host response unavailable'}
+        rows=[];details={'hosts':records};h.host_rows(records,rows,details)
+        details['exercise checkpoints']={'unresolved':['phase5/move-vm-state.json']}
+        rows.append({'check':'exercise checkpoints','status':'REVIEW'})
+        text='\n'.join(h.summary_lines(rows,details))
+        self.assertIn('node1 unhealthy/stopped: '+', '.join(failed),text)
+        self.assertIn('node3 unhealthy/stopped: '+', '.join(failed),text)
+        self.assertIn('node2: SSH/sudo or structured host response unavailable',text)
+        self.assertIn('node is not proven down',text)
+        self.assertIn('Do not repeat full-cluster database recovery',text)
+        self.assertIn('Preserved; no automatic retry or reset',text)
+
+    def test_transport_reasons_and_api_errors_are_safe_and_specific(self):
+        rows=[];details={}
+        h.checked(rows,details,'compute',lambda:(_ for _ in ()).throw(RuntimeError('API request returned HTTP 503 password=private')))
+        self.assertEqual(details['compute']['error'],'HTTP 503; read unavailable')
+        self.assertNotIn('private',json.dumps(details))
+        for message,expected in [('Sorry, try again. private-password','Sudo authentication failed'),
+          ('Permission denied (publickey).','SSH key authentication rejected'),
+          ('Host key verification failed.','SSH host identity needs review')]:
+            self.assertEqual(h.transport_reason(1,message),expected)
+
     def test_default_plan_has_no_network_or_mutations(self):
         with patch.object(h.subprocess,'run',side_effect=AssertionError('no commands')),patch.object(h.os,'execve',side_effect=AssertionError('no reexec')),contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(h.main([]),0)
