@@ -320,6 +320,20 @@ These are your manual host-shutdown commands; the service-stop script cannot sen
 
 **If it stops early:** `SHUTDOWN_NEEDS_REVIEW` means some services may already have stopped; the script never powers off hosts. Keep the printed private report and receipt; do not repeat `--apply`, remove the receipt, bootstrap a database or restart everything. An incomplete receipt blocks another attempt. No automatic restart, retry or rollback is performed. Existing VM/migration checkpoints are preserved. Passwords are entered privately and the temporary Kolla authentication file is removed when the script exits normally or handles an error.
 
+### Finish an interrupted network-helper stop
+
+Only after review confirms the cloud-service stage finished and interruption occurred while stopping DHCP/router helpers:
+
+```bash
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/lab-shutdown.py --finish
+```
+
+`--finish` requires exactly one saved interrupted helper-stage receipt. It freshly checks all three nodes: no QEMU/KVM guests, no cloud clients or unknown containers running, the original healthy three-member Galera cluster, healthy RabbitMQ and retained proxies. It asks for confirmation before continuing with remaining helpers, proxies, RabbitMQ and MariaDB. It does not repeat the initial cloud-service stop, discard the receipt, restart services or power off hosts. A different interrupted stage needs separate review.
+
+Neutron helpers configured to remove themselves after exit are verified using matching Docker container-ID exit/removal events. Retained helper containers are verified through their exit state. Missing evidence, OOM or an abnormal exit blocks further stops. After `READY_FOR_MANUAL_POWEROFF`, use the manual Ubuntu commands above.
+
 **5. Next power-on.** Start **node3 first**, then node2 and node1: node3 was the last RabbitMQ/database member stopped by this procedure. Do not wait for a healthy three-member cluster before starting the other two nodes. After all three hosts are reachable, run:
 
 ```bash
