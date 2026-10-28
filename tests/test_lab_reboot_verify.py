@@ -34,7 +34,7 @@ class RebootVerificationTests(unittest.TestCase):
         required=load('dashboard_node_fixture','lab-health-node.py').REQUIRED
         for node in r.inv.NODES:
             names=required+(('glance_api',) if node=='node1' else ())
-            details['hosts'][node]={'galera':{'observed':True,'value':{'wsrep_local_state_comment':'Synced','wsrep_cluster_status':'Primary','wsrep_cluster_size':'3','wsrep_connected':'ON','wsrep_ready':'ON'}},
+            details['hosts'][node]={'galera':{'observed':True,'value':{'wsrep_local_state_comment':'Synced','wsrep_cluster_status':'Primary','wsrep_cluster_size':'3','wsrep_connected':'ON','wsrep_ready':'ON','wsrep_cluster_state_uuid':'f3609644-d1e0-11f1-a749-0ef43e7d82dc'}},
               'containers':{'observed':True,'value':{'containers':{name:{'running':True,'health':'not configured' if name in ('keepalived','neutron_metadata_agent') else 'healthy'} for name in names},'missing':[]}},
               'rabbitmq':{'observed':True,'value':{'checks':{'check_running':True},'healthy':True,'cluster':{'running_nodes':['rabbit@'+n for n in r.inv.NODES],'partitions':{},'alarms':[]}}}}
             details['cluster_summary'] += [{'check':node+' '+name,'status':'PASS'} for name in ('management SSH/identity','clock sync','USB/br-ex')]
@@ -45,6 +45,68 @@ class RebootVerificationTests(unittest.TestCase):
             details['router HA (API state)']['agents'].append({'host':node,'ha_state':'active' if node=='node3' else 'standby','alive':True,'admin_state_up':True})
         details['cluster_summary'] += [{'check':label,'status':'PASS'} for label in ('Galera: same three-member Primary cluster','API VIP: exactly one owner','HTTPS authentication','Horizon HTTPS','image HTTPS API read','compute HTTPS API read','network HTTPS API read','block-storage HTTPS API read','placement HTTPS API read','Nova services','Neutron agents','Cinder services','hypervisors','router HA (API state)')]
         return details
+
+    def test_brief_healthy_groups_counts_and_glance_placement(self):
+        text='\n'.join(r.render_brief(self.dashboard()))
+        for value in ('PASS    MariaDB: 3/3 ready','PASS    Glance: 1/1 ready (node1 only)',
+          'PASS    Nova services: 9/9 enabled/up','PASS    Cinder services: 6/6 enabled/up',
+          'PASS    Neutron agents: 12/12 alive/enabled','RESULT: REBOOT_SERVICES_HEALTHY'):
+            self.assertIn(value,text)
+        self.assertNotIn('VM in Nova',text);self.assertNotIn('MISSING',text)
+
+    def test_brief_starting_database_and_failed_auth_do_not_claim_agents_down(self):
+        details=self.dashboard()
+        for node in r.inv.NODES:
+            details['hosts'][node]['galera']={'observed':False,'error':'database connection unavailable (exit 1)'}
+            details['hosts'][node]['galera_log']={'observed':True,'value':{'view':'NON_PRIM','log_time':'2026-10-28 21:29:09'}}
+            details['hosts'][node]['containers']['value']['containers']['mariadb'].update(health='starting')
+            details['hosts'][node]['containers']['value']['containers']['nova_api'].update(health='unhealthy')
+        for row in details['cluster_summary']:
+            if row['check'] in ('HTTPS authentication','Galera: same three-member Primary cluster'):row['status']='UNKNOWN'
+        details['HTTPS authentication']={'error':'HTTP 503 password=do-not-print'}
+        text='\n'.join(r.render_brief(details))
+        for value in ('FAIL    MariaDB: 0/3 ready','node1: mariadb=running/starting',
+          'BLOCKED node1 Galera SQL status: database connection unavailable',
+          'Recent log: NON_PRIM','log entry, not live SQL proof',
+          'BLOCKED Service/agent checks not queried: authentication/client preparation unavailable',
+          'Neutron agent heartbeats',
+          'NEXT: Review MariaDB status/log evidence first'):
+            self.assertIn(value,text)
+        self.assertNotIn('do-not-print',text)
+        self.assertNotIn('FAIL    Neutron agent heartbeats',text)
+        self.assertNotIn('RESULT: REBOOT_SERVICES_HEALTHY',text)
+
+    def test_brief_lists_stopped_container_exit_and_failed_service_identity(self):
+        details=self.dashboard()
+        details['hosts']['node3']['containers']['value']['containers']['nova_conductor'].update(running=False,status='exited',exit_code=1,health='unhealthy')
+        details['Nova services'][0].update(state='down',status='disabled')
+        next(v for v in details['cluster_summary'] if v['check']=='Nova services')['status']='REVIEW'
+        text='\n'.join(r.render_brief(details))
+        self.assertIn('node3: nova_conductor=EXITED exit=1',text)
+        self.assertIn('node1/nova-scheduler=DOWN/disabled',text)
+        self.assertIn('FAIL    Nova services: 8/9 enabled/up',text)
+
+    def test_brief_missing_host_is_blocked_not_invented_down(self):
+        details=self.dashboard();details['hosts']['node2']={'observed':False,'error':'SSH key authentication rejected'}
+        for row in details['cluster_summary']:
+            if row['check'].startswith('node2 '):row['status']='UNKNOWN'
+        text='\n'.join(r.render_brief(details))
+        self.assertIn('BLOCKED node2 management SSH/identity: SSH key authentication rejected',text)
+        self.assertIn('node2: mariadb=container observation unavailable',text)
+        self.assertNotIn('node2: mariadb=DOWN',text)
+
+    def test_brief_duplicate_service_cannot_pass_by_count(self):
+        details=self.dashboard();details['Nova services'].append(dict(details['Nova services'][0]))
+        next(v for v in details['cluster_summary'] if v['check']=='Nova services')['status']='REVIEW'
+        text='\n'.join(r.render_brief(details));self.assertIn('node1/nova-scheduler=DUPLICATE',text)
+        self.assertNotIn('PASS    Nova services',text)
+
+    def test_brief_http_failure_preserves_other_observations(self):
+        details=self.dashboard();details['Neutron agents']={'error':'HTTP 503; private=do-not-print'}
+        next(v for v in details['cluster_summary'] if v['check']=='Neutron agents')['status']='UNKNOWN'
+        text='\n'.join(r.render_brief(details))
+        self.assertIn('BLOCKED Neutron agent heartbeats: HTTP 503',text)
+        self.assertIn('PASS    MariaDB: 3/3 ready',text);self.assertNotIn('do-not-print',text)
 
     def test_dashboard_shows_actual_service_agent_and_container_states(self):
         details=self.dashboard();details['Nova services'][2].update(state='down',status='disabled')
@@ -87,6 +149,13 @@ class RebootVerificationTests(unittest.TestCase):
             with patch.object(r.subprocess,'run',side_effect=AssertionError('No probe')),patch.object(r.getpass,'getpass',side_effect=AssertionError('No password')),contextlib.redirect_stdout(io.StringIO()) as out:
                 self.assertEqual(r.saved_report(path),0)
             self.assertIn('SAVED SNAPSHOT',out.getvalue());self.assertIn('NEUTRON AGENTS',out.getvalue());self.assertEqual(path.read_text(),raw)
+
+    def test_saved_snapshot_details_keeps_full_tables_without_probes(self):
+        with tempfile.TemporaryDirectory() as folder,patch.object(r,'REPO',Path(folder)):
+            path=Path(folder)/'reports/reboot-verify-test.json';path.parent.mkdir();path.write_text(json.dumps(self.dashboard()));path.chmod(0o600)
+            with patch.object(r.subprocess,'run',side_effect=AssertionError('No probe')),patch.object(r.getpass,'getpass',side_effect=AssertionError('No password')),contextlib.redirect_stdout(io.StringIO()) as out:
+                r.saved_report(path,detailed=True)
+            self.assertIn('CONTAINERS — process / healthcheck',out.getvalue());self.assertIn('UP/healthy',out.getvalue())
 
     def test_service_only_api_checks_do_not_query_vm_or_volume_identity(self):
         health_test=load('health_module_tests_for_reboot','lab-health.py')
