@@ -17,7 +17,7 @@ def records():
     return {node:{'host':{'node':node,'observed':True,
       'galera':{'observed':True,'value':{'wsrep_cluster_state_uuid':UUID,'wsrep_cluster_size':'3',
       'wsrep_cluster_status':'Primary','wsrep_local_state_comment':'Synced','wsrep_connected':'ON','wsrep_ready':'ON'}},
-      'rabbitmq':{'value':{'healthy':True}},'containers':{'value':{'healthy':True}}},
+      'rabbitmq':{'observed':True,'value':{'healthy':True}},'containers':{'observed':True,'value':{'healthy':True}}},
       'active_domains':[],'running':['mariadb','rabbitmq','nova_compute']} for node in s.NODES}
 def positions():
     return {node:{'uuid':UUID,'seqno':42,'exit_code':0,'safe_to_bootstrap':int(node=='node3')} for node in s.NODES}
@@ -39,6 +39,38 @@ class ShutdownTests(unittest.TestCase):
     def test_unknown_container_blocks(self):
         r=records();r['node2']['running'].append('postgres')
         self.assertRaises(RuntimeError,s.baseline,r)
+    def test_check_reports_exact_names_on_every_node(self):
+        r=records();r['node1']['running']+=['actual_extra_1'];r['node3']['running']+=['actual_extra_3']
+        ready,lines=s.check_lines(r);text='\n'.join(lines)
+        self.assertFalse(ready)
+        self.assertIn('node1: container names outside the shutdown list: actual_extra_1',text)
+        self.assertIn('node3: container names outside the shutdown list: actual_extra_3',text)
+        self.assertIn('node2 | OK | OK | OK | 0',text)
+        self.assertIn('No services or hosts were stopped by this check.',text)
+        self.assertNotIn('Stopped:',text)
+        self.assertIn('SHUTDOWN_CHECK_NEEDS_REVIEW',text)
+    def test_inspection_continues_after_node_error_without_mutation(self):
+        calls=[];data=records()
+        def remote(node,action):
+            calls.append((node,action))
+            if node=='node1':raise RuntimeError('node1: inspection unavailable')
+            return data[node]
+        result=s.collect_checks(remote)
+        self.assertEqual(calls,[(node,'inspect') for node in s.NODES])
+        self.assertEqual(set(result),set(s.NODES))
+        ready,lines=s.check_lines(result)
+        self.assertFalse(ready);self.assertIn('node1 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN',lines)
+    def test_check_guard_blocks_every_mutating_remote_action(self):
+        s.request_guard(True,'inspect')
+        for action in ('routers','poweroff','database','broker','running','restart','stop'):
+            self.assertRaises(RuntimeError,s.request_guard,True,action)
+    def test_unknown_names_are_never_automatically_approved(self):
+        self.assertFalse(s.allowed('actual_extra_1'))
+        self.assertFalse(s.allowed('arbitrary_kolla_name'))
+    def test_check_success_is_explicitly_read_only(self):
+        ready,lines=s.check_lines(records())
+        self.assertTrue(ready);self.assertIn('RESULT: SHUTDOWN_READINESS_CHECKED',lines)
+        self.assertTrue(lines[0].startswith('CHECK ONLY'))
     def test_safe_positions(self):s.positions(positions(),UUID)
     def test_wrong_last_or_stale_or_unclean_blocks(self):
         for field,value in [('safe_to_bootstrap',0),('seqno',-1),('uuid','different'),('exit_code',137)]:
