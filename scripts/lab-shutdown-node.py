@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fixed shutdown observations and delayed OS poweroff; invoked by lab-shutdown.py."""
+"""Fixed observations and network helper stops; no OS poweroff capability."""
 import argparse
 import io
 import json
@@ -66,7 +66,7 @@ def action(node,mode):
         # process monitors cannot respawn these separately managed children.
         current=running()
         names=[n for n in current if network_child(n)]
-        if set(current)-set(names)-{'mariadb','rabbitmq'}:
+        if set(current)-set(names)-{'mariadb','rabbitmq','proxysql','haproxy','keepalived'}:
             raise RuntimeError('Cloud clients/agents or unknown containers still running; no network helper stop')
         for name in names:
             run(['docker','stop','--time','60',name])
@@ -76,16 +76,11 @@ def action(node,mode):
         return {'network_children_stopped':len(names)}
     if mode=='broker':return stopped('rabbitmq')
     if mode=='database':return database()
-    if mode=='poweroff':
-        if running():raise RuntimeError('Containers still running; no poweroff')
-        database();stopped('rabbitmq')
-        run(['/usr/sbin/shutdown','-h','+1'])
-        return {'poweroff_scheduled':True}
     raise RuntimeError('Unapproved action')
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--node',choices=NODES,required=True)
-    parser.add_argument('--action',choices=('inspect','running','network-children','broker','database','poweroff'),required=True)
+    parser.add_argument('--action',choices=('inspect','running','network-children','broker','database'),required=True)
     args=parser.parse_args()
     try:
         print(json.dumps({'node':args.node,'ok':True,'value':action(args.node,args.action)}))
