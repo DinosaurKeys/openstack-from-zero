@@ -40,7 +40,7 @@ def table(what, result):
         if type(value) is bool:return 'yes' if value else 'no'
         return re.sub(r'[\x00-\x1f\x7f]', '?', str(value if value is not None else 'unknown'))[:100]
     rows = [[heading for heading,_ in columns]]
-    rows += [[cell(row.get(field)) for _,field in columns] for row in result[key]]
+    rows += [['-' if field=='disabled_reason' and row.get('status')=='enabled' and row.get(field) is None else cell(row.get(field)) for _,field in columns] for row in result[key]]
     widths = [max(len(row[i]) for row in rows) for i in range(len(columns))]
     return '\n'.join(' | '.join(value.ljust(widths[i]) for i,value in enumerate(row)).rstrip() for row in rows)
 
