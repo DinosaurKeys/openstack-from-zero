@@ -139,9 +139,10 @@ def identity(node):
 
 
 def virsh(*args,input=None,allow_failure=False,uri='qemu:///system'):
-    if not args or args[0] not in ('capabilities','version','dumpxml','hypervisor-cpu-compare','hostname','list'):
+    if not args or args[0] not in ('capabilities','version','dumpxml','domstate','hypervisor-cpu-compare','hostname','list'):
         raise RuntimeError('Only approved libvirt inspection commands are permitted')
     if args[0]=='dumpxml' and (len(args)!=2 or str(uuid.UUID(args[1]))!=args[1]):raise RuntimeError('Only ordinary XML inspection of the tracked UUID is permitted')
+    if args[0]=='domstate' and (len(args)!=2 or str(uuid.UUID(args[1]))!=args[1]):raise RuntimeError('Only state inspection of the tracked UUID is permitted')
     # Libvirt 10 rejects CompareHypervisorCPU on VIR_CONNECT_RO. Use a normal
     # connection only for this comparison query; no mutating command is exposed.
     flags=[] if args[0]=='hypervisor-cpu-compare' else ['--readonly']
@@ -226,7 +227,9 @@ def execute(node,action,payload):
     if action=='running':
         server=payload['server_id']
         if str(uuid.UUID(server))!=server:raise RuntimeError('Invalid tracked VM UUID')
-        return {'node':node,'observed':True,'VM_running':server in virsh('list','--uuid').stdout.splitlines()}
+        active=server in virsh('list','--uuid').stdout.splitlines()
+        state=virsh('domstate',server).stdout.strip().lower() if active else 'not active'
+        return {'node':node,'observed':True,'VM_running':active and state=='running','domain_state':state}
     raise RuntimeError('Only read-only inspection actions are supported')
 
 
