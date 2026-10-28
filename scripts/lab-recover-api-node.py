@@ -16,8 +16,8 @@ import time
 ALLOWED={'node1':('placement_api','nova_api','nova_metadata','neutron_server','cinder_api'),
          'node2':('nova_api','nova_metadata','neutron_server','cinder_api'),
          'node3':('placement_api','nova_api','nova_metadata','neutron_server','cinder_api')}
-CONTROL_ORDER=('placement_api','nova_conductor','nova_scheduler','nova_api','nova_metadata',
-               'neutron_server','neutron_rpc_server','neutron_periodic_worker','cinder_api')
+CONTROL_ORDER=('placement_api','nova_api','nova_metadata','neutron_server','cinder_api',
+               'nova_conductor','nova_scheduler','neutron_rpc_server','neutron_periodic_worker')
 CONTROL_ALLOWED={node:CONTROL_ORDER for node in ALLOWED}
 PROFILES={'approved-api':ALLOWED,'reboot-control':CONTROL_ALLOWED}
 
@@ -94,14 +94,18 @@ def execute(node,action,name=None,expected_id=None,unit_sha=None,cluster_uuid=No
     dependencies(record,cluster_uuid)
     before=container(name);definition=unit(name)
     if before['id']!=expected_id or definition['sha256']!=unit_sha:raise RuntimeError('Container or unit identity changed; no restart')
-    if healthy(before):return {'node':node,'service':name,'action':'skipped; already healthy','container':before}
+    if healthy(before):return {'node':node,'service':name,'action':'skipped; already healthy','changed':False,'container':before}
+    if before['running'] is True and before['health']=='starting':
+        if profile!='reboot-control':raise RuntimeError(name+': still starting; no restart sent')
+        return {'node':node,'service':name,'action':'deferred; still starting; no restart sent',
+                'changed':False,'deferred':True,'container':before}
     run(['systemctl','restart',definition['name']],timeout=90)
     deadline=time.monotonic()+120
     while True:
         after=container(name)
         if after['id']!=expected_id or unit(name)['sha256']!=unit_sha:raise RuntimeError('Service identity changed during recovery')
         if healthy(after) and unit(name)['active']=='active':
-            return {'node':node,'service':name,'action':'restarted once; container health passed','container':after}
+            return {'node':node,'service':name,'action':'restarted once; container health passed','changed':True,'container':after}
         if time.monotonic()>=deadline:raise RuntimeError('Container did not become healthy within 120 seconds; no repeated restart')
         time.sleep(3)
 
