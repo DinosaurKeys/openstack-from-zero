@@ -24,6 +24,15 @@ prep=vip.prep;access=vip.access;deploy=vip.deploy;inv=vip.inv;ENV=vip.ENV
 NODES=inv.NODES
 
 
+def api_error_reason(error):
+    raw=str(error);http=re.search(r'\bHTTP ([1-5][0-9]{2})\b',raw)
+    if http:return 'HTTP '+http[1]
+    if 'certificate_verify_failed' in raw.lower() or 'certificate verify failed' in raw.lower():return 'TLS certificate verification failed'
+    if isinstance(error,TimeoutError) or 'timed out' in raw.lower():return 'Connection timed out'
+    if isinstance(error,FileNotFoundError):return 'Private client input file missing'
+    return type(error).__name__+'; API or local client profile unavailable'
+
+
 class ReadAPI(prep.API):
     def write(self,*args,**kwargs):raise RuntimeError('Health checks cannot change cloud resources')
 
@@ -167,9 +176,11 @@ def api_checks(rows,details,env,include_workload=True):
         api=ReadAPI(original.client,original.urls,original.token)
     except Exception as error:
         rows.append({'check':'HTTPS authentication','status':'UNKNOWN'})
-        details['HTTPS authentication']={'error':type(error).__name__+'; API or local client profile unavailable; token withheld'}
-        for label in ('Horizon HTTPS','public service APIs','Nova services','hypervisors','Neutron agents','router HA (API state)','Cinder services')+(('existing VM/volume API state',) if include_workload else ()):
+        details['HTTPS authentication']={'error':api_error_reason(error)+'; token withheld'}
+        for label in ('Horizon HTTPS','public service APIs',*[s+' HTTPS API read' for s in access.API_PATHS],
+                      'Nova services','hypervisors','Neutron agents','router HA (API state)','Cinder services')+(('existing VM/volume API state',) if include_workload else ()):
             rows.append({'check':label,'status':'UNKNOWN'})
+            details[label]={'blocked_by':'HTTPS authentication','error':'Not queried because authentication/client preparation was unavailable'}
         return
     rows.append({'check':'HTTPS authentication','status':'PASS'})
     def horizon():return True,api.client.horizon()
