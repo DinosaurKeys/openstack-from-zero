@@ -62,7 +62,7 @@ class ShutdownTests(unittest.TestCase):
         self.assertFalse(ready);self.assertIn('node1 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN',lines)
     def test_check_guard_blocks_every_mutating_remote_action(self):
         s.request_guard(True,'inspect')
-        for action in ('routers','poweroff','database','broker','running','restart','stop'):
+        for action in ('network-children','routers','poweroff','database','broker','running','restart','stop'):
             self.assertRaises(RuntimeError,s.request_guard,True,action)
     def test_unknown_names_are_never_automatically_approved(self):
         self.assertFalse(s.allowed('actual_extra_1'))
@@ -124,7 +124,41 @@ class ShutdownTests(unittest.TestCase):
             self.assertEqual(run.call_args.args[0],['docker','cp','mariadb:/var/lib/mysql/grastate.dat','-'])
     def test_router_stop_blocks_while_l3_running(self):
         with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq','neutron_l3_agent']),patch.object(n,'run') as run:
-            self.assertRaises(RuntimeError,n.action,'node1','routers');run.assert_not_called()
+            self.assertRaises(RuntimeError,n.action,'node1','network-children');run.assert_not_called()
+    def test_live_dhcp_names_on_node1_node3_pass_readiness(self):
+        r=records()
+        for node in ('node1','node3'):
+            r[node]['running'] += ['neutron_dhcp_agent_'+service+'_qdhcp-74c1c96b-caa9-43b2-9498-a4239dda07f1' for service in ('dnsmasq','haproxy')]
+        self.assertEqual(s.baseline(r),UUID)
+        self.assertTrue(s.check_lines(r)[0])
+    def test_network_child_scope_matches_in_controller_and_node(self):
+        for prefix in ('neutron_dhcp_agent_dnsmasq_qdhcp-','neutron_dhcp_agent_haproxy_qdhcp-',
+                       'neutron_l3_agent_keepalived_qrouter-','neutron_l3_agent_haproxy_qrouter-'):
+            name=prefix+UUID
+            self.assertTrue(s.allowed(name));self.assertTrue(n.network_child(name))
+        for name in ('neutron_dhcp_agent_unknown_qdhcp-'+UUID,'neutron_dhcp_agent_dnsmasq_qrouter-'+UUID,
+                     'neutron_dhcp_agent_dnsmasq_qdhcp-'+'-'*36,'arbitrary_container'):
+            self.assertFalse(s.allowed(name));self.assertFalse(n.network_child(name))
+    def test_no_helper_stop_while_dhcp_agent_or_unknown_container_runs(self):
+        for extra in ('neutron_dhcp_agent','unrecognized'):
+            with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq',extra]),patch.object(n,'run') as run:
+                self.assertRaises(RuntimeError,n.action,'node1','network-children');run.assert_not_called()
+    def test_dhcp_and_router_children_stopped_after_parents_without_deletion(self):
+        children=['neutron_dhcp_agent_'+service+'_qdhcp-'+UUID for service in ('dnsmasq','haproxy')]
+        children+=['neutron_l3_agent_'+service+'_qrouter-'+UUID for service in ('keepalived','haproxy')]
+        calls=[]
+        def run(args):
+            calls.append(args)
+            if args[:2]==['docker','inspect']:return json.dumps({'Running':False,'ExitCode':0,'OOMKilled':False})
+            return ''
+        with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq']+children),patch.object(n,'run',side_effect=run):
+            self.assertEqual(n.action('node1','network-children'),{'network_children_stopped':4})
+        self.assertEqual([c for c in calls if c[:2]==['docker','stop']], [['docker','stop','--time','60',name] for name in children])
+        self.assertFalse(any('rm' in c or 'mariadb' in c or 'rabbitmq' in c for c in calls))
+    def test_killed_network_child_blocks_further_shutdown(self):
+        child='neutron_dhcp_agent_dnsmasq_qdhcp-'+UUID
+        with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb','rabbitmq',child]),patch.object(n,'run',side_effect=['',json.dumps({'Running':False,'ExitCode':137,'OOMKilled':False})]):
+            self.assertRaises(RuntimeError,n.action,'node1','network-children')
     def test_poweroff_requires_no_containers_and_clean_database(self):
         with patch.object(n,'guard'),patch.object(n,'running',return_value=['mariadb']),patch.object(n,'run') as run:
             self.assertRaises(RuntimeError,n.action,'node1','poweroff');run.assert_not_called()
