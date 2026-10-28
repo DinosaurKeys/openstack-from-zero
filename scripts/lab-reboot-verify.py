@@ -4,7 +4,7 @@ import sys
 sys.dont_write_bytecode=True
 import argparse
 import base64
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor,as_completed
 import datetime as dt
 import fcntl
 import getpass
@@ -54,6 +54,170 @@ def service_cell(value):
     if not isinstance(value,dict):return value or 'UNKNOWN'
     state=value.get('state');status=value.get('status')
     return (str(state).upper() if state in ('up','down') else 'UNKNOWN')+'/'+(status if status in ('enabled','disabled') else 'unknown')
+
+
+def safe_reason(value):
+    """Only selected diagnostic classes; never echo raw errors or credentials."""
+    raw=str(value or '')
+    http=re.search(r'\bHTTP [1-5][0-9]{2}\b',raw)
+    if http:return http[0]
+    for label in ('TLS certificate verification failed','Connection timed out','Private client input file missing',
+      'database container not running','database query authentication rejected','database not ready for queries',
+      'database connection unavailable','database status query failed','SSH key authentication rejected',
+      'SSH host identity needs review','Sudo authentication failed','Sudo requires authentication',
+      'SSH connection refused','Management network route unavailable'):
+        if label in raw:return label
+    match=re.match(r'(?:docker read query exited |.*?\(exit )(\d+)',raw)
+    if match:return 'read command exited '+match[1]
+    match=re.match(r'([A-Za-z]+(?:Error|Expired|Exception))\b',raw)
+    return (match[1]+'; read unavailable') if match else 'check unavailable; see private JSON details'
+
+
+def render_brief(details):
+    """Grouped PASS/FAIL/BLOCKED display from the same read-only observations."""
+    hosts=details.get('hosts',{});nodes=tuple(inv.NODES)
+    statuses={r['check']:r.get('status') for r in details.get('cluster_summary',[])}
+    counts={'PASS':0,'FAIL':0,'BLOCKED':0};lines=['OPENSTACK LAB STATUS — R2d2']
+    def section(title):lines.extend(['','== '+title+' =='])
+    def emit(status,label,notes=()):
+        counts[status]+=1;lines.append(status.ljust(7)+' '+label)
+        lines.extend('        '+cell(note) for note in notes)
+    def status_of(key):return {'PASS':'PASS','REVIEW':'FAIL'}.get(statuses.get(key),'BLOCKED')
+    def host_value(node,key):return hosts.get(node,{}).get(key,{})
+    def state(node,name):
+        record=host_value(node,'containers')
+        if record.get('observed') is not True:return 'BLOCKED','container observation unavailable'
+        value=record.get('value',{})
+        if name in value.get('missing',[]):return 'FAIL','MISSING'
+        item=value.get('containers',{}).get(name)
+        if not isinstance(item,dict) or type(item.get('running')) is not bool:return 'BLOCKED','container state unavailable'
+        health_state=item.get('health')
+        if not item['running']:
+            code=item.get('exit_code');return 'FAIL',(str(item.get('status') or 'stopped').upper()+((' exit='+str(code)) if isinstance(code,int) else ''))
+        if health_state in ('healthy','not configured'):return 'PASS','running/'+('no-check' if health_state=='not configured' else 'healthy')
+        if health_state in ('starting','unhealthy'):return 'FAIL','running/'+health_state
+        return 'BLOCKED','running; health unavailable'
+    section('HOSTS')
+    for node in nodes:
+        outcome=status_of(node+' management SSH/identity')
+        emit(outcome,node+' management SSH/identity'+(' OK' if outcome=='PASS' else ': '+safe_reason(hosts.get(node,{}).get('error'))))
+    for suffix in ('clock sync','USB/br-ex'):
+        good=sum(statuses.get(node+' '+suffix)=='PASS' for node in nodes)
+        outcome='PASS' if good==3 else 'FAIL' if any(statuses.get(node+' '+suffix)=='REVIEW' for node in nodes) else 'BLOCKED'
+        emit(outcome,suffix+': '+str(good)+'/3 passed',[node+': check '+('failed' if statuses.get(node+' '+suffix)=='REVIEW' else 'unavailable') for node in nodes if statuses.get(node+' '+suffix)!='PASS'])
+    section('CORE CONTAINERS')
+    groups=(('MariaDB',('mariadb',)),('ProxySQL',('proxysql',)),('RabbitMQ',('rabbitmq',)),
+      ('API front door',('haproxy','keepalived')),('Identity',('keystone_api','keystone_fernet','keystone_ssh')),
+      ('Glance',('glance_api',)),('Placement',('placement_api',)),
+      ('Nova control',('nova_api','nova_metadata','nova_scheduler','nova_conductor')),
+      ('Nova compute/libvirt',('nova_compute','nova_libvirt')),
+      ('Neutron control',('neutron_server','neutron_rpc_server','neutron_periodic_worker')),
+      ('Neutron agent containers',('neutron_openvswitch_agent','neutron_dhcp_agent','neutron_l3_agent','neutron_metadata_agent')),
+      ('Open vSwitch',('openvswitch_db','openvswitch_vswitchd')),
+      ('Cinder',('cinder_api','cinder_scheduler','cinder_volume')),('Horizon',('horizon',)))
+    for label,names in groups:
+        checks=[(node,name,*state(node,name)) for node in nodes for name in names if name!='glance_api' or node=='node1']
+        good=sum(row[2]=='PASS' for row in checks)
+        outcome='FAIL' if any(row[2]=='FAIL' for row in checks) else 'BLOCKED' if good<len(checks) else 'PASS'
+        notes=[]
+        for node in nodes:
+            bad=[name+'='+value for host,name,status,value in checks if host==node and status!='PASS']
+            if bad:notes.append(node+': '+'; '.join(bad))
+        # Keep node/group lines readable without silently cutting off a failure.
+        emit(outcome,label+': '+str(good)+'/'+str(len(checks))+' ready'+(' (node1 only)' if label=='Glance' else ''))
+        for note in notes:lines.append('        '+re.sub(r'[\x00-\x1f\x7f]','?',note))
+    lines.append('        Ready = running and healthy where configured; no-check is process-only. Starting means not ready yet.')
+    section('DATABASE AND MESSAGING CLUSTERS')
+    for node in nodes:
+        query=host_value(node,'galera');value=query.get('value',{})
+        if query.get('observed'):
+            ok=health.member_ok(value)
+            emit('PASS' if ok else 'FAIL',node+' Galera: '+cell(value.get('wsrep_local_state_comment'))+'/'+cell(value.get('wsrep_cluster_status'))+
+              ', members='+cell(value.get('wsrep_cluster_size'))+', connected='+cell(value.get('wsrep_connected'))+', ready='+cell(value.get('wsrep_ready')))
+        else:
+            emit('BLOCKED',node+' Galera SQL status: '+safe_reason(query.get('error')))
+            log_view=host_value(node,'galera_log').get('value',{})
+            if log_view.get('view') in ('PRIM','NON_PRIM'):
+                lines.append('        Recent log: '+log_view['view']+' at '+cell(log_view.get('log_time'))+' (log entry, not live SQL proof)')
+    emit(status_of('Galera: same three-member Primary cluster'),'Galera: same synchronized three-member Primary cluster')
+    for node in nodes:
+        observed=host_value(node,'rabbitmq');value=observed.get('value',{});cluster=value.get('cluster',{})
+        if not observed.get('observed'):emit('BLOCKED',node+' RabbitMQ cluster: '+safe_reason(observed.get('error')));continue
+        members=cluster.get('running_nodes');alarms=cluster.get('alarms');partitions=cluster.get('partitions')
+        emit('PASS' if value.get('healthy') is True else 'FAIL',node+' RabbitMQ: running members='+str(len(members) if isinstance(members,list) else 'not obtained')+
+          ', alarms='+('none' if alarms==[] else 'present' if alarms else 'not obtained')+', partitions='+('none' if partitions in ({},[]) else 'present' if partitions else 'not obtained'))
+    owners=details.get('API VIP: exactly one owner',{}).get('owners',[])
+    emit(status_of('API VIP: exactly one owner'),'API VIP 192.168.0.151: '+(', '.join(cell(n) for n in owners) if owners else 'owner not obtained'))
+    section('HTTPS API CHECKS')
+    authenticated=statuses.get('HTTPS authentication')=='PASS'
+    emit(status_of('HTTPS authentication'),'Keystone authentication'+(' works' if authenticated else ': '+safe_reason(details.get('HTTPS authentication',{}).get('error'))))
+    def api_status(label,title):
+        if not authenticated:return
+        outcome=status_of(label);value=details.get(label,{})
+        note='' if outcome=='PASS' else ': '+safe_reason(value.get('error')) if isinstance(value,dict) and value.get('error') else ': observed check did not pass'
+        emit(outcome,title+note)
+    for label,title in [('Horizon HTTPS','Horizon'),('image HTTPS API read','Images'),('compute HTTPS API read','Compute'),
+      ('network HTTPS API read','Network'),('block-storage HTTPS API read','Volumes'),('placement HTTPS API read','Placement')]:api_status(label,title)
+    if not authenticated:
+        emit('BLOCKED','HTTPS reads not queried: authentication/client preparation unavailable',
+          ['Horizon, Images, Compute, Network, Volumes, Placement'])
+    section('OPENSTACK SERVICES')
+    if not authenticated:
+        emit('BLOCKED','Service/agent checks not queried: authentication/client preparation unavailable',
+          ['Nova services, Cinder services, Hypervisors, Neutron agent heartbeats, Router HA placement'])
+    for key,binaries in [('Nova services',('nova-scheduler','nova-conductor','nova-compute')),('Cinder services',('cinder-scheduler','cinder-volume'))]:
+        values=details.get(key)
+        if not authenticated or not isinstance(values,list):api_status(key,key);continue
+        good=0;notes=[]
+        for binary in binaries:
+            for node in nodes:
+                entry=reported(values,binary,node);display=service_cell(entry)
+                if display=='UP/enabled':good+=1
+                else:notes.append(node+'/'+binary+'='+display)
+        outcome='PASS' if good==len(binaries)*3 and statuses.get(key)=='PASS' else 'FAIL'
+        if good==len(binaries)*3 and outcome=='FAIL':notes.append('API registration set needs review; expected exactly one service of each type per node')
+        emit(outcome,key+': '+str(good)+'/'+str(len(binaries)*3)+' enabled/up',notes)
+    values=details.get('hypervisors')
+    if authenticated and isinstance(values,list):
+        notes=[];good=0
+        for node in nodes:
+            matches=[v for v in values if str(v.get('hypervisor_hostname','')).split('.')[0]==node]
+            entry=matches[0] if len(matches)==1 else 'DUPLICATE' if matches else 'NOT LISTED'
+            display=service_cell(entry)
+            if display=='UP/enabled':good+=1
+            else:notes.append(node+'='+display)
+        if good==3 and statuses.get('hypervisors')!='PASS':notes.append('API hypervisor registration set needs review')
+        emit('PASS' if good==3 and statuses.get('hypervisors')=='PASS' else 'FAIL','Hypervisors: '+str(good)+'/3 enabled/up',notes)
+    else:api_status('hypervisors','Hypervisors')
+    if authenticated:section('NEUTRON AGENTS')
+    agents=details.get('Neutron agents')
+    if authenticated and isinstance(agents,list):
+        notes=[];good=0
+        for binary in ('neutron-dhcp-agent','neutron-l3-agent','neutron-openvswitch-agent','neutron-metadata-agent'):
+            for node in nodes:
+                entry=reported(agents,binary,node)
+                if isinstance(entry,dict) and entry.get('alive') is True and entry.get('admin_state_up') is True:good+=1
+                else:notes.append(node+'/'+binary+'='+('alive='+str(entry.get('alive'))+', enabled='+str(entry.get('admin_state_up')) if isinstance(entry,dict) else str(entry)))
+        if good==12 and statuses.get('Neutron agents')!='PASS':notes.append('API agent registration set needs review; expected exactly 12')
+        emit('PASS' if good==12 and statuses.get('Neutron agents')=='PASS' else 'FAIL','Neutron agents: '+str(good)+'/12 alive/enabled',notes)
+    else:api_status('Neutron agents','Neutron agent heartbeats')
+    api_status('router HA (API state)','Router HA API placement')
+    router=details.get('router HA (API state)',{})
+    if authenticated and isinstance(router,dict) and isinstance(router.get('agents'),list):
+        for value in router['agents']:lines.append('        '+cell(value.get('host'))+'='+cell(value.get('ha_state')))
+    preserved=next((r.get('status') for r in details.get('summary',[]) if r.get('check')=='Existing checkpoints/config preserved'),None)
+    section('RESULT')
+    emit({'PASS':'PASS','REVIEW':'FAIL'}.get(preserved,'BLOCKED'),'Saved checkpoints/config preserved')
+    passed=cluster_result(details)=='HEALTHY' and preserved=='PASS' and not counts['FAIL'] and not counts['BLOCKED']
+    lines.append('PASS checks: '+str(counts['PASS'])+' | FAIL checks: '+str(counts['FAIL'])+' | BLOCKED checks: '+str(counts['BLOCKED']))
+    lines.append('FAIL = observed check not passing; BLOCKED = could not verify, not proof the service is down.')
+    lines.append('RESULT: '+('REBOOT_SERVICES_HEALTHY' if passed else 'REBOOT_SERVICES_NEED_REVIEW'))
+    if not passed:
+        database_bad=any(not host_value(n,'galera').get('observed') or not health.member_ok(host_value(n,'galera').get('value',{})) for n in nodes)
+        lines.append('NEXT: '+('Review MariaDB status/log evidence first; do not select API restarts yet.' if database_bad else 'Review the named failed/blocked checks before selecting a repair.'))
+    else:lines.append('NEXT: No service restart indicated by this snapshot.')
+    lines.append('Read-only snapshot. No repair, restart, bootstrap or VM/volume/migration action performed.')
+    return lines
 
 
 def render_report(details,include_workload=False):
@@ -167,7 +331,7 @@ def render_report(details,include_workload=False):
     return lines
 
 
-def saved_report(path,include_workload=False):
+def saved_report(path,include_workload=False,detailed=False):
     path=Path(path).absolute()
     if path.suffix!='.json' or not path.name.startswith('reboot-verify-') or path.resolve().parent!=(REPO/'reports').resolve():
         raise RuntimeError('Choose an existing reboot-verify JSON file directly inside this repository reports directory')
@@ -176,7 +340,7 @@ def saved_report(path,include_workload=False):
     details=json.loads(path.read_text())
     if not isinstance(details,dict):raise RuntimeError('Saved report must contain an object')
     print('SAVED SNAPSHOT: '+cell(path.name)+' — display only; no new lab checks')
-    for line in render_report(details,include_workload):print(line)
+    for line in (render_report(details,include_workload) if detailed or include_workload else render_brief(details)):print(line)
     return 0
 
 
@@ -322,7 +486,7 @@ def workload(nodes,api,project,user,rows,details,log):
         rows.extend({'check':label,'status':'UNKNOWN'} for label in ('Data filesystem/mount','Saved file checksum'))
 
 
-def execute(log,details,include_workload=False):
+def execute(log,details,include_workload=False,detailed=False):
     deploy.source_guard();env=deploy.tools.tool_environment()
     inventory,config=deploy.validation.local_checks(lambda _:None,env,deploy.validation.CA_FINGERPRINT)
     before=snapshot();input_hashes=health.access.input_hashes(config,inventory);handles=[];passwords={}
@@ -337,9 +501,12 @@ def execute(log,details,include_workload=False):
         for node in inv.NODES:passwords[node]=getpass.getpass('Joe sudo password on '+node+' (hidden): ')
         log('1/3 Checking all three hosts and OpenStack services…' if include_workload else '1/2 Checking all three hosts, APIs, services and agents…')
         with ThreadPoolExecutor(max_workers=3) as pool:
-            jobs={n:pool.submit(health.host_observe,n,passwords[n],env) for n in inv.NODES}
-            hosts={n:j.result() for n,j in jobs.items()}
+            jobs={pool.submit(health.host_observe,n,passwords[n],env):n for n in inv.NODES};hosts={}
+            for job in as_completed(jobs):
+                node=jobs[job];hosts[node]=job.result()
+                log('Collected '+node+': '+('host checks available' if hosts[node].get('observed') else safe_reason(hosts[node].get('error'))))
         details['hosts']=hosts;cluster_rows=[]
+        log('Checking HTTPS authentication, APIs and service/agent heartbeats…')
         health.host_rows(hosts,cluster_rows,details);health.api_checks(cluster_rows,details,env,include_workload=include_workload)
         if include_workload:health.checkpoint_checks(cluster_rows,details)
         service_rows=[r for r in cluster_rows if r['check'] not in ('existing VM/volume API state','exercise checkpoints')]
@@ -361,8 +528,9 @@ def execute(log,details,include_workload=False):
             checkpoint_status=next(r['status'] for r in cluster_rows if r['check']=='exercise checkpoints')
             rows.append({'check':'Outstanding exercise checkpoints','status':checkpoint_status})
         details['summary']=rows
-        for line in render_report(details,include_workload):log(line)
-        if not include_workload:return 0 if services_ok and unchanged else 1
+        rendered=render_report(details,include_workload) if detailed or include_workload else render_brief(details)
+        for line in rendered:log(line)
+        if not include_workload:return 0 if services_ok and unchanged and 'RESULT: REBOOT_SERVICES_HEALTHY' in rendered else 1
         log('Workload notes:')
         attention=[]
         current=details.get('VM identity',{})
@@ -392,22 +560,23 @@ def main(argv=None):
     group.add_argument('--check',action='store_true',help='live cluster service/agent dashboard')
     group.add_argument('--report',type=Path,help='display an existing reboot-verify JSON snapshot without live checks')
     parser.add_argument('--with-workload',action='store_true',help='also inspect VM/data/migration; separate from cluster service health')
+    parser.add_argument('--details',action='store_true',help='show the full by-node tables instead of the grouped summary')
     args=parser.parse_args(argv)
     if not args.check and args.report is None:
         if args.with_workload:parser.error('--with-workload requires --check or --report')
         print('PLAN ONLY: services and agents by node. Use --check on R2d2, or --report with an existing private JSON snapshot. No repair mode.');return 0
     deploy.validation.config_step.load_step('reboot_r2d2','phase2-check.py').require_r2d2()
-    if args.report is not None:return saved_report(args.report,args.with_workload)
+    if args.report is not None:return saved_report(args.report,args.with_workload,args.details)
     deploy.tools.check_paths(ENV)
     if not sys.stdin.isatty():raise RuntimeError('Use joe\'s interactive R2d2 terminal')
-    if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--check']+(['--with-workload'] if args.with_workload else []),deploy.tools.tool_environment())
+    if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve()),'--check']+(['--with-workload'] if args.with_workload else [])+(['--details'] if args.details else []),deploy.tools.tool_environment())
     os.umask(0o077);reports=REPO/'reports';inv.private_dir(reports);details={}
     fd,name=tempfile.mkstemp(prefix='reboot-verify-'+dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'),suffix='.txt',dir=reports)
     print('Private summary: '+name,flush=True);status=1
     with os.fdopen(fd,'w') as output:
         def log(line):print(line,flush=True);output.write(line+'\n');output.flush()
         log('Reboot service/agent dashboard — existing lab only' if not args.with_workload else 'Reboot service dashboard with separate workload verification')
-        try:status=execute(log,details,args.with_workload)
+        try:status=execute(log,details,args.with_workload,args.details)
         except (Exception,KeyboardInterrupt) as error:
             log('RESULT: REBOOT_RECOVERY_NEEDS_REVIEW');log(str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; collection incomplete')
         with Path(name).with_suffix('.json').open('x') as extra:json.dump(details,extra,indent=2)
