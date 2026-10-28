@@ -31,21 +31,60 @@ def allowed(name):
       'cinder_scheduler','cinder_volume','horizon'}
     return name in required|EXTRAS or re.fullmatch(r'neutron_l3_agent_(?:haproxy|keepalived)_qrouter-[0-9a-f-]{36}',name) is not None
 
+def node_baseline(node,r):
+    host=r.get('host',{})
+    if host.get('node')!=node or not host.get('observed'):raise RuntimeError(node+': identity/inspection unavailable')
+    db=host.get('galera',{})
+    issues=[]
+    if not db.get('observed') or not health.member_ok(db.get('value',{})):issues.append('require Synced/Primary Galera size 3')
+    if not host.get('rabbitmq',{}).get('value',{}).get('healthy'):issues.append('RabbitMQ cluster needs review')
+    if not host.get('containers',{}).get('value',{}).get('healthy'):issues.append('core containers need review')
+    if r.get('active_domains') is None:issues.append('VM runtime unavailable')
+    elif r['active_domains']:issues.append('VM/domain still active. Shut guests down separately first.')
+    if r.get('running') is None:issues.append('container list unavailable')
+    else:
+        unknown=sorted(n for n in r['running'] if not allowed(n))
+        if unknown:issues.append('container names outside the shutdown list: '+', '.join(unknown))
+    if issues:raise RuntimeError(node+': '+'; '.join(issues))
+    return db['value']['wsrep_cluster_state_uuid']
+
 def baseline(records):
     if set(records)!=set(NODES):raise RuntimeError('All three nodes must be observed')
-    uuids=set()
-    for node,r in records.items():
-        host=r['host']
-        if host.get('node')!=node or not host.get('observed'):raise RuntimeError(node+': identity unavailable')
-        db=host.get('galera',{})
-        if not db.get('observed') or not health.member_ok(db.get('value',{})):raise RuntimeError(node+': require Synced/Primary Galera size 3')
-        uuids.add(db['value']['wsrep_cluster_state_uuid'])
-        if not host.get('rabbitmq',{}).get('value',{}).get('healthy'):raise RuntimeError(node+': RabbitMQ cluster needs review')
-        if not host.get('containers',{}).get('value',{}).get('healthy'):raise RuntimeError(node+': core containers need review')
-        if r['active_domains']:raise RuntimeError(node+': VM/domain still active. Shut guests down separately first.')
-        if any(not allowed(n) for n in r['running']):raise RuntimeError(node+': unrelated/unrecognized running container; stop for review')
+    uuids=set();issues=[]
+    for node in NODES:
+        try:uuids.add(node_baseline(node,records[node]))
+        except RuntimeError as error:issues.append(str(error))
+    if issues:raise RuntimeError('\n'.join(issues))
     if len(uuids)!=1:raise RuntimeError('Database cluster UUID differs between nodes')
     return next(iter(uuids))
+
+def collect_checks(remote):
+    records={}
+    for node in NODES:
+        try:records[node]=remote(node,'inspect')
+        except RuntimeError as error:records[node]={'error':str(error)}
+    return records
+
+def check_lines(records):
+    lines=['CHECK ONLY — no service-stop or poweroff commands are sent.',
+      'Node  | Galera | RabbitMQ | Core containers | Active VMs']
+    for node in NODES:
+        r=records.get(node,{});host=r.get('host',{})
+        db=host.get('galera',{});broker=host.get('rabbitmq',{});containers=host.get('containers',{})
+        def status(observation,ok):
+            return ('OK' if ok else 'REVIEW') if observation.get('observed') else 'UNKNOWN'
+        lines.append(' | '.join([node,status(db,health.member_ok(db.get('value',{}))),
+          status(broker,broker.get('value',{}).get('healthy')),
+          status(containers,containers.get('value',{}).get('healthy')),
+          str(len(r['active_domains'])) if isinstance(r.get('active_domains'),list) else 'UNKNOWN']))
+    try:baseline(records);ready=True
+    except RuntimeError as error:lines+=['Needs review:',str(error)];ready=False
+    lines+=['RESULT: '+('SHUTDOWN_READINESS_CHECKED' if ready else 'SHUTDOWN_CHECK_NEEDS_REVIEW'),
+      'Check finished. No services or hosts were stopped by this check.']
+    return ready,lines
+
+def request_guard(check_only,action):
+    if check_only and action!='inspect':raise RuntimeError('Check mode permits inspection only')
 
 def positions(values,cluster):
     if set(values)!=set(NODES):raise RuntimeError('All database shutdown records are required')
@@ -128,6 +167,7 @@ def main(argv=None):
         helper=base64.b64encode((REPO/'scripts/lab-shutdown-node.py').read_bytes()).decode()
         reader=base64.b64encode((REPO/'scripts/lab-health-node.py').read_bytes()).decode()
         def remote(node,action):
+            request_guard(args.check,action)
             code='import base64;exec(compile(base64.b64decode('+repr(helper)+'),"shutdown-node","exec"),{"__name__":"__main__","HEALTH_SOURCE":'+repr(reader)+'})'
             cmd=['sudo','-S','-p','','/usr/bin/python3','-c',code,'--node',node,'--action',action]
             try:
@@ -137,10 +177,18 @@ def main(argv=None):
                 return r['value']
             except (OSError,ValueError,subprocess.TimeoutExpired):raise RuntimeError(node+': SSH/outcome unavailable; no retry') from None
         print('Checking nodes, database/broker and actual VM runtime…',flush=True)
-        records={n:remote(n,'inspect') for n in NODES};cluster=baseline(records)
+        records=collect_checks(remote)
+        if args.check:
+            ready,lines=check_lines(records)
+            fd,name=tempfile.mkstemp(prefix='shutdown-check-'+dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'),suffix='.txt',dir=reports)
+            with os.fdopen(fd,'w') as output:output.write('\n'.join(lines)+'\n')
+            with Path(name).with_suffix('.json').open('x') as output:json.dump(records,output,indent=2)
+            for line in lines:print(line)
+            print('Private report: '+name)
+            return 0 if ready else 1
+        cluster=baseline(records)
         print('Node  | Galera | RabbitMQ | Core containers | Active VMs')
         for n in NODES:print(n+' | OK     | OK       | OK              | 0')
-        if args.check:print('RESULT: SHUTDOWN_READINESS_CHECKED\nNo service stopped. A backup and completed cloud operations still require operator confirmation.');return 0
         print('This stops ALL cloud services and will offer OS poweroff. R2d2 stays running.\nConfirm a usable database backup, no active cloud/storage operations, and all guests cleanly shut down.\nThe script does not create a backup or stop guests.')
         if input('Type STOP ALL CLOUD SERVICES to proceed: ')!='STOP ALL CLOUD SERVICES':raise RuntimeError('Cancelled before service changes')
         # Fresh readiness immediately before the first mutation.
@@ -190,5 +238,6 @@ def main(argv=None):
 if __name__=='__main__':
     try:sys.exit(main())
     except (Exception,KeyboardInterrupt) as error:
-        print('Stopped: '+(str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; review private report'),file=sys.stderr)
+        label='Check could not finish; no service-stop or poweroff commands sent: ' if '--check' in sys.argv else 'Script ended: '
+        print(label+(str(error) if isinstance(error,RuntimeError) else type(error).__name__+'; review private report'),file=sys.stderr)
         sys.exit(1)
