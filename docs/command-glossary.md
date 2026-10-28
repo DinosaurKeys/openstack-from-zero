@@ -1,6 +1,6 @@
 # Lab command glossary
 
-[Home](../README.md) · [Phase 4](phase-04/README.md)
+[Home](../README.md) · [Phase 4](phase-04/README.md) · [Reboot and recovery](reboot-and-recovery.md)
 
 The viewing sections inspect the lab without creating/deleting resources or restarting services. The manual API VIP exercise in section 6 explicitly includes service stop/start commands and requires an approved test. The API helper authenticates normally, then sends GET requests; it uses the existing private profile and CA, so no OpenStack CLI installation is required.
 
@@ -28,7 +28,7 @@ git pull --ff-only
 | What to see | Command | What to read |
 |---|---|---|
 | Router, ports, active and standby agents | `/usr/bin/python3 scripts/lab-view.py router` | Router HA flag, private/external IPs and all `hosting_agents`/`ha_state` values |
-| Network agents | `/usr/bin/python3 scripts/lab-view.py agents` | `alive: true` and `admin_state_up: true`; host and agent role |
+| Network agents | `/usr/bin/python3 scripts/lab-view.py agents --table` | Twelve expected agents; Alive and Enabled both `yes` |
 | Networks | `/usr/bin/python3 scripts/lab-view.py networks` | Flat external versus VXLAN private; network MTU |
 | Subnets | `/usr/bin/python3 scripts/lab-view.py subnets` | CIDR, gateway, DHCP, pool and DNS |
 | Images | `/usr/bin/python3 scripts/lab-view.py images` | `active` means available for boot, not that a VM booted |
@@ -37,7 +37,9 @@ git pull --ff-only
 | VMs | `/usr/bin/python3 scripts/lab-view.py servers` | Name, status and assigned addresses; read actual placement and addresses |
 | Floating IPs | `/usr/bin/python3 scripts/lab-view.py floating-ips` | External IP, mapped private IP and status |
 | Volumes | `/usr/bin/python3 scripts/lab-view.py volumes` | Size, status and attachments; a root disk on local compute storage is not listed here |
-| Nova services | `/usr/bin/python3 scripts/lab-view.py compute-services` | Service host, `state: up` and `status: enabled` |
+| Nova services | `/usr/bin/python3 scripts/lab-view.py compute-services --table` | Service host, heartbeat `up` and administrative state `enabled` |
+| Hypervisors | `/usr/bin/python3 scripts/lab-view.py hypervisors --table` | Three compute hosts, each enabled/up |
+| Cinder services | `/usr/bin/python3 scripts/lab-view.py cinder-services --table` | Three scheduler and three volume services, each enabled/up |
 
 These are fresh API reads; a list command does not test end-to-end operation. Keep credentials private: do not print `clouds.yaml`, openrc files or token values.
 
@@ -91,11 +93,11 @@ If the namespace is absent or the API roles are unknown, return the observations
 
 ## 4. Check the MariaDB cluster — from R2d2
 
-Use the existing combined verification rather than interpreting container health as full database health:
+Use the post-reboot health check rather than interpreting container health as full database health:
 
 ```bash
 cd ~/openstack-from-zero
-/usr/bin/python3 scripts/phase3-verify.py --run
+/usr/bin/python3 scripts/lab-health.py --check
 ```
 
 It reads all three nodes, asks for their sudo passwords and writes a private report. Look for each member: `Synced`, `Primary`, cluster size `3`, `wsrep_connected: ON`, `wsrep_ready: ON`, and one shared cluster UUID. The wrapper also checks containers, host layout and VIP ownership; no repair is performed.
