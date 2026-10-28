@@ -4,7 +4,7 @@
 
 **Goal:** move the existing running `lab-vm-01` from **node1 to node2**, similar to VMware vMotion. The destination was selected after reviewing live CPU, memory, disk, libvirt and Nova/Placement observations.
 
-**Status: inspection passed; preparation/apply script locally tested. Migration pending.** Both hosts stay working throughout this exercise.
+**Status: paused; migration completion is not verified.** Finish [reboot/workload verification](../reboot-and-recovery.md) and review the saved migration checkpoint first. Do not run preparation or apply again while that record is unresolved. The steps below are the reference procedure for a separately approved future move; both hosts stay working throughout that exercise.
 
 | Component | Intended result |
 |---|---|
