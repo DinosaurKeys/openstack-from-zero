@@ -29,7 +29,13 @@ Run:
 /usr/bin/python3 scripts/lab-reboot-verify.py --check
 ```
 
-Enter joe's sudo password for each node. The dashboard checks the database (MariaDB/Galera), messaging (RabbitMQ), containers, APIs, services, network agents, router HA and host connections. It does not restart anything.
+Enter joe's sudo password for each node. The checker groups containers and services into **PASS / FAIL / BLOCKED** lines, with counts such as `MariaDB: 3/3 ready`. Failed groups show the affected **node, container and observed state**. Host collection progress is printed as each node finishes. It does not restart anything.
+
+- **PASS:** the stated check passed.
+- **FAIL:** an observed check did not pass; `starting` means not ready yet, not necessarily a permanent failure.
+- **BLOCKED:** the check could not run or complete. For example, failed authentication blocks API service/agent reads; it does not prove those agents are down.
+
+Database query errors are classified without exposing credentials. When available, a recent Galera log view is shown with its log time; it is labelled as log evidence, not a live SQL result.
 
 | Result | What to do |
 |---|---|
@@ -110,14 +116,14 @@ Use a **fresh** `lab-reboot-verify.py --check` report, not an old saved snapshot
 
 | Finding | Meaning / next step |
 |---|---|
-| `UP/healthy`, service/agent `UP/enabled` | Leave it running. |
-| Container `DOWN` or `UP/unhealthy` | Inspect its unit, logs and dependencies before selecting a restart. |
+| PASS group, `running/healthy`, service/agent `UP/enabled` | Leave it running. |
+| Container `EXITED`, `running/unhealthy`, or detailed-table `DOWN` | Inspect its unit, logs and dependencies before selecting a restart. |
 | Healthy container, heartbeat `DOWN` | The application is not reporting; inspect database/RPC/libvirt dependencies. |
-| `UNKNOWN` or `NOT LISTED` | The check could not establish the state; this is not proof the service is down. |
+| BLOCKED, detailed-table `UNKNOWN`, or `NOT LISTED` | Read the reason. Unavailable observations are not proof the service is down. |
 | `starting` | Let initialization finish before deciding whether it failed. |
 | `disabled` | Read the disable reason. A restart does not authorize enabling it. |
 
-`UP/no-check` means the container has no healthcheck configured. Glance runs on **node1 only**; `N/A (placement)` on node2/node3 is expected.
+`running/no-check` (or detailed-table `UP/no-check`) means the process is running without a configured container healthcheck. It is not proof that the application works. Glance is checked on **node1 only**; its absence on node2/node3 is expected.
 
 Check dependencies in this order: **host access → MariaDB → ProxySQL/RabbitMQ → APIs → compute/network agents**. Healthy services need no repair. The references below are conditional, not extra steps to run after every boot.
 
@@ -252,6 +258,7 @@ After any approved repair, use the **same live cluster check at the top of this 
 
 | Optional command | Purpose |
 |---|---|
+| `/usr/bin/python3 scripts/lab-reboot-verify.py --check --details` | Show the full by-node tables instead of the grouped summary. Also works with `--report FILE --details` to redisplay saved tables. |
 | `/usr/bin/python3 scripts/lab-shutdown.py --check` | Preview shutdown readiness without stopping services; already included in normal `--apply`. |
 | `bash scripts/lab-poweroff.sh --check` | Check readiness for final host poweroff without scheduling it. |
 | `/usr/bin/python3 scripts/lab-reboot-verify.py --report reports/reboot-verify-TIMESTAMP-ID.json` | Redisplay an actual saved report; labelled SAVED SNAPSHOT, with no new lab checks. |
