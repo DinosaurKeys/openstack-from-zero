@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -33,9 +34,21 @@ def checked(rows,details,label,function):
         rows.append({'check':label,'status':'PASS' if ok is True else 'REVIEW'})
     except (Exception,KeyboardInterrupt) as error:
         if isinstance(error,KeyboardInterrupt):raise
-        # Never print exception text from an API, configuration parser or sudo.
+        # Keep a safe HTTP code, never arbitrary exception text or credentials.
         rows.append({'check':label,'status':'UNKNOWN'})
-        details[label]={'error':type(error).__name__+'; read unavailable; no repair requested'}
+        match=re.search(r'\bHTTP ([1-5][0-9]{2})\b',str(error)) if isinstance(error,RuntimeError) else None
+        details[label]={'error':'HTTP '+match[1]+'; read unavailable' if match else type(error).__name__+'; read unavailable; no repair requested'}
+
+
+def transport_reason(code,stderr):
+    text=stderr.lower()
+    if 'permission denied (publickey' in text:return 'SSH key authentication rejected'
+    if 'host key verification failed' in text or 'remote host identification has changed' in text:return 'SSH host identity needs review'
+    if any(s in text for s in ('incorrect password','sorry, try again','no password was provided')):return 'Sudo authentication failed'
+    if 'a password is required' in text:return 'Sudo requires authentication'
+    if 'connection refused' in text:return 'SSH connection refused'
+    if 'no route to host' in text:return 'Management network route unavailable'
+    return 'SSH/sudo or collector output unavailable (exit '+str(code)+')'
 
 
 def host_observe(node,password,env):
@@ -44,11 +57,52 @@ def host_observe(node,password,env):
     remote=shlex.join(['sudo','-S','-p','','/usr/bin/python3','-c',code,'--node',node])
     try:
         p=subprocess.run(vip.ssh_args(node)+[remote],input=password+'\n',capture_output=True,text=True,env=env,timeout=240)
-        value=json.loads(p.stdout)
-        if value.get('node')!=node or type(value.get('observed')) is not bool or (p.returncode and value['observed']):raise ValueError()
+        try:value=json.loads(p.stdout)
+        except ValueError:
+            return {'node':node,'observed':False,'error':transport_reason(p.returncode,p.stderr)}
+        if not isinstance(value,dict) or value.get('node')!=node or type(value.get('observed')) is not bool or (p.returncode and value['observed']):raise ValueError()
         return value
-    except (OSError,ValueError,subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
+        return {'node':node,'observed':False,'error':'Host collection exceeded 240 seconds; state unknown'}
+    except (OSError,ValueError):
         return {'node':node,'observed':False,'error':'SSH/sudo or structured host response unavailable'}
+
+
+def summary_lines(rows,details):
+    status={r['check']:r['status'] for r in rows}
+    lines=['Node | Access | Database | RabbitMQ | Containers | USB | Clock']
+    suffixes=('management SSH/identity','Galera','RabbitMQ','core containers','USB/br-ex','clock sync')
+    for node in NODES:lines.append(node+' | '+' | '.join(status.get(node+' '+s,'UNKNOWN') for s in suffixes))
+    lines.append('APIs | '+' | '.join(label+': '+status.get(key,'UNKNOWN') for label,key in
+      (('Login','HTTPS authentication'),('Horizon','Horizon HTTPS'),('Images','image HTTPS API read'),
+       ('Compute','compute HTTPS API read'),('Network','network HTTPS API read'),
+       ('Volumes','block-storage HTTPS API read'),('Placement','placement HTTPS API read'))))
+    for row in rows:
+        if row['check'].startswith(tuple(NODES)) or row['check'] in ('HTTPS authentication','Horizon HTTPS','public service APIs') or 'HTTPS API read' in row['check']:continue
+        lines.append(row['check']+' | '+row['status'])
+    lines.append('Needs attention:')
+    attention=[]
+    primary=False
+    for node in NODES:
+        record=details.get('hosts',{}).get(node,{})
+        if not record.get('observed'):
+            # Only generated/classified collector errors, never raw SSH stderr.
+            reason=record.get('error','host observation unavailable')
+            attention.append(node+': '+reason+'. Check management SSH/sudo; the node is not proven down.')
+        value=record.get('containers',{}).get('value',{})
+        if value.get('missing'):attention.append(node+' missing containers: '+', '.join(value['missing']))
+        if value.get('unhealthy'):attention.append(node+' unhealthy/stopped: '+', '.join(value['unhealthy']))
+        db=record.get('galera',{}).get('value',{})
+        primary=primary or db.get('wsrep_cluster_status')=='Primary'
+    if primary and status.get('Galera: same three-member Primary cluster')!='PASS':
+        attention.append('A surviving Galera Primary component was observed. Do not repeat full-cluster database recovery; inspect the missing/unready member first.')
+    for label,value in details.items():
+        if label in status and status[label]=='UNKNOWN' and isinstance(value,dict) and str(value.get('error','')).startswith('HTTP '):
+            attention.append(label+': '+value['error'])
+    unresolved=details.get('exercise checkpoints',{}).get('unresolved',[])
+    if unresolved:attention.append('Unresolved exercise: '+', '.join(unresolved)+'. Preserved; no automatic retry or reset.')
+    lines.extend(attention or ['See REVIEW/UNKNOWN rows; collection does not authorize repair.' if any(r['status']!='PASS' for r in rows) else 'None in this snapshot.'])
+    return lines
 
 
 def member_ok(status):
@@ -194,8 +248,7 @@ def execute(log,details):
     host_rows(records,rows,details)
     log('Host checks collected. Checking HTTPS and OpenStack service state…')
     api_checks(rows,details,env);checkpoint_checks(rows,details)
-    log('Check | Result')
-    for row in rows:log(row['check']+' | '+row['status'])
+    for line in summary_lines(rows,details):log(line)
     details['summary']=rows
     healthy=all(r['status']=='PASS' for r in rows)
     log('RESULT: '+('CLUSTER_HEALTH_SNAPSHOT_PASSED' if healthy else 'CLUSTER_HEALTH_NEEDS_REVIEW'))
