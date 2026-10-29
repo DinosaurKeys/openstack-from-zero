@@ -2,7 +2,7 @@
 
 [Home](../README.md) · [Command glossary](command-glossary.md)
 
-Run commands on **R2d2 as joe**, from `~/openstack-from-zero`. Keep R2d2 running.
+Start on **R2d2 as joe**, from `~/openstack-from-zero`. Manual service commands run **on the affected node**, as labelled below. Keep R2d2 running.
 
 **The order:** stop cloud services → power off hosts → power on hosts → check → repair only the named failures → check again.
 
@@ -12,6 +12,7 @@ Run commands on **R2d2 as joe**, from `~/openstack-from-zero`. Keep R2d2 running
 | Start after a shutdown | [3. Power on](#after-power-on-check-the-cluster), then [4. Check](#4-read-the-live-dashboard) |
 | Database unavailable | [5. MariaDB recovery](#5-mariadb-cold-boot-recovery) |
 | Failed API or control containers | [6. Control-service recovery](#6-recover-failed-control-services) |
+| A service is stopped | [Start Nova compute](#b-start-a-stopped-nova-compute-service) or choose a component in [the restart quick reference](#c-restart-a-selected-running-service) |
 | Compute or network agent still DOWN | [7. Manual service and agent restarts](#manual-service-and-agent-restarts) |
 | Check the final result | [8. Confirm recovery](#what-a-healthy-result-means) |
 
@@ -147,11 +148,18 @@ The helper checks all services and agents at the end, but its automatic restart 
 <a id="3-restart-one-failed-service-or-agent"></a>
 <a id="manual-service-and-agent-restarts"></a>
 
-### 7. Restart one failed service or agent manually
+### 7. Start or restart one failed service or agent
 
-**Use a fresh dashboard to choose one node and one component.** First check its log and dependencies. A DOWN heartbeat with a healthy container does not establish the cause. Repair one selected component, then check its heartbeat before moving on.
+Use the latest dashboard to select **one affected node and one component**. Galera, RabbitMQ and the relevant dependencies must be ready before repairing their clients. Keep VM/migration/storage operations paused.
 
-Restarting compute/agent processes can interrupt management or network activity. Keep VM/migration/storage operations paused during this procedure.
+**These are different operations:**
+
+| Command | What it does |
+|---|---|
+| `systemctl status`, `docker inspect`, `journalctl` | Inspect only. They do not start or restart anything. |
+| `sudo systemctl start` | Start a stopped service now. |
+| `sudo systemctl restart` | Restart a running service; also start it if it is stopped. |
+| `sudo systemctl enable` | Configure startup at boot. By itself, it does not start the service now. |
 
 #### A. Connect to the affected node
 
@@ -163,77 +171,133 @@ Choose **one** connection from R2d2:
 | node2 | `ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.201` |
 | node3 | `ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.202` |
 
-Run `hostname -s` to confirm the node. An eventual **“Connection … closed”** after `exit` is normal.
+Run `hostname -s` to confirm the node. The commands below run **inside that node's SSH session**.
 
-#### B. Inspect the selected component
+#### B. Start a stopped Nova compute service
 
-Example: `nova_compute`. Change only the first line to a container name from the table below:
+If the dashboard shows `nova_compute=EXITED` or systemd shows `inactive (dead)`, run:
 
 ```bash
-lab_service=nova_compute
-lab_unit="kolla-${lab_service}-container.service"
-sudo systemctl status "$lab_unit" --no-pager
-sudo docker inspect --format 'State={{.State.Status}} Health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$lab_service"
-sudo journalctl -u "$lab_unit" -n 30 --no-pager
+sudo systemctl start kolla-nova_compute-container.service
 ```
 
-`systemctl`/Docker show the process and its startup history. **The application log shows why the service may not be communicating.** For a running container, use the matching read command:
+Use the full Kolla unit name. `nova_compute.service` is not the unit in this deployment. You do not need to enable the unit again to start it.
 
-| Dashboard component | `lab_service` | Application log command on that node |
-|---|---|---|
-| `nova-compute` | `nova_compute` | `sudo docker exec nova_compute tail -n 40 /var/log/kolla/nova/nova-compute.log` |
-| Open vSwitch agent | `neutron_openvswitch_agent` | `sudo docker exec neutron_openvswitch_agent tail -n 40 /var/log/kolla/neutron/neutron-openvswitch-agent.log` |
-| Router / L3 agent | `neutron_l3_agent` | `sudo docker exec neutron_l3_agent tail -n 40 /var/log/kolla/neutron/neutron-l3-agent.log` |
-| DHCP agent | `neutron_dhcp_agent` | `sudo docker exec neutron_dhcp_agent tail -n 40 /var/log/kolla/neutron/neutron-dhcp-agent.log` |
-| Metadata agent | `neutron_metadata_agent` | `sudo docker exec neutron_metadata_agent tail -n 40 /var/log/kolla/neutron/neutron-metadata-agent.log` |
+#### C. Restart a selected running service
 
-If the container is stopped, `docker exec` cannot run. Read `sudo docker logs --tail 40 "$lab_service"` and its journal instead. Log excerpts can contain private information; review before sharing.
+If a running Nova compute service needs a restart after reviewing its errors/dependencies, run **this action instead**:
 
-For **Nova compute**, require a working libvirt connection before choosing a compute restart. This read-only query checks the configured local libvirt service can answer:
+```bash
+sudo systemctl restart kolla-nova_compute-container.service
+```
+
+Both commands above normally return to the prompt without a success message. **Do not run a separate stop first.** Verify the result below.
+
+For another failed component, choose its exact restart command from this quick reference. Each command also starts that unit if it is stopped. **Run only the selected row.**
+
+| Component | Command on the affected node |
+|---|---|
+| Nova compute | `sudo systemctl restart kolla-nova_compute-container.service` |
+| Nova conductor | `sudo systemctl restart kolla-nova_conductor-container.service` |
+| Nova scheduler | `sudo systemctl restart kolla-nova_scheduler-container.service` |
+| Placement API | `sudo systemctl restart kolla-placement_api-container.service` |
+| Neutron Open vSwitch agent | `sudo systemctl restart kolla-neutron_openvswitch_agent-container.service` |
+| Neutron router / L3 agent | `sudo systemctl restart kolla-neutron_l3_agent-container.service` |
+| Neutron DHCP agent | `sudo systemctl restart kolla-neutron_dhcp_agent-container.service` |
+| Neutron metadata agent | `sudo systemctl restart kolla-neutron_metadata_agent-container.service` |
+
+The Open vSwitch **agent** is separate from `openvswitch_db` and `openvswitch_vswitchd`. Nova **compute** is separate from `nova_libvirt`. The commands above do not restart those dependencies.
+
+For API/control containers, step 6 remains the normal automated route. Other application container names include `nova_api`, `nova_metadata`, `neutron_server`, `neutron_rpc_server`, `neutron_periodic_worker`, `cinder_api`, `cinder_scheduler`, `keystone_api`, `keystone_fernet`, `keystone_ssh` and `horizon`. Their unit pattern is `kolla-CONTAINER_NAME-container.service`, preserving underscores. `glance_api` is on node1 only.
+
+**Infrastructure needs a separate procedure/impact review:** MariaDB, ProxySQL, RabbitMQ, HAProxy/Keepalived, libvirt, Cinder volume and Open vSwitch database/switch processes. Starting an agent is not permission to restart all of its dependencies.
+
+#### D. Verify that it actually started
+
+For Nova compute, run on the same node:
+
+```bash
+sudo systemctl status kolla-nova_compute-container.service --no-pager --full
+sudo docker inspect --format 'State={{.State.Status}} Health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' nova_compute
+```
+
+For another component, use its exact unit and container name from the quick reference.
+
+| Output | Meaning |
+|---|---|
+| `active (running)` plus `State=running Health=healthy` | The unit/container checks passed. Verify the OpenStack heartbeat in step 8. |
+| `Health=starting` | Startup verification is in progress; allow it to finish and read the status again. |
+| `inactive (dead)`, `failed`, or container `exited` | It is not running. Read the current errors below. |
+| Container healthy but OpenStack service `DOWN` | The container check passed, but the service heartbeat did not. Read its application log. |
+| OpenStack `UP/disabled` | The heartbeat is working; scheduling permission is still disabled. Read its reason separately. |
+
+Do not report recovery from the restart command alone. If startup or the heartbeat still fails, keep the new error instead of repeating restarts.
+
+<details>
+<summary>If start/restart fails, or the heartbeat stays DOWN</summary>
+
+**Read the service manager error** on the affected node. Nova compute example:
+
+```bash
+sudo systemctl status kolla-nova_compute-container.service --no-pager --full
+sudo journalctl -u kolla-nova_compute-container.service -b -n 40 --no-pager
+```
+
+**Read the application log.** Most Kolla application logs are stored in the shared `kolla_logs` volume; the journal or `docker logs` may contain only the startup wrapper.
+
+This finds the volume's actual location, then reads Nova's log even when `nova_compute` is stopped:
+
+```bash
+lab_logs=$(sudo docker volume inspect --format '{{.Mountpoint}}' kolla_logs)
+if [ -n "$lab_logs" ]; then
+  sudo tail -n 60 "$lab_logs/nova/nova-compute.log"
+fi
+```
+
+For a running Neutron container, use its matching log read:
+
+| Component | Read-only log command |
+|---|---|
+| Open vSwitch agent | `sudo docker exec neutron_openvswitch_agent tail -n 40 /var/log/kolla/neutron/neutron-openvswitch-agent.log` |
+| Router / L3 agent | `sudo docker exec neutron_l3_agent tail -n 40 /var/log/kolla/neutron/neutron-l3-agent.log` |
+| DHCP agent | `sudo docker exec neutron_dhcp_agent tail -n 40 /var/log/kolla/neutron/neutron-dhcp-agent.log` |
+| Metadata agent | `sudo docker exec neutron_metadata_agent tail -n 40 /var/log/kolla/neutron/neutron-metadata-agent.log` |
+
+Review log excerpts for private information before sharing.
+
+| Error/check | Next action |
+|---|---|
+| `Unit ... could not be found` | Check the full Kolla unit name and selected host. Do not create a replacement unit. |
+| `Access denied` / authentication failure | Use `sudo` and joe's sudo password. |
+| Libvirt, RabbitMQ or database connection errors | Check that named dependency; a client restart alone does not establish a fix. |
+| `Start request repeated too quickly` / `start-limit-hit` | Correct the underlying failure first; then clear only that unit's rate-limit state as below. |
+
+Only for the last condition, after the cause is corrected:
+
+```bash
+sudo systemctl reset-failed kolla-nova_compute-container.service
+sudo systemctl start kolla-nova_compute-container.service
+```
+
+This is not a routine recovery step. Kolla accepts exit 143 as a normal service termination; that exit code alone does not establish a crash.
+
+For a read-only local libvirt connection check:
 
 ```bash
 sudo docker exec --user root nova_libvirt virsh --readonly -c qemu:///system list --all
 ```
 
-This does not prove Nova's separate authenticated libvirt connection works; use the compute log for its connection errors. For **Neutron agents**, require healthy RabbitMQ/control services and Open vSwitch first. A failed libvirt, OVS or broker dependency needs its own repair; repeatedly restarting its client is not a fix.
+This does not prove Nova's separate authenticated connection works. Its application log is still required for that diagnosis.
 
-#### C. Restart the selected unit once
+</details>
 
-After reviewing that node/component and its dependencies, run on the affected node:
-
-```bash
-sudo systemctl restart "$lab_unit"
-sudo systemctl is-active "$lab_unit"
-sudo docker inspect --format 'State={{.State.Status}} Health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$lab_service"
-```
-
-Example: `lab_service=nova_compute` restarts **`kolla-nova_compute-container.service`**. Selecting `neutron_l3_agent` restarts **`kolla-neutron_l3_agent-container.service`**. Underscores matter.
-
-A successful restart command means systemd accepted the operation; startup and heartbeats still need verification. Allow startup to finish. If it exits again, remains unhealthy or still has a DOWN heartbeat, keep the new errors and stop repeating restarts.
-
-**A disabled compute needs a separate decision.** Return to R2d2 with `exit`, then read its reason:
+**Linux startup and OpenStack scheduling are separate.** `systemctl enable` controls boot startup; it does not change Nova's `disabled` scheduling status. Return to R2d2 with `exit` and read the reason there:
 
 ```bash
 /usr/bin/python3 scripts/lab-view.py compute-services --table
 ```
 
-First recover the heartbeat to UP. If it remains **UP/disabled**, review the reason before enabling scheduling; it may be deliberately in maintenance. An unknown reason is not permission to enable it. Enabling scheduling does not repair a DOWN service.
-
-#### Other application containers
-
-The same `lab_service`/Kolla-unit procedure applies after selecting the failed component:
-
-| Component | Container names — choose one |
-|---|---|
-| Placement | `placement_api` |
-| Nova control | `nova_api`, `nova_metadata`, `nova_conductor`, `nova_scheduler` |
-| Neutron control | `neutron_server`, `neutron_rpc_server`, `neutron_periodic_worker` |
-| Cinder control | `cinder_api`, `cinder_scheduler` |
-| Identity | `keystone_api`, `keystone_fernet`, `keystone_ssh` |
-| Images — node1 only | `glance_api` |
-| Dashboard | `horizon` |
-
-**Review infrastructure separately:** MariaDB, ProxySQL, RabbitMQ, HAProxy/Keepalived, `nova_libvirt`, `cinder_volume`, `openvswitch_db` and `openvswitch_vswitchd`. Their restart impact differs from a client/agent restart. Do not restart Docker, every container or every node as a substitute for selecting the failed component.
+Recover the heartbeat first. If it remains UP/disabled, review the reason before enabling scheduling; it may be deliberately in maintenance. An unknown reason is not permission to enable it. Continue to step 8 for the final service/agent check.
 
 <a id="6-confirm-service-recovery"></a>
 <a id="what-a-healthy-result-means"></a>
@@ -316,4 +380,4 @@ Wait for the host to return, then run the dashboard before touching another node
 
 Local VM root disks, Cinder LVM and node1's Glance storage are not replicated. Cluster service HA does not provide storage HA or automatic VM recovery.
 
-[Operating Kolla](https://docs.openstack.org/kolla-ansible/2026.2/user/operating-kolla.html) · [Pinned Kolla systemd units](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/module_utils/kolla_systemd_worker.py) · [Pinned MariaDB recovery](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/mariadb/tasks/recover_cluster.yml)
+[Ubuntu 24.04 systemctl manual](https://manpages.ubuntu.com/manpages/noble/man1/systemctl.1.html) · [Kolla troubleshooting and logs](https://docs.openstack.org/kolla-ansible/2026.2/user/troubleshooting.html) · [Pinned Kolla systemd units](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/module_utils/kolla_systemd_worker.py) · [Pinned MariaDB recovery](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/mariadb/tasks/recover_cluster.yml)
