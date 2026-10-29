@@ -6,6 +6,8 @@ The viewing sections inspect the lab without creating/deleting resources or rest
 
 ## CLI service checks — run on R2d2
 
+For the routine reboot check, run **`bash scripts/lab-recover.sh --check`**. It automatically displays all three service tables. The commands below are optional independent views.
+
 After [installing/connecting the CLI](phase-03/D-client-access.md), load it in the current terminal:
 
 ```bash
@@ -35,11 +37,10 @@ The router is **not the API VIP**. It has private and external sides. In this co
 
 ## 1. OpenStack objects — run on R2d2 as joe
 
-First update the course:
+Enter the project folder:
 
 ```bash
 cd ~/openstack-from-zero
-git pull --ff-only
 ```
 
 | What to see | Command | What to read |
