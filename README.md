@@ -43,7 +43,7 @@ Continue with [Phase 5 — HA validation and VM migration](docs/phase-05/README.
 |---|---|
 | 1 — Host prerequisites | [Ubuntu, access, NICs and reviewed Cinder disks](docs/phase-01/README.md) |
 | 2 — Management environment | [Tools, inventory, HA settings and HTTPS certificates](docs/phase-02/README.md) |
-| 3 — Install OpenStack | [Full prechecks, HA deployment, access and verification](docs/phase-03/README.md) |
+| 3 — Install OpenStack | [Prechecks, HA deployment, OpenStack CLI, HTTPS and Horizon](docs/phase-03/README.md) |
 | 4 — Networking and first VM | [HA router, VM ingredients, guest traffic and volumes](docs/phase-04/README.md) |
 | 5 — HA validation and VM migration | [Readiness, three HA exercises and planned migration](docs/phase-05/README.md) |
 | 6 — Application | Planned after Phase 5 |
