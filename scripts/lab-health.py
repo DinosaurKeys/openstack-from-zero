@@ -164,6 +164,15 @@ def neutron_health(agents):
       and all(a['alive'] is True and a['admin_state_up'] is True for a in rows)),rows
 
 
+def cinder_service_health(rows):
+    expected=('cinder-scheduler','cinder-volume')
+    # Validate the same node registrations while retaining Cinder's full host
+    # (node@backend) for the operator's service table.
+    ok,_=service_health([{**row,'host':str(row.get('host','')).split('@')[0]} for row in rows],expected)
+    return ok,[{key:row.get(key) for key in ('host','binary','status','state')}
+               for row in rows if row.get('binary') in expected]
+
+
 def read_private(path):
     deploy.validation.private_file(path)
     return json.loads(path.read_text())
@@ -198,8 +207,7 @@ def api_checks(rows,details,env,include_workload=True):
         return len(selected)==3 and set(names)==set(NODES) and all(r['state']=='up' and r['status']=='enabled' for r in selected),selected
     checked(rows,details,'hypervisors',hypervisors)
     checked(rows,details,'Neutron agents',lambda:neutron_health(api.list('network','v2.0/agents','agents')))
-    checked(rows,details,'Cinder services',lambda:service_health(
-      [{**r,'host':str(r.get('host','')).split('@')[0]} for r in api.list('block-storage','os-services','services')],('cinder-scheduler','cinder-volume')))
+    checked(rows,details,'Cinder services',lambda:cinder_service_health(api.list('block-storage','os-services','services')))
     def router():
         state=read_private(REPO/'private/phase4/networks.json')
         if state.get('project_id')!=project or state.get('api')!=api.urls['network']:raise RuntimeError('Tracked network identity differs')
