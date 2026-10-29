@@ -112,6 +112,65 @@ class RecoveryTests(unittest.TestCase):
         nodes=Nodes(False);result,saves,_,questions,db=self.workflow(nodes)
         self.assertIsNotNone(result);self.assertEqual((nodes.calls,saves,questions,db),([],[],[],[]))
 
+    def test_zero_control_targets_explains_manual_scope_without_empty_plan_table(self):
+        text='\n'.join(r.plan_lines(records(False)))
+        self.assertIn('Control-container restart targets: 0',text)
+        self.assertIn('Repeating --apply will not restart compute services or network agents.',text)
+        self.assertNotIn('Container                |',text)
+        self.assertNotIn('Restart once per listed',text)
+
+    def test_post_reboot_heartbeat_failures_with_healthy_containers_are_not_silently_restarted(self):
+        nodes=Nodes(False);logs=[];details={}
+        def api_checks(rows,value,env,include_workload=True):
+            self.assertIs(include_workload,False)
+            for label in ('HTTPS authentication','Horizon HTTPS','image HTTPS API read','compute HTTPS API read',
+              'network HTTPS API read','block-storage HTTPS API read','placement HTTPS API read','Nova services',
+              'Cinder services','hypervisors','Neutron agents','router HA (API state)'):
+                rows.append({'check':label,'status':'REVIEW' if label in ('Nova services','hypervisors','Neutron agents','router HA (API state)') else 'PASS'})
+            value['Nova services']=[{'host':node,'binary':binary,
+              'state':'down' if node!='node1' and binary=='nova-compute' else 'up',
+              'status':'disabled' if node!='node1' and binary=='nova-compute' else 'enabled'}
+              for node in r.ALLOWED for binary in ('nova-scheduler','nova-conductor','nova-compute')]
+            value['Neutron agents']=[{'host':node,'binary':binary,'admin_state_up':True,
+              'alive':not(node!='node1' and binary in ('neutron-l3-agent','neutron-openvswitch-agent'))}
+              for node in r.ALLOWED for binary in ('neutron-dhcp-agent','neutron-l3-agent','neutron-openvswitch-agent','neutron-metadata-agent')]
+            value['router HA (API state)']={'agents':[{'host':node,'ha_state':'active' if node=='node1' else 'standby',
+              'alive':node=='node1','admin_state_up':True} for node in r.ALLOWED]}
+        with tempfile.TemporaryDirectory() as directory,patch.object(r,'REPO',Path(directory)),contextlib.ExitStack() as stack:
+            root=Path(directory);(root/'private/phase4').mkdir(parents=True);(root/'private/phase5').mkdir();(root/'reports').mkdir()
+            checkpoint=root/'private/phase5/move-vm-state.json';raw=b'{"pending":true,"migration":"preserved"}'
+            checkpoint.write_bytes(raw);checkpoint.chmod(0o600)
+            stack.enter_context(patch.object(r.deploy,'source_guard'))
+            stack.enter_context(patch.object(r.deploy.tools,'tool_environment',return_value={}))
+            stack.enter_context(patch.object(r.deploy.validation,'local_checks',return_value=('inventory','config')))
+            stack.enter_context(patch.object(r.inv,'ensure_agent'))
+            stack.enter_context(patch.object(r.health.access,'input_hashes',return_value={'input':'unchanged'}))
+            stack.enter_context(patch.object(r.getpass,'getpass',return_value='hidden'))
+            stack.enter_context(patch.object(r,'Nodes',return_value=nodes))
+            stack.enter_context(patch.object(r.health,'api_checks',side_effect=api_checks))
+            stack.enter_context(patch('builtins.input',side_effect=AssertionError('No mutation approval expected')))
+            stack.enter_context(patch.object(r.subprocess,'Popen',side_effect=AssertionError('No database recovery')))
+            self.assertEqual(r.execute('apply',logs.append,details,root/'reports/reboot-recovery-test.txt'),1)
+            self.assertEqual(nodes.calls,[]);self.assertEqual(checkpoint.read_bytes(),raw)
+            self.assertEqual(list((root/'private/phase5').glob(r.PREFIX+'*.json')),[])
+        text='\n'.join(logs)
+        for node in ('node2','node3'):
+            self.assertIn(node+'/nova-compute: DOWN/disabled -> inspect nova_compute and its disable reason',text)
+            for binary in ('neutron-l3-agent','neutron-openvswitch-agent'):
+                self.assertIn(node+'/'+binary+': DOWN/enabled -> inspect '+binary.replace('-','_'),text)
+        self.assertIn('manual-service-and-agent-restarts',text)
+        self.assertIn('Router HA: require one active/two standby AND all three hosting L3 agents alive/enabled.',text)
+        self.assertIn('RESULT: RECOVERY_NEEDS_REVIEW',logs)
+        self.assertNotIn('RESULT: REBOOT_SERVICES_HEALTHY',logs)
+
+    def test_unavailable_heartbeat_api_does_not_invent_failed_services_or_echo_private_errors(self):
+        details={'cluster_summary':[{'check':'Nova services','status':'UNKNOWN'}],
+          'Nova services':{'error':'HTTP 503 password=do-not-print'}}
+        text='\n'.join(r.service_followup(details))
+        self.assertIn('MANUAL SERVICE / AGENT REVIEW',text)
+        self.assertNotIn('DOWN',text);self.assertNotIn('do-not-print',text)
+        self.assertNotIn('-> inspect',text)
+
     def test_complete_stop_has_separate_database_approval_then_fresh_control_plan(self):
         nodes=Nodes(stopped=True);_,saves,_,questions,db=self.workflow(nodes)
         self.assertEqual(questions,['RECOVER MARIADB','RESTART LISTED SERVICES']);self.assertEqual(db,[True])
