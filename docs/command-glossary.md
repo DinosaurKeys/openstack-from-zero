@@ -2,7 +2,24 @@
 
 [Home](../README.md) · [Phase 4](phase-04/README.md) · [Reboot and recovery](reboot-and-recovery.md) · [Restart a failed service/agent](reboot-and-recovery.md#3-restart-one-failed-service-or-agent)
 
-The viewing sections inspect the lab without creating/deleting resources or restarting services. The manual API VIP exercise in section 6 explicitly includes service stop/start commands and requires an approved test. The API helper authenticates normally, then sends GET requests; it uses the existing private profile and CA, so no OpenStack CLI installation is required.
+The viewing sections inspect the lab without creating/deleting resources or restarting services. The manual API VIP exercise in section 6 explicitly includes service stop/start commands and requires an approved test. The viewing helpers authenticate with the existing private profile and CA, then send GET requests. Standard CLI setup is part of [Phase 3 D](phase-03/D-client-access.md).
+
+## CLI service checks — run on R2d2
+
+After [installing/connecting the CLI](phase-03/D-client-access.md), load it in the current terminal:
+
+```bash
+source "$HOME/venvs/openstack-client/bin/activate"
+source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
+```
+
+```bash
+openstack compute service list -c Host -c Binary -c Status -c State
+openstack network agent list -c Host -c "Agent Type" -c Alive -c State
+openstack volume service list -c Host -c Binary -c Status -c State
+```
+
+These inspect registered services/agents; they do not restart them. Nova/Cinder should report `up/enabled`; Neutron should show `Alive=:-)` and administrative `State=UP`. Its `Alive=XXX` indicates a missing heartbeat. Use the [check → selected restart → check again guide](reboot-and-recovery.md#cli-service-checks) for recovery, or [Chapter E](phase-05/E-vm-migration.md) to review VM and storage locations before migration.
 
 ## Router versus API VIP
 
@@ -55,27 +72,27 @@ Add `node1`, `node2` or `node3` to view only that node. This is a read-only SSH/
 
 <a id="vm-power-controls"></a>
 
-### Start or shut down a VM — use Horizon
+<a id="start-or-shut-down-a-vm--use-horizon"></a>
 
-No OpenStack CLI installation is required for these browser controls:
+### Start or shut down a VM — CLI or Horizon
 
-1. Open **https://192.168.0.151/** and sign in.
-2. Select the project containing the VM, then open **Project → Compute → Instances**.
-3. Find the VM by name and ID. Open its action menu on the right.
+For CLI controls, use **R2d2** after loading the client/credentials above. Replace the course example `lab-vm-01` with the selected VM's name or UUID. Choose one action after reading its current state:
 
-| Current state | Action | Expected result |
+| Current state | CLI command | Expected result |
 |---|---|---|
-| `SHUTOFF` | **Start Instance** | Wait for `ACTIVE`, then check console/SSH. |
-| `ACTIVE` | **Shut Off Instance**, then confirm | Wait for `SHUTOFF`. The VM and its disks are retained. |
-| `ERROR` | Inspect the VM before selecting recovery | A normal Nova start requires `SHUTOFF`; the actual running state must be established first. |
+| `SHUTOFF` | `openstack server start lab-vm-01` | Wait for `ACTIVE`, then check console/SSH |
+| `ACTIVE` | `openstack server stop lab-vm-01` | Wait for `SHUTOFF`; the VM and its disks are retained |
+| `ERROR` | Inspect the VM before choosing recovery | A normal start requires SHUTOFF; establish its actual runtime first |
 
-After a power operation, refresh the inventory on R2d2:
+Recheck on R2d2:
 
 ```bash
-/usr/bin/python3 scripts/lab-view.py servers --table
+openstack server list --all-projects --long -c Name -c Status -c Host -c ID
 ```
 
-The OpenStack CLI is installed in **[Phase 2 C](phase-02/C-install-tools.md)** and connected in **[Phase 3 D](phase-03/D-client-access.md)**. Follow the **[CLI command reference](openstack-cli.md)** to list VMs and use `openstack server start` or `openstack server stop` for the selected VM. Both CLI and Horizon are available for routine power controls.
+For Horizon, sign in at **https://192.168.0.151/**, choose the project, then open **Project → Compute → Instances**. Find the VM by name/ID and choose **Start Instance** or **Shut Off Instance** for the corresponding state above.
+
+The [CLI reference](openstack-cli.md) covers installation, activation and normal power commands. VM power control is separate from restarting an OpenStack service container.
 
 For the tracked course VM in ERROR, run this existing **read-only** check on R2d2 before recovery:
 
