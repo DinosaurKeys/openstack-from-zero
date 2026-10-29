@@ -12,11 +12,14 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import re
 import shlex
 import tempfile
 import time
 import uuid
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 REPO=Path(__file__).resolve().parents[1]
@@ -28,6 +31,7 @@ inspection=move.inspection;volume=move.volume;prep=move.prep;deploy=move.deploy;
 NODES=tuple(inv.NODES);PREFIX='menu-migration-'
 MODES=('live','cold','volume-live','volume-offline')
 TERMINAL={'completed','confirmed','error','failed','cancelled','canceled','done','reverted'}
+LIVE_MICROVERSION='2.30'  # Horizon 2026.2 live_migrate feature; synchronous prechecks.
 
 
 def clean(value):return re.sub(r'[\x00-\x1f\x7f]','?',str(value if value is not None else '-'))[:140]
@@ -39,7 +43,7 @@ def node_name(value):
     if node not in NODES:raise RuntimeError('Resource is outside node1/node2/node3')
     return node
 def choose(title,items,label,read=input,log=print):
-    if not items:raise RuntimeError('No entries available: '+title)
+    if not items:log('No entries available: '+title+'. No action requested.');return None
     log('\n'+title)
     for index,item in enumerate(items,1):log('  '+str(index)+') '+clean(label(item)))
     log('  0) Cancel')
@@ -47,21 +51,26 @@ def choose(title,items,label,read=input,log=print):
         value=read('Choose a number: ').strip()
         if value in ('0','q','Q'):return None
         if value.isdigit() and 1<=int(value)<=len(items):return items[int(value)-1]
+        named=[item for item in items if isinstance(item,str) and item.casefold()==value.casefold()]
+        if len(named)==1:return named[0]
         log('Enter one of the numbers shown.')
 def confirm(text,read=input,log=print):
     log(text)
     return read('Type MIGRATE to approve, or press Enter to cancel: ').strip()=='MIGRATE'
 
 
-class API(volume.API):
+class API(prep.API):
     """GETs plus only exact approved migration/confirmation requests, once each."""
     def __init__(self,original,read_only=False):
         super().__init__(original.client,original.urls,original.token);self.allowed={};self.sent=set();self.read_only=read_only
+        self.mode=None;self.last_response_request_id=None;self.last_action_request_id=None;self._sending=None
+        self.last_response_http_status=None;self.last_action_http_status=None
     def get(self,service,path):return self.request(service,'GET',path)
     def arm(self,plan):
         if self.read_only:raise RuntimeError('Plan-only client cannot authorize a migration')
         if self.allowed:raise RuntimeError('This client is already bound to a move')
         mode=plan['mode'];dest=plan['destination'];server=plan.get('server_id')
+        self.mode=mode
         if mode in ('live','cold'):
             identifier(server)
             if dest not in NODES or dest==plan['source']:raise RuntimeError('Invalid compute destination')
@@ -77,12 +86,50 @@ class API(volume.API):
     def mutate(self,step):
         if step not in self.allowed or step in self.sent:raise RuntimeError('No repeat or unapproved action permitted')
         service,method,path,body,expected=self.allowed[step]
+        self.last_action_request_id=None;self.last_action_http_status=None
         self.sent.add(step)
-        return super().request(service,method,path,body,expected)
+        version=LIVE_MICROVERSION if self.mode=='live' else '2.79'
+        self._sending=(service,method,path,body,expected,version)
+        try:return self._send(service,method,path,body,expected,version)
+        finally:
+            self.last_action_request_id=self.last_response_request_id;self.last_action_http_status=self.last_response_http_status;self._sending=None
     def request(self,service,method,path,body=None,expected=200):
         if method!='GET' or body is not None:raise RuntimeError('Use the single approved migration action')
-        return super().request(service,method,path,None,expected)
+        return self._send(service,method,path,None,expected,'2.79')
     def write(self,*args,**kwargs):raise RuntimeError('No create/delete/rename/reset/attach/detach operations permitted')
+    def _send(self,service,method,path,body,expected,version):
+        if method!='GET' or body is not None:
+            if self.read_only or self._sending!=(service,method,path,body,expected,version):raise RuntimeError('Transport refuses an unapproved migration request')
+        self.last_response_request_id=None;self.last_response_http_status=None
+        headers={'X-Auth-Token':self.token,'Accept':'application/json'}
+        if service=='compute':headers['OpenStack-API-Version']='compute '+version
+        if body is not None:headers['Content-Type']='application/json'
+        request=urllib.request.Request(self.url(service,path),method=method,headers=headers,
+          data=json.dumps(body).encode() if body is not None else None)
+        def remember(response_headers):
+            if response_headers is None:return
+            value=response_headers.get('X-Openstack-Request-Id') or response_headers.get('X-Compute-Request-Id')
+            if isinstance(value,str) and value.startswith('req-') and volume.valid_uuid(value[4:]):self.last_response_request_id=value
+        try:
+            with self.client.opener.open(request,timeout=180 if method=='POST' and version==LIVE_MICROVERSION else 45) as response:
+                remember(response.headers)
+                self.last_response_http_status=response.status
+                if response.status!=expected:raise RuntimeError('Unexpected migration HTTP status '+str(response.status)+'; outcome needs review')
+                raw=response.read(2_000_001)
+                if len(raw)>2_000_000:raise RuntimeError('Migration response exceeded collection limit; outcome needs review')
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as error:
+            remember(error.headers)
+            self.last_response_http_status=error.code
+            try:
+                raw=error.read(65_537)
+                doc=json.loads(raw) if len(raw)<=65_536 else {}
+                values=[v.get('message') for v in doc.values() if isinstance(v,dict)] if isinstance(doc,dict) else []
+                detail=next((move.safe_message(v) for v in values if v),'')
+            except (ValueError,OSError):detail=''
+            raise RuntimeError(service+' '+method+': HTTP '+str(error.code)+(' — '+detail if detail else '')+'; no automatic retry') from None
+        except (ValueError,urllib.error.URLError,OSError):
+            raise RuntimeError(service+' '+method+': response unavailable; outcome uncertain, no automatic retry') from None
 
 
 def server_value(api,server,project):
@@ -102,9 +149,12 @@ def volume_ids(server):
     if len(set(values))!=len(values):raise RuntimeError('Duplicate VM volume identity')
     return sorted(values)
 def migration_history(api,server):
-    rows=api.get('compute','os-migrations?instance_uuid='+identifier(server)+'&limit=100').get('migrations')
+    page=api.get('compute','os-migrations?instance_uuid='+identifier(server)+'&limit=100');rows=page.get('migrations')
     if not isinstance(rows,list) or len(rows)>=100 or any(row.get('instance_uuid')!=server for row in rows):raise RuntimeError('Migration history unavailable or exceeds the review limit')
     for row in rows:identifier(row.get('uuid'))
+    links=page.get('migrations_links',[])
+    if not isinstance(links,list) or any(not isinstance(link,dict) or link.get('rel')=='next' for link in links) or len({r['uuid'] for r in rows})!=len(rows):
+        raise RuntimeError('Migration history is incomplete or ambiguous; review required')
     return rows
 def volume_migration(value):return value.get('migration_status') or value.get('os-vol-mig-status-attr:migstat')
 def pending_guard(folder,server=None,vid=None):
@@ -113,7 +163,7 @@ def pending_guard(folder,server=None,vid=None):
         if not path.exists() and not path.is_symlink():continue
         value=health.read_private(path)
         if value.get('pending') and ((server and value.get('server_id')==server) or (vid and value.get('volume_id')==vid)):
-            action=(' After reviewing the phase5-move-vm.py --observe report, use scripts/phase5-reconcile-migration.py --apply --migration-id FAILED_MIGRATION_UUID for a confirmed failed attempt.' if path.name=='move-vm-state.json' else '')
+            action=(' After reviewing the phase5-move-vm.py --observe report, use scripts/phase5-reconcile-migration.py --apply --migration-id FAILED_MIGRATION_UUID for a confirmed failed attempt.' if path.name=='move-vm-state.json' else ' Review with bash scripts/lab-migrate.sh --observe; acknowledge a verified failed menu attempt separately with --reconcile.')
             raise RuntimeError('Existing migration checkpoint requires review: '+path.name+'. It has been preserved; no move requested.'+action)
 def checkpoints():
     result={}
@@ -128,6 +178,8 @@ def cluster(nodes_env,passwords,log):
     with ThreadPoolExecutor(max_workers=3) as pool:
         jobs={n:pool.submit(health.host_observe,n,passwords[n],nodes_env) for n in NODES}
         hosts={n:j.result() for n,j in jobs.items()}
+    unavailable=[n+': '+clean(v.get('error','host observations unavailable')) for n,v in hosts.items() if v.get('observed') is not True]
+    if unavailable:raise RuntimeError('Host checks unavailable: '+'; '.join(unavailable)+'. No migration requested during these checks.')
     rows=[];details={};health.host_rows(hosts,rows,details);health.api_checks(rows,details,nodes_env,include_workload=False)
     bad=[r['check'] for r in rows if r.get('status')!='PASS']
     if bad:raise RuntimeError('Cluster checks need attention: '+', '.join(bad))
@@ -237,7 +289,7 @@ def storage_preflight(api,value,project,pool,mode,server=None):
 
 def plan_lines(plan):
     lines=['\nREVIEW THIS MOVE','Operation: '+plan['mode']]
-    if plan.get('server_id'):lines+=['VM: '+clean(plan.get('vm_name') or plan['server_id'])]
+    if plan.get('server_id'):lines+=['VM: '+clean(plan.get('vm_name') or plan['server_id']),'VM ID: '+plan['server_id']]
     if plan.get('volume_id'):lines+=['Data volume: '+clean(plan.get('volume_name'))+' ('+plan['volume_id']+')']
     lines+=['Source: '+clean(plan['source']),'Destination: '+clean(plan['destination'])]
     if plan['mode'] in ('live','cold'):
@@ -286,7 +338,14 @@ def wait_move(api,plan,log,seconds=1200):
         if plan['mode'] in ('live','cold'):
             server,item=compute_snapshot(api,plan);status=item.get('status') if item else 'not observed yet'
             note='VM '+str(server.get('status'))+' on '+node_name(server['OS-EXT-SRV-ATTR:host'])+'; migration '+str(status)
-            if status in ('error','failed','cancelled','canceled') or server.get('status')=='ERROR':raise RuntimeError('Nova reports migration/VM error; no retry or automatic recovery')
+            if note!=last:log(clean(note));last=note
+            if item:log_id=item.get('uuid')
+            else:log_id=None
+            if status in ('error','failed','cancelled','canceled') or server.get('status')=='ERROR':
+                fault=server.get('fault') or {}
+                if log_id:log('Migration ID: '+log_id)
+                if fault:log('Nova fault: '+str(fault.get('code','-'))+' '+str(move.safe_message(fault.get('message'))))
+                raise RuntimeError('Nova reports migration/VM error; no retry or automatic recovery. Use --observe for the current state and request details.')
             at_dest=node_name(server['OS-EXT-SRV-ATTR:host'])==plan['destination'];idle=server.get('OS-EXT-STS:task_state') is None
             placed=(item and item.get('migration_type')==('live-migration' if plan['mode']=='live' else 'migration')
               and item.get('source_compute') and node_name(item['source_compute'])==plan['source']
@@ -332,8 +391,23 @@ def perform(api,plan,nodes,save,log,approve,unchanged,healthy,recheck):
     unchanged();healthy();refresh(api,plan);recheck()
     api.arm(plan)
     state={'pending':True,'server_id':plan.get('server_id'),'volume_id':plan.get('volume_id'),'plan':plan,'attempts':['move'],'stage':'move outcome pending'}
+    state['created_at']=dt.datetime.now(dt.timezone.utc).isoformat()
+    state['request_ids']={}
+    state['http_statuses']={}
+    state['live_microversion']=LIVE_MICROVERSION if plan['mode']=='live' else None
     save(copy.deepcopy(state))
-    api.mutate('move');log('REQUEST ACCEPTED — observing progress…')
+    def send(step):
+        try:api.mutate(step)
+        finally:
+            request_id=getattr(api,'last_action_request_id',None)
+            http_status=getattr(api,'last_action_http_status',None)
+            if request_id:state['request_ids'][step]=request_id
+            if http_status is not None:state['http_statuses'][step]=http_status
+            if request_id or http_status is not None:save(copy.deepcopy(state))
+            if request_id:log('Request ID: '+request_id)
+    log('Requesting migration; waiting for Nova checks and its response…')
+    send('move')
+    log('REQUEST ACCEPTED — observing progress…')
     stage=wait_move(api,plan,log)
     if stage=='confirm':
         verify_move(api,plan,nodes,awaiting=True)
@@ -350,7 +424,7 @@ def perform(api,plan,nodes,save,log,approve,unchanged,healthy,recheck):
             else:
                 if server.get('status')!='VERIFY_RESIZE' or not item or item.get('status')!='finished':raise RuntimeError('Cold confirmation state changed; review before any action')
                 state['attempts'].append('confirm');state['stage']='confirmation outcome pending';save(copy.deepcopy(state))
-                api.mutate('confirm');wait_move(api,plan,log)
+                send('confirm');wait_move(api,plan,log)
     verify_move(api,plan,nodes);healthy();unchanged()
     state.update(pending=False,stage='migration API and host observations passed');save(copy.deepcopy(state))
     log('RESULT: MIGRATION_API_AND_HOST_CHECKS_PASSED')
@@ -368,9 +442,17 @@ def run_menu(api,project,env,folder,log,save,read=input,plan_only=False,health_c
     if choice!='volume-offline':
         servers=api.list('compute','servers/detail?limit=100','servers')
         servers=[v for v in servers if v.get('tenant_id')==project and str(v.get('OS-EXT-SRV-ATTR:host','')).split('.')[0] in NODES]
-        source_filter=choose('Choose the source node',['All nodes',*NODES],str,read,log)
-        if source_filter is None:return 0
-        selected=choose('Choose the existing VM',[v for v in servers if source_filter=='All nodes' or node_name(v['OS-EXT-SRV-ATTR:host'])==source_filter],
+        if not servers:log('No VMs in the current project on node1/node2/node3. No migration requested.');return 0
+        while True:
+            def source_label(n):
+                count=len(servers) if n=='All nodes' else sum(node_name(v['OS-EXT-SRV-ATTR:host'])==n for v in servers)
+                return n+' — '+str(count)+' VM(s)'
+            source_filter=choose('Choose the source node',['All nodes',*NODES],source_label,read,log)
+            if source_filter is None:return 0
+            filtered=[v for v in servers if source_filter=='All nodes' or node_name(v['OS-EXT-SRV-ATTR:host'])==source_filter]
+            if filtered:break
+            log('No VM currently lives on '+source_filter+'. Choose its current node; destination is selected later.')
+        selected=choose('Choose the existing VM',filtered,
           lambda v:clean(v.get('name'))+' | '+str(v.get('status'))+' | '+node_name(v['OS-EXT-SRV-ATTR:host'])+' | '+v['id'],read,log)
         if selected is None:return 0
         server=server_value(api,selected['id'],project);log('Detected VM source: '+node_name(server['OS-EXT-SRV-ATTR:host']))
@@ -414,15 +496,18 @@ def run_menu(api,project,env,folder,log,save,read=input,plan_only=False,health_c
 
 
 def main(argv=None):
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--plan',action='store_true',help='menus and checks only; never send a migration')
+    parser=argparse.ArgumentParser(description=__doc__);modes=parser.add_mutually_exclusive_group()
+    modes.add_argument('--plan',action='store_true',help='menus and checks only; never send a migration')
+    modes.add_argument('--observe',action='store_true',help='read current VM, volume and migration API state; preserve all records')
+    modes.add_argument('--reconcile',action='store_true',help='explicitly acknowledge one verified failed menu record locally; no cloud changes')
     args=parser.parse_args(argv)
     deploy.validation.config_step.load_step('menu_r2d2','phase2-check.py').require_r2d2();deploy.tools.check_paths(ENV)
     if not sys.stdin.isatty():raise RuntimeError('Use joe\'s interactive R2d2 terminal')
-    if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve())]+(['--plan'] if args.plan else []),deploy.tools.tool_environment())
+    if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve())]+list(argv if argv is not None else sys.argv[1:]),deploy.tools.tool_environment())
     os.umask(0o077);env=deploy.tools.tool_environment();deploy.source_guard()
     inventory,config=deploy.validation.local_checks(lambda _:None,env)
     inputs=move.access.input_hashes(config,inventory);inv.ensure_agent(env,print)
-    original,project,_=prep.authenticate(config);api=API(original,read_only=args.plan)
+    original,project,_=prep.authenticate(config);api=API(original,read_only=args.plan or args.observe or args.reconcile)
     folder=REPO/'private/phase5';reports=REPO/'reports';inv.private_dir(folder);inv.private_dir(reports)
     handles=[]
     try:
@@ -433,19 +518,28 @@ def main(argv=None):
             except BlockingIOError:raise RuntimeError('Another lab operation is running') from None
         for name in ('api-vip-state.json','mariadb-state.json','router-state.json'):
             path=folder/name
-            if (path.exists() or path.is_symlink()) and health.read_private(path).get('restore_required'):raise RuntimeError('An HA component requires restoration first')
+            if not(args.observe or args.reconcile) and (path.exists() or path.is_symlink()) and health.read_private(path).get('restore_required'):raise RuntimeError('An HA component requires restoration first')
         fd,name=tempfile.mkstemp(prefix=PREFIX+dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'),suffix='.txt',dir=reports)
         report=Path(name);receipt=folder/(report.stem+'.json');print('Private report: '+name);status=1
         with os.fdopen(fd,'w') as out:
             def log(line):print(line,flush=True);out.write(line+'\n');out.flush()
             def save(value):
                 if move.access.input_hashes(config,inventory)!=inputs:raise RuntimeError('Deployment inputs changed')
-                health.prep.net.write_state(receipt,value)
-            try:status=run_menu(api,project,env,folder,log,save,plan_only=args.plan)
+                saved=copy.deepcopy(value);saved.setdefault('inputs',inputs)
+                health.prep.net.write_state(receipt,saved)
+            try:
+                if args.observe or args.reconcile:
+                    records=load('menu_records','lab-migrate-records.py')
+                    before=checkpoints()
+                    def unchanged():
+                        if move.access.input_hashes(config,inventory)!=inputs or checkpoints()!=before:raise RuntimeError('Deployment inputs or other checkpoints changed')
+                    status=records.run(SimpleNamespace(**globals()),api,project,folder,log,reconcile=args.reconcile,unchanged=unchanged,current_inputs=inputs)
+                else:status=run_menu(api,project,env,folder,log,save,plan_only=args.plan)
             except (Exception,KeyboardInterrupt) as error:
                 log('RESULT: '+('MIGRATION_PLAN_BLOCKED' if args.plan else 'MIGRATION_NEEDS_REVIEW'))
                 log(move.safe_message(str(error)) if isinstance(error,RuntimeError) else type(error).__name__+'; return report')
-                log('No retry, state reset, forced completion or cleanup. Any saved pending record is retained.')
+                log('No retry, state reset, forced completion or cleanup. Saved records and original evidence are retained.')
+                if not api.sent:log('NO MIGRATION REQUEST SENT BY THIS RUN.')
         print('Return short report: cat '+shlex.quote(name));return status
     finally:
         for handle in reversed(handles):handle.close()

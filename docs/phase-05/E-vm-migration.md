@@ -96,6 +96,27 @@ The last command reads Docker containers on all three nodes over SSH; enter joe'
 
 ### If an earlier failed attempt blocks the preview
 
+For a numbered-menu record named `menu-migration-....json`, first read the current state:
+
+```bash
+bash scripts/lab-migrate.sh --observe
+```
+
+Select the VM. The output shows its current Nova host, attached volume backend, recent migrations and local pending records. An older failed request remains a separate record even if a later Horizon migration succeeded. This command makes API reads only and leaves the records unchanged.
+
+After reviewing a terminal failed attempt and the VM's current placement, use:
+
+```bash
+bash scripts/lab-migrate.sh --reconcile
+```
+
+Select the pending menu record. The helper checks its VM/storage identity and Nova history twice. It accepts one unambiguous failed attempt with an idle VM, or a definite recorded HTTP rejection with no new migration. A changed compute host requires a later completed Nova migration matching that placement. Type `ACKNOWLEDGE FAILED ATTEMPT` only after reviewing the displayed evidence.
+
+This changes only that local pending flag. The original file is retained byte for byte under `private/phase5/migration-history/`; the failed Nova record remains failed. Active, uncertain, completed-but-unverified and storage-migration outcomes require separate review. A new move still needs a fresh preview and approval. API observations do not verify guest traffic or data.
+
+<details>
+<summary>Older fixed-route record: move-vm-state.json</summary>
+
 A recovered VM can be ACTIVE while `move-vm-state.json` still records an unresolved earlier attempt. The menu preserves it and requests no move.
 
 1. Review `/usr/bin/python3 scripts/phase5-move-vm.py --observe`. Require that the **specific migration UUID** has status `error`, and Nova reports the VM ACTIVE on its original source with no current task. This is API evidence; runtime, guest data and the timeout's root cause remain separate checks.
@@ -111,6 +132,8 @@ A recovered VM can be ACTIVE while `move-vm-state.json` still records an unresol
 The helper authenticates normally, uses only GET requests after authentication, checks the API evidence twice and refuses active, completed, ambiguous or different attempts. It retains the **original local record byte for byte** under `private/phase5/migration-history/`, then closes only that failed attempt's local pending flag. Its existing identity, attempted status and history are retained. It sends no migration, VM power, service, volume or configuration change. Repeating the same completed reconciliation validates its saved original and makes no new record change.
 
 This closes an old tracking item; it does not mark the migration successful or fix its original cause. A fresh preview, guest/data checks and approval of the selected destination are still required. Other unresolved records remain blocked; never delete a checkpoint to bypass a check.
+
+</details>
 
 <a id="1-open-the-preview-menu-on-r2d2"></a>
 
@@ -140,6 +163,8 @@ This is read-only: it lets you select an operation and checks readiness without 
 
 The actual source comes from OpenStack and is checked. Selecting a source filter does not change a VM's location or rename it. For an attached-volume move the VM must be ACTIVE and that volume attached only to it. For a detached-volume move the volume must already be `available`; shutting down a VM does not detach its disk.
 
+Node menus show how many VMs each source contains. An empty source selection returns to that menu. Enter the displayed number or the node name, such as `node3`; the destination is selected later.
+
 ## 4. Review readiness
 
 The preview checks VM identity/actual runtime, healthy cluster services, CPU compatibility, physical RAM/disk space, Placement capacity, volume attachments and destination backend capacity/compatibility as applicable.
@@ -158,6 +183,15 @@ bash scripts/lab-migrate.sh
 
 Select the operation and locations again. The menu checks fresh values, shows the move and expected downtime, then asks you to type **`MIGRATE`**. It sends one migration request and displays progress. It does not automatically retry or force-complete a failed/uncertain request.
 
+Live mode follows Horizon's live-migration workflow: Nova checks the selected destination before accepting the request. The menu keeps scheduler validation enabled, copies the local OS disk, and saves the returned request ID. Acceptance is followed by separate transfer and placement checks.
+
+<details>
+<summary>Live request compatibility reference</summary>
+
+The live POST uses Nova API `2.30`, matching the [Horizon 2026.2 live-migrate feature](https://github.com/openstack/horizon/blob/504dbe4ada8abda8526ba46fffc03001b50ac583/openstack_dashboard/api/microversions.py). It sends the selected host and `block_migration: true`, without a forced destination. Nova API `2.34` introduced asynchronous prechecks; API reads and cold migration retain `2.79`. See the [Nova API reference](https://docs.openstack.org/api-ref/compute/#live-migrate-server-os-migratelive-action). These are client request choices, not node configuration changes or proof that a backend timeout is resolved.
+
+</details>
+
 A cold move normally reaches `VERIFY_RESIZE`: after checking the destination, the menu asks separately to confirm the new placement. Declining leaves it awaiting confirmation. If Nova has already auto-confirmed, the menu observes that result without confirming again.
 
 ## 6. Read the result
@@ -168,6 +202,10 @@ A cold move normally reaches `VERIFY_RESIZE`: after checking the destination, th
 | `MIGRATION_PLAN_BLOCKED` | A prerequisite needs review; the preview requested no move |
 | `MIGRATION_API_AND_HOST_CHECKS_PASSED` | API completion, destination, runtime/attachments and final cluster checks passed |
 | `MIGRATION_NEEDS_REVIEW` | Keep the report/progress record; an operation may still run, so do not repeat it |
+| `MIGRATION_STATE_OBSERVED` | Current API state read; all saved records unchanged |
+| `FAILED_MENU_ATTEMPT_ACKNOWLEDGED` | One reviewed failed menu record closed locally; original evidence retained |
+
+If a run stops before submitting an action, it prints `NO MIGRATION REQUEST SENT BY THIS RUN`. If Nova reports a failure after submission, the report includes its current state, fault message and captured request ID when available. Use `--observe` before choosing a recovery or another move.
 
 After a successful move, repeat the VM list and the selected volume's `show` command from step 1:
 

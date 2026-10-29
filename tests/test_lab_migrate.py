@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import urllib.error
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -91,24 +92,93 @@ class MenuTests(unittest.TestCase):
         self.assertNotIn('\x1b',m.clean('name\x1b[2J\nsecret'))
 
     def test_generic_api_has_exact_live_cold_and_storage_bodies_and_no_repeat(self):
-        original=SimpleNamespace(client=None,urls={},token='hidden')
         plans=[compute_plan(API()),compute_plan(API(),'cold'),
           {'mode':'volume-live','volume_id':VOL,'source':'node3@lvm-1#lvm-1','destination':'node2@lvm-1#lvm-1'}]
         for plan in plans:
+            requests=[]
+            def opened(request,timeout):
+                requests.append((request,timeout))
+                return contextlib.nullcontext(SimpleNamespace(status=202,headers={'X-Openstack-Request-Id':'req-865d0c31-bebe-4b1b-a8bd-a46dae90485d'},read=lambda _:b''))
+            original=SimpleNamespace(client=SimpleNamespace(opener=SimpleNamespace(open=opened)),
+              urls={'compute':'https://192.168.0.151:8774/v2.1','block-storage':'https://192.168.0.151:8776/v3'},token='hidden')
             client=m.API(original);client.arm(plan)
-            with patch.object(m.volume.API,'request',return_value={}) as request:
-                client.mutate('move')
-                args=request.call_args.args
-                self.assertNotIn('force',args[3]);self.assertEqual(args[4],202)
-                self.assertEqual(args[2],('volumes/'+VOL+'/action') if plan['mode']=='volume-live' else 'servers/'+VM+'/action')
-                if plan['mode']=='live':self.assertEqual(args[3],{'os-migrateLive':{'host':'node2','block_migration':True}})
-                if plan['mode']=='cold':self.assertEqual(args[3],{'migrate':{'host':'node2'}})
-                if plan['mode']=='volume-live':self.assertEqual(args[3],{'os-migrate_volume':{'host':'node2@lvm-1#lvm-1','force_host_copy':False,'lock_volume':False}})
-                with self.assertRaises(RuntimeError):client.mutate('move')
-                request.assert_called_once()
+            client.mutate('move')
+            request,timeout=requests[0];body=json.loads(request.data)
+            self.assertEqual(request.method,'POST')
+            self.assertTrue(request.full_url.endswith(('volumes/'+VOL+'/action') if plan['mode']=='volume-live' else 'servers/'+VM+'/action'))
+            headers={k.lower():v for k,v in request.header_items()}
+            if plan['mode']=='live':
+                self.assertEqual(body,{'os-migrateLive':{'host':'node2','block_migration':True}})
+                self.assertEqual(headers['openstack-api-version'],'compute 2.30')
+                self.assertEqual(timeout,180)
+            if plan['mode']=='cold':
+                self.assertEqual(body,{'migrate':{'host':'node2'}})
+                self.assertEqual(headers['openstack-api-version'],'compute 2.79')
+            if plan['mode']=='volume-live':self.assertEqual(body,{'os-migrate_volume':{'host':'node2@lvm-1#lvm-1','force_host_copy':False,'lock_volume':False}})
+            self.assertEqual(client.last_action_request_id,'req-865d0c31-bebe-4b1b-a8bd-a46dae90485d')
+            with self.assertRaises(RuntimeError):client.mutate('move')
+            self.assertEqual(len(requests),1)
             for method in ('DELETE','PUT','POST'):
                 with self.assertRaises(RuntimeError):client.request('compute',method,'servers/'+VM+'/action',{'os-resetState':{'state':'active'}})
             with self.assertRaises(RuntimeError):client.write('compute','PUT','servers/'+VM,{'name':'rename'},200)
+
+    def test_live_transport_cannot_bypass_approval_force_destination_or_repeat(self):
+        original=SimpleNamespace(client=SimpleNamespace(opener=None),urls={},token='hidden')
+        for read_only in (True,False):
+            client=m.API(original,read_only=read_only)
+            with self.assertRaisesRegex(RuntimeError,'Transport refuses'):
+                client._send('compute','POST','servers/'+VM+'/action',{'os-migrateLive':{'host':'node3','force':True}},202,'2.30')
+
+    def test_reads_keep_modern_version_and_lost_post_does_not_reuse_a_get_request_id(self):
+        requests=[];request_id='req-865d0c31-bebe-4b1b-a8bd-a46dae90485d'
+        def opened(request,timeout):
+            requests.append(request)
+            if request.method=='POST':raise TimeoutError('fixture transport timeout')
+            return contextlib.nullcontext(SimpleNamespace(status=200,headers={'X-Openstack-Request-Id':request_id},read=lambda _:b'{}'))
+        original=SimpleNamespace(client=SimpleNamespace(opener=SimpleNamespace(open=opened)),urls={'compute':'https://192.168.0.151:8774/v2.1'},token='hidden')
+        client=m.API(original);client.get('compute','servers/'+VM)
+        self.assertEqual({k.lower():v for k,v in requests[0].header_items()}['openstack-api-version'],'compute 2.79')
+        self.assertEqual(client.last_response_request_id,request_id)
+        client.arm(compute_plan(API()))
+        with self.assertRaisesRegex(RuntimeError,'outcome uncertain'):client.mutate('move')
+        self.assertIsNone(client.last_action_request_id);self.assertIsNone(client.last_action_http_status)
+        with self.assertRaises(RuntimeError):client.mutate('move')
+        self.assertEqual(len(requests),2)
+
+    def test_http_rejection_retains_request_id_and_redacts_server_message(self):
+        request_id='req-865d0c31-bebe-4b1b-a8bd-a46dae90485d'
+        def opened(request,timeout):
+            raise urllib.error.HTTPError(request.full_url,400,'Bad Request',{'X-Openstack-Request-Id':request_id},io.BytesIO(b'{"badRequest":{"message":"password=private"}}'))
+        original=SimpleNamespace(client=SimpleNamespace(opener=SimpleNamespace(open=opened)),urls={'compute':'https://192.168.0.151:8774/v2.1'},token='hidden')
+        client=m.API(original);client.arm(compute_plan(API()))
+        with self.assertRaisesRegex(RuntimeError,'HTTP 400') as error:client.mutate('move')
+        self.assertNotIn('private',str(error.exception));self.assertEqual(client.last_action_request_id,request_id)
+        with self.assertRaises(RuntimeError):client.mutate('move')
+
+    def test_source_filters_with_no_vm_return_to_menu_and_accept_node_names(self):
+        for empty in ('3','4','node2','node3'):
+            api=API();answers=iter(['1',empty,'node1','1','node3']);logs=[]
+            with tempfile.TemporaryDirectory() as folder,patch.object(m.getpass,'getpass',return_value='hidden'),patch.object(m.inspection,'Nodes',return_value=Nodes(api)),patch.object(m,'compute_preflight',side_effect=lambda a,s,p,d,mode,n,l:compute_plan(a,mode,d)):
+                result=m.run_menu(api,PROJECT,{},Path(folder),logs.append,lambda _:self.fail('preview wrote a record'),lambda _:next(answers),True,lambda *_:{'boots':'unchanged'})
+            self.assertEqual(result,0);self.assertTrue(any('No VM currently lives on' in line for line in logs));self.assertIn('Destination: node3',logs)
+            self.assertFalse(api.actions)
+
+    def test_all_four_operation_previews_handle_current_node3_vm_or_detached_volume(self):
+        for mode,choices in [('live',['1','node3','1','node2']),('cold',['2','node3','1','node2']),
+          ('volume-live',['3','node3','1','1','2']),('volume-offline',['4','1','2'])]:
+            with self.subTest(mode=mode):
+                api=API();api.server=server('node3')
+                if mode=='volume-offline':api.volume=disk(status='available')
+                answers=iter(choices);logs=[]
+                with tempfile.TemporaryDirectory() as folder,patch.object(m.getpass,'getpass',return_value='hidden'),patch.object(m.inspection,'Nodes',return_value=Nodes(api)),patch.object(m,'compute_preflight',side_effect=lambda a,s,p,d,kind,n,l:compute_plan(a,kind,d)):
+                    code=m.run_menu(api,PROJECT,{},Path(folder),logs.append,lambda _:self.fail('Preview wrote state'),lambda _:next(answers),True,lambda *_:{'boots':'unchanged'})
+                self.assertEqual(code,0);self.assertFalse(api.actions)
+                self.assertIn('RESULT: MIGRATION_PLAN_ONLY — no migration requested',logs)
+
+    def test_unavailable_host_reports_sudo_reason_before_api_or_container_claims(self):
+        hosts={n:{'observed':True} for n in m.NODES};hosts['node1']={'observed':False,'error':'Sudo authentication failed'}
+        with patch.object(m.health,'host_observe',side_effect=lambda n,*_:hosts[n]),patch.object(m.health,'api_checks',side_effect=AssertionError('No API checks needed')):
+            with self.assertRaisesRegex(RuntimeError,'node1: Sudo authentication failed'):m.cluster({},dict.fromkeys(m.NODES,'hidden'),lambda _:None)
 
     def test_plan_client_cannot_authorize_mutation(self):
         api=m.API(SimpleNamespace(client=None,urls={},token='hidden'),read_only=True)
@@ -232,6 +302,27 @@ class MenuTests(unittest.TestCase):
         with patch.object(m.time,'monotonic',side_effect=[0,1201]),self.assertRaisesRegex(RuntimeError,'may still run'):
             m.wait_move(api,plan,lambda _:None)
         self.assertFalse(api.actions)
+
+    def test_reported_nova_error_logs_snapshot_and_fault_before_stopping(self):
+        api=API();plan=compute_plan(api);api.server['status']='ERROR';api.server['fault']={'code':500,'message':'MessagingTimeout'};logs=[]
+        with self.assertRaisesRegex(RuntimeError,'Nova reports'):
+            m.wait_move(api,plan,logs.append)
+        self.assertIn('VM ERROR on node1; migration not observed yet',logs)
+        self.assertIn('Nova fault: 500 MessagingTimeout',logs)
+        self.assertFalse(api.actions)
+
+    def test_request_identity_is_saved_after_post_and_preserved_on_failed_poll(self):
+        api=API();api.last_action_request_id='req-865d0c31-bebe-4b1b-a8bd-a46dae90485d';states=[]
+        with patch.object(m,'wait_move',side_effect=RuntimeError('Nova reports error')):
+            with self.assertRaises(RuntimeError):m.perform(api,compute_plan(api),Nodes(api),lambda s:states.append(copy.deepcopy(s)),lambda _:None,lambda _:True,lambda:None,lambda:None,lambda:None)
+        self.assertTrue(states[-1]['pending']);self.assertEqual(states[-1]['request_ids']['move'],api.last_action_request_id)
+        self.assertEqual(states[-1]['live_microversion'],'2.30');self.assertEqual(api.actions,['move'])
+
+    def test_history_pagination_and_duplicate_ids_are_not_silently_accepted(self):
+        api=API();api.history=[{'uuid':MIG,'instance_uuid':VM},{'uuid':MIG,'instance_uuid':VM}]
+        with self.assertRaisesRegex(RuntimeError,'ambiguous'):m.migration_history(api,VM)
+        with patch.object(api,'get',return_value={'migrations':[],'migrations_links':[{'rel':'next','href':'ignored'}]}):
+            with self.assertRaisesRegex(RuntimeError,'incomplete'):m.migration_history(api,VM)
 
     def test_transient_empty_migration_locations_are_not_invented_or_rejected_early(self):
         api=API();plan=compute_plan(api)
