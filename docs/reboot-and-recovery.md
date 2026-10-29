@@ -15,18 +15,17 @@ Start on **R2d2 as joe**, from `~/openstack-from-zero`. Manual service commands 
 |---|---|
 | Shut down the whole lab | [1. Stop services](#normal-shutdown-two-steps), then [2. Power off](#2-power-off-ubuntu) |
 | Start after a shutdown | [3. Power on](#after-power-on-check-the-cluster), then [4. Check](#4-read-the-live-dashboard) |
-| Read Nova, Neutron and Cinder status | [Simple CLI tables](#cli-service-checks) |
+| Read Nova, Neutron and Cinder status | Included in [the single check command](#4-read-the-live-dashboard) |
 | Database unavailable | [5. MariaDB recovery](#5-mariadb-cold-boot-recovery) |
 | Failed API or control containers | [6. Control-service recovery](#6-recover-failed-control-services) |
 | A service is stopped | [Start Nova compute](#b-start-a-stopped-nova-compute-service) or choose a component in [the restart quick reference](#c-restart-a-selected-running-service) |
 | Compute or network agent still DOWN | [7. Manual service and agent restarts](#manual-service-and-agent-restarts) |
 | Check the final result | [8. Confirm recovery](#what-a-healthy-result-means) |
 
-Get the current guide and scripts:
+Enter the project folder on R2d2:
 
 ```bash
 cd ~/openstack-from-zero
-git pull --ff-only
 ```
 
 <a id="7-future-reboot-and-shutdown"></a>
@@ -84,7 +83,17 @@ Type **`POWER OFF ALL NODES`**. The script verifies the completed service-stop r
 bash scripts/lab-recover.sh --check
 ```
 
-This is read-only. Enter joe's sudo password for each node. Read **Galera and RabbitMQ first**, then containers, APIs and service/agent heartbeats.
+This is read-only. Enter joe's sudo password for each node. The command checks the foundation and **automatically prints all three service tables**:
+
+| Included table | Same service list as | Expected rows |
+|---|---|---|
+| Compute services / Nova | `openstack compute service list` | 9 |
+| Network agents / Neutron | `openstack network agent list` | 12 |
+| Volume services / Cinder | `openstack volume service list` | 6 |
+
+Every row identifies the **host, service/agent, heartbeat and admin setting**, including healthy rows. Cinder rows retain the reported backend host. The checker already reads these API lists; you do not need to run three extra commands or activate/source the CLI for this check.
+
+Read **Galera and RabbitMQ first**, then containers, APIs and these tables.
 
 | What you see | Meaning / next action |
 |---|---|
@@ -102,42 +111,27 @@ This is read-only. Enter joe's sudo password for each node. Read **Galera and Ra
 If the result is **`REBOOT_SERVICES_HEALTHY`**, no service repair is needed. Continue to the [VM migration review](phase-05/E-vm-migration.md) when ready. Otherwise, follow the named failure below. The printed TXT report is the readable summary; JSON is extra detail.
 
 <a id="cli-service-checks"></a>
+<a id="read-service-and-agent-status-with-the-cli--on-r2d2"></a>
 
-#### Read service and agent status with the CLI — on R2d2
+#### Read the service tables
 
-Once authentication and APIs work, these tables help you find the affected **host and service**. They are viewing commands; they do not start or restart anything. CLI installation is covered in [Phase 3 D](phase-03/D-client-access.md).
+| Column or marker | Meaning |
+|---|---|
+| `Heartbeat=UP` | OpenStack received a current heartbeat |
+| `Heartbeat=DOWN` | No current heartbeat; inspect that component and its dependencies |
+| `Admin=enabled/disabled` | Whether OpenStack permits scheduling/work; this does not start a process |
+| `Review=-` | That row reports UP/enabled with one expected registration |
+| `MISSING` / `NOT LISTED` | An expected registration is absent from a returned list |
+| `DUPLICATE` / `UNEXPECTED` | Registration layout needs review |
+| `BLOCKED` | Authentication/API reading was unavailable; no DOWN state is invented |
 
-Activate the client and load the existing credentials in this terminal:
+**Check → selected repair → check again:**
 
-```bash
-source "$HOME/venvs/openstack-client/bin/activate"
-source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
-```
+1. Find the failed **host and service** in this output.
+2. Follow the matching repair below. Use [step 7](#manual-service-and-agent-restarts) for a selected compute/agent process after checking its dependencies.
+3. Run `bash scripts/lab-recover.sh --check` again. It prints the service tables again and verifies the wider cluster.
 
-Run the three checks. `-c` selects the useful columns and hides the extra IDs/timestamps:
-
-```bash
-openstack compute service list -c Host -c Binary -c Status -c State
-openstack network agent list -c Host -c "Agent Type" -c Alive -c State
-openstack volume service list -c Host -c Binary -c Status -c State
-```
-
-| Table | What it checks | Expected reported state |
-|---|---|---|
-| Nova | Compute, scheduler and conductor | `State=up`, `Status=enabled` |
-| Neutron | Router/L3, DHCP, metadata and OVS agents | `Alive=:-)`, `State=UP` |
-| Cinder | Volume and scheduler services | `State=up`, `Status=enabled` |
-
-For Neutron, `Alive=XXX` means a missing heartbeat. Its `State` column is the administrative setting: `UP` means enabled, **not proof of a heartbeat**. JSON output uses boolean values for these fields.
-
-In this lab expect **9 Nova services, 12 Neutron agents and 6 Cinder services**, covering all three nodes. Missing expected rows also need review. These tables do not verify database/broker membership, all API containers or guest traffic; the full dashboard checks the cluster foundation. If login/API access fails, recover that dependency before using the tables.
-
-**The short repair loop:**
-
-1. Read the failed host/service row and its corresponding container status in the dashboard.
-2. Use [step 7](#manual-service-and-agent-restarts) to start a confirmed stopped process or restart the selected failed component after checking its dependencies.
-3. Return to R2d2 and repeat **only the matching CLI list**. A service must report its heartbeat again; `enabled` alone is insufficient.
-4. Finish with the full check in [step 8](#what-a-healthy-result-means). If a heartbeat remains missing, inspect the current error instead of repeating restarts.
+The result `REBOOT_SERVICES_HEALTHY` ends service recovery. VM startup, guest data and migration are separate. [Manual CLI views](command-glossary.md#cli-service-checks--run-on-r2d2) remain available when you want to query a service yourself.
 
 ## Recover only what needs repair
 
@@ -342,16 +336,9 @@ This does not prove Nova's separate authenticated connection works. Its applicat
 exit
 ```
 
-Activate the CLI/load credentials as shown in [the CLI section](#cli-service-checks), then repeat the matching Nova, Neutron or Cinder list. The container can become healthy before its heartbeat appears in OpenStack.
+Continue to [step 8](#what-a-healthy-result-means) and run the single check again. Its tables show whether the heartbeat returned; a container can become healthy before OpenStack receives its heartbeat.
 
-**Linux startup and OpenStack scheduling are separate.** `systemctl enable` controls boot startup. Nova's `enabled/disabled` controls scheduling. If Nova remains disabled, read the reason on R2d2:
-
-```bash
-openstack compute service list --long \
-  -c Host -c Binary -c Status -c State -c "Disabled Reason"
-```
-
-Recover the heartbeat first. If it remains UP/disabled, review the reason before enabling scheduling; it may be deliberately in maintenance. An unknown reason is not permission to enable it. Continue to step 8 for the final service/agent check.
+**Linux startup and OpenStack scheduling are separate.** `systemctl enable` controls boot startup. Nova's `enabled/disabled` controls scheduling. If a service reports UP/disabled, review its reason before allowing new work; it may be deliberately in maintenance. [Optional service views below](#8-optional-service-and-agent-views) show the reason.
 
 <a id="6-confirm-service-recovery"></a>
 <a id="what-a-healthy-result-means"></a>
@@ -375,7 +362,7 @@ bash scripts/lab-recover.sh --check
 | Router: one active/two standby **and all hosting L3 agents UP/enabled** | Router placement and hosting-agent checks passed. |
 | Exactly one API VIP owner | `192.168.0.151` is held by one host. |
 
-Finish when the result is **`REBOOT_SERVICES_HEALTHY`**. This completes the service recovery check. Use [Chapter E — VM and storage migration](phase-05/E-vm-migration.md) to review the VM, data-volume location and migration prerequisites separately. Horizon's **System Information** page also provides **Compute Services** and **Network Agents** tabs for viewing service state; these views do not restart Kolla containers.
+Finish when the result is **`REBOOT_SERVICES_HEALTHY`**. Next, [Chapter E](phase-05/E-vm-migration.md) reviews VM and volume locations before a migration.
 
 <a id="finish-an-interrupted-network-helper-stop"></a>
 
@@ -414,7 +401,7 @@ Run on R2d2:
 
 For full node/container tables, use `/usr/bin/python3 scripts/lab-reboot-verify.py --check --details`. `--report` with the actual saved JSON path redisplays a **saved snapshot**, without checking the lab again. `--with-workload` adds separate read-only VM/guest/migration checks; it performs no recovery.
 
-The older `lab-recover-api.py` is a separate fixed 14-container helper. Use `lab-recover.sh` for this runbook; keep existing receipts and VM/migration records.
+The routine command is `lab-recover.sh --check`; these extra views are optional. Keep existing receipts and VM/migration records.
 
 </details>
 
