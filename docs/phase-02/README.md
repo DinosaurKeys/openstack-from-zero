@@ -8,7 +8,7 @@ R2d2 runs the pinned installer tools and stores private inventory, credentials a
 |---|---|
 | [A — Check R2d2](A-check-r2d2.md) | Confirm the management machine and connectivity |
 | [B — Select versions](B-select-versions.md) | Kolla-Ansible 23.0.0, OpenStack 2026.2 and Ansible-core 2.21.5 |
-| [C — Install tools](C-install-tools.md) | Prepare the pinned Kolla environment |
+| [C — Install tools](C-install-tools.md) | Install Kolla, Ansible and the OpenStack CLI |
 | [D — Create inventory](D-create-inventory.md) | Map all three roles and node access |
 | [E — Configure the lab](E-configure-lab.md) | Explicit API HA, MariaDB and Neutron agent HA; credentials and HTTPS |
 | [F — Validate preparation](F-validate-preparation.md) | Readiness, inventory, source, local TLS and VIP conflict checks |
