@@ -43,6 +43,28 @@ class MigrationDiagnosticTests(unittest.TestCase):
         self.assertEqual(result['matched_lines'],200)
         self.assertLessEqual(max(map(len,result['lines'])),700)
 
+    def test_first_failure_survives_a_later_long_timeout_trace(self):
+        raw='\n'.join(['2026-10-27 21:19:00 ERROR earlier binding failure']+
+          ['2026-10-27 21:20:00 ERROR traceback line '+str(i) for i in range(142)]+
+          ['2026-10-27 21:20:41 ERROR final MessagingTimeout'])
+        result=m.excerpt(raw,REQUEST,START,END)
+        self.assertIn('earlier binding failure',result['lines'][0])
+        self.assertIn('final MessagingTimeout',result['lines'][-1])
+        self.assertEqual(result['matched_lines'],144)
+        self.assertEqual(len(result['lines']),100)
+        self.assertEqual(result['omitted_middle_lines'],45)
+        self.assertIn('45 matching middle lines omitted',result['lines'][50])
+
+    def test_reply_and_rejection_messages_without_request_context_are_included(self):
+        raw='\n'.join([
+          '2026-10-27 21:19:01 INFO No calling threads waiting for msg_id : abc',
+          '2026-10-27 21:19:02 DEBUG Skipping host: node3 because: earlier failure',
+          '2026-10-27 21:19:03 ERROR Binding failed for port example and host node3',
+          '2026-10-27 21:25:00 INFO No calling threads waiting for msg_id : outside'])
+        lines=m.excerpt(raw,REQUEST,START,END)['lines']
+        self.assertEqual(len(lines),3)
+        self.assertFalse(any('outside' in line for line in lines))
+
     def test_log_tail_is_bounded_and_discards_partial_line(self):
         with tempfile.TemporaryDirectory() as folder:
             p=Path(folder)/'log'; p.write_bytes(b'x'*(8*1024*1024)+b'\nlast line\n')
@@ -71,9 +93,11 @@ class MigrationDiagnosticTests(unittest.TestCase):
     def test_collect_all_services_preserves_partial_failure(self):
         commands=[]
         with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder); (root/'nova').mkdir(); (root/'rabbitmq').mkdir()
+            root=Path(folder); (root/'nova').mkdir(); (root/'rabbitmq').mkdir(); (root/'neutron').mkdir()
             for service in m.SERVICES:
-                p=root/'rabbitmq/rabbit@node1.log' if service=='rabbitmq' else root/'nova'/(service.replace('_','-')+'.log')
+                p=(root/'rabbitmq/rabbit@node1.log' if service=='rabbitmq' else
+                   root/'neutron/neutron-server.log' if service=='neutron_server' else
+                   root/'nova'/(service.replace('_','-')+'.log'))
                 p.write_text('2026-10-27 21:20:41 ERROR ['+REQUEST+'] MessagingTimeout\n')
             def fake(args,timeout=25):
                 commands.append(args)
@@ -92,8 +116,9 @@ class MigrationDiagnosticTests(unittest.TestCase):
             self.assertFalse(result['complete'])
             self.assertTrue(result['services']['rabbitmq']['collected'])
             self.assertIn('TimeoutExpired',result['services']['nova_conductor']['error'])
-            self.assertEqual(len(commands),6)
+            self.assertEqual(len(commands),7)
             self.assertEqual(result['services']['nova_scheduler']['logs'][0]['matched_lines'],1)
+            self.assertEqual(result['services']['neutron_server']['logs'][0]['file'],'neutron-server.log')
 
     def test_remote_payload_executes_collector_and_keeps_password_off_argv(self):
         def transport(argv,**kw):
@@ -115,7 +140,7 @@ class MigrationDiagnosticTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args,1,'','private error withheld')
             with patch.object(subprocess,'run',side_effect=fake),patch.object(os,'geteuid',return_value=0),patch.dict(os.environ,{'SUDO_USER':'joe'}),patch.object(m.socket,'gethostname',return_value='node2'),contextlib.redirect_stdout(io.StringIO()) as out:
                 exec(compile(source[source.rindex('\nprint('):],'remote-main','exec'),ns)
-            self.assertEqual(len(calls),5)
+            self.assertEqual(len(calls),6)
             self.assertNotIn('private error',out.getvalue())
             return subprocess.CompletedProcess(argv,0,out.getvalue(),'')
         with patch.object(m.subprocess,'run',side_effect=transport):
@@ -145,6 +170,55 @@ class MigrationDiagnosticTests(unittest.TestCase):
             self.assertEqual(result['explicit_RPC_settings']['rpc_response_timeout'],'60')
             self.assertNotIn('private',out.getvalue())
             self.assertEqual(result['RPC_calls'][0]['timeout_arguments'],{'timeout':'CONF.long_rpc_timeout'})
+
+    def test_queue_manager_check_reads_source_and_does_not_trust_version_alone(self):
+        legacy='class QManager:\n def __init__(self):\n  self.pg=os.getpgrp()\n def get(self):\n  return self.pg\n'
+        fixed=('class QManager:\n raise AssertionError("source must not run")\n'
+          ' def __init__(self):\n  pass\n'
+          ' @staticmethod\n def _service_identity():\n  return os.getpgrp(),0\n'
+          ' def get(self):\n  return self._service_identity()\n')
+        cases=[('18.3.0',fixed,'true','present',True),
+          ('18.3.1',legacy,'true','legacy construction-time identity',True),
+          ('18.3.1','class QManager:\n pass\n','false','unrecognized',False),
+          ('18.3.1',fixed,None,'present',None)]
+        with tempfile.TemporaryDirectory() as folder:
+            rpc=Path(folder)/'rpc.py';driver=Path(folder)/'driver.py'
+            rpc.write_text('class SchedulerAPI:\n def select_destinations(self,ctxt):\n  return self.client.call(ctxt,"select_destinations")\n')
+            for version,source,enabled,expected,flag in cases:
+                with self.subTest(version=version,expected=expected,enabled=enabled):
+                    driver.write_text(source)
+                    class Config(configparser.ConfigParser):
+                        def read(self,path):
+                            self.read_string('[DEFAULT]\ndebug=false\ntransport_url=amqp://private\n'+
+                              ('[oslo_messaging_rabbit]\nuse_queue_manager='+enabled+'\n' if enabled is not None else ''))
+                            return [path]
+                    class Distribution:
+                        def __init__(self,name):self.name=name;self.version=version if name=='oslo.messaging' else 'fixture-nova'
+                        def locate_file(self,name):return driver if self.name=='oslo.messaging' else rpc
+                    with patch('configparser.ConfigParser',Config),patch('importlib.metadata.distribution',side_effect=Distribution),contextlib.redirect_stdout(io.StringIO()) as out:
+                        exec(compile(m.RPC_READER,'rpc-reader','exec'),{})
+                    data=json.loads(out.getvalue())['messaging']
+                    self.assertEqual(data['qmanager_identity_fix'],expected)
+                    self.assertIs(data['use_queue_manager'],flag)
+                    self.assertFalse(data['debug_logging'])
+                    self.assertEqual(data['version'],version)
+                    self.assertEqual(len(data['amqpdriver_sha256']),64)
+                    self.assertNotIn('private',out.getvalue())
+
+    def test_run_prints_source_summary_and_keeps_checkpoints_unchanged(self):
+        def observed(node,*args):
+            messaging={'version':'18.3.0','use_queue_manager':True,'qmanager_identity_fix':'legacy construction-time identity'}
+            return {'node':node,'complete':True,'services':{s:{'installed_RPC':{'messaging':messaging}} for s in ('nova_scheduler','nova_conductor')}}
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);checkpoint=root/'private/phase5/menu-migration-state.json';checkpoint.parent.mkdir(parents=True)
+            checkpoint.write_text('{"pending":true}')
+            with patch.object(m,'REPO',root),patch.object(m.vip.deploy,'source_guard'),patch.object(m.vip.deploy.tools,'tool_environment',return_value={}),patch.object(m.vip.inv,'ensure_agent'),patch.object(m.getpass,'getpass',return_value='hidden'),patch.object(m,'observe',side_effect=observed),patch.object(m.subprocess,'run',side_effect=AssertionError('unexpected command')),contextlib.redirect_stdout(io.StringIO()) as out:
+                code=m.main(['--run','--request-id',REQUEST,'--start',START,'--end',END])
+            self.assertEqual(code,0)
+            self.assertEqual(checkpoint.read_text(),'{"pending":true}')
+            self.assertEqual(out.getvalue().count(' | 18.3.0 | ON | MISSING (legacy code)'),6)
+            self.assertIn('not a confirmed cause',out.getvalue())
+            self.assertEqual(len(list((root/'reports').glob('*.txt'))),1)
 
 
 if __name__=='__main__':unittest.main()

@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('diagnostic_vip', REPO/'scripts/phase5-api-vip.py')
 vip = importlib.util.module_from_spec(spec); spec.loader.exec_module(vip)
 NODES = vip.inv.NODES
-SERVICES = ('nova_scheduler', 'nova_conductor', 'nova_compute', 'rabbitmq')
+SERVICES = ('nova_scheduler', 'nova_conductor', 'nova_compute', 'neutron_server', 'rabbitmq')
 RPC_READER = r'''import ast,configparser,hashlib,importlib.metadata,json,re
 from pathlib import Path
 cfg=configparser.ConfigParser(interpolation=None)
@@ -36,8 +36,23 @@ path=Path(dist.locate_file('nova/scheduler/rpcapi.py'));raw=path.read_bytes();tr
 methods=[n for c in tree.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef) and n.name=='select_destinations']
 if len(methods)!=1:raise RuntimeError('Expected scheduler RPC method unavailable')
 method=methods[0]
-calls=[{'method':n.func.attr,'timeout_arguments':{k.arg:ast.unparse(k.value) for k in n.keywords if k.arg in ('timeout','call_monitor_timeout')}} for n in ast.walk(method) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr in ('prepare','call')]
-print(json.dumps({'nova_version':dist.version,'explicit_RPC_settings':timeouts,'scheduler_rpcapi_sha256':hashlib.sha256(raw).hexdigest(),'select_destinations_lines':[method.lineno,method.end_lineno],'RPC_calls':calls}))
+rpc_calls=[{'method':n.func.attr,'timeout_arguments':{k.arg:ast.unparse(k.value) for k in n.keywords if k.arg in ('timeout','call_monitor_timeout')}} for n in ast.walk(method) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr in ('prepare','call')]
+messaging=importlib.metadata.distribution('oslo.messaging')
+driver_raw=Path(messaging.locate_file('oslo_messaging/_drivers/amqpdriver.py')).read_bytes()
+driver_tree=ast.parse(driver_raw)
+classes=[n for n in driver_tree.body if isinstance(n,ast.ClassDef) and n.name=='QManager']
+fix='unrecognized'
+if len(classes)==1:
+ methods={n.name:n for n in classes[0].body if isinstance(n,ast.FunctionDef)}
+ init=methods.get('__init__');get=methods.get('get');identity=methods.get('_service_identity')
+ def has_call(node,name):
+  return node is not None and any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr==name for n in ast.walk(node))
+ if get is not None and identity is not None and has_call(get,'_service_identity') and has_call(identity,'getpgrp') and not has_call(init,'getpgrp'):
+  fix='present'
+ elif get is not None and has_call(init,'getpgrp') and any(isinstance(n,ast.Attribute) and isinstance(n.value,ast.Name) and n.value.id=='self' and n.attr=='pg' for n in ast.walk(get)):
+  fix='legacy construction-time identity'
+print(json.dumps({'nova_version':dist.version,'explicit_RPC_settings':timeouts,'scheduler_rpcapi_sha256':hashlib.sha256(raw).hexdigest(),'select_destinations_lines':[method.lineno,method.end_lineno],'RPC_calls':rpc_calls,
+ 'messaging':{'version':messaging.version,'use_queue_manager':cfg.getboolean('oslo_messaging_rabbit','use_queue_manager',fallback=None),'qmanager_identity_fix':fix,'amqpdriver_sha256':hashlib.sha256(driver_raw).hexdigest(),'debug_logging':cfg.getboolean('DEFAULT','debug',fallback=None),'scope':'Installed source/config only; not proof of a queue collision or root cause.'}}))
 '''
 
 
@@ -53,14 +68,16 @@ def excerpt(raw, request, start, end):
     for line in lines:
         stamp = re.match(r'^(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d)', line)
         in_window = stamp and start <= stamp[1].replace('T', ' ') <= end
-        if request in line or (in_window and re.search(r'ERROR|WARNING|CRITICAL|Traceback', line, re.I)):
+        if request in line or (in_window and re.search(r'ERROR|WARNING|CRITICAL|Traceback|No calling threads waiting|Skipping host:|Binding failed for port', line, re.I)):
             remaining = 8
         elif stamp:
             remaining = 0
         if remaining:
             selected.append(redact(line)); remaining -= 1
-    return {'lines': selected[-100:], 'matched_lines': len(selected),
-            'limit': 'Last 8 MiB per file; at most 100 selected lines. Empty output does not establish a cause.'}
+    omitted = max(0, len(selected)-99) if len(selected)>100 else 0
+    kept = selected if not omitted else selected[:50]+['[... '+str(omitted)+' matching middle lines omitted ...]']+selected[-49:]
+    return {'lines': kept, 'matched_lines': len(selected), 'omitted_middle_lines': omitted,
+            'limit': 'Last 8 MiB per file; at most 100 lines. Long excerpts retain the beginning and end. Empty output does not establish a cause.'}
 
 
 def run(args, timeout=25):
@@ -85,6 +102,8 @@ def log_paths(info, service):
         raise RuntimeError('Unexpected log volume path')
     if service == 'rabbitmq':
         paths = sorted((root/'rabbitmq').glob('*.log'))[:6]
+    elif service == 'neutron_server':
+        paths = [root/'neutron/neutron-server.log']
     else:
         paths = [root/'nova'/(service.replace('_', '-')+'.log')]
     for path in paths:
@@ -165,7 +184,7 @@ def main(argv=None):
         if dt.datetime.strptime(value,'%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S') != value: parser.error('Invalid incident time')
     if args.start > args.end: parser.error('Start must precede end')
     if not args.run:
-        print('PLAN: read Nova scheduler/conductor/compute and RabbitMQ container status and bounded incident log excerpts on all three nodes. Add --run. No API request, service change, retry or checkpoint update.'); return 0
+        print('PLAN: read Nova scheduler/conductor/compute, Neutron API and RabbitMQ status/logs on all three nodes; inspect installed Nova RPC and oslo.messaging queue-manager source/settings. Add --run. No API request, service change, retry or checkpoint update.'); return 0
     vip.deploy.source_guard(); env = vip.deploy.tools.tool_environment(); vip.inv.ensure_agent(env,print)
     folder = REPO/'reports'; vip.inv.private_dir(folder)
     passwords = {n:getpass.getpass('Joe sudo password on '+n+' (hidden): ') for n in NODES}
@@ -182,6 +201,15 @@ def main(argv=None):
         stream.write('Evidence only; no root cause or recovery conclusion. Live guest, API state and broker queue health are separate checks. No checkpoint changed.\n')
     print('Node | Collection')
     for n,r in results.items(): print(n+' | '+('collected' if r['complete'] else 'incomplete; see report'))
+    print('Node | Container | oslo.messaging | Queue manager | Identity fix in source')
+    for node,record in results.items():
+        for service in ('nova_scheduler','nova_conductor'):
+            data=record.get('services',{}).get(service,{}).get('installed_RPC',{}).get('messaging',{})
+            enabled={True:'ON',False:'OFF',None:'not explicit'}.get(data.get('use_queue_manager'),'unknown')
+            fix={'present':'PRESENT','legacy construction-time identity':'MISSING (legacy code)'}.get(data.get('qmanager_identity_fix'),'UNKNOWN')
+            print(node+' | '+service+' | '+str(data.get('version','unknown'))+' | '+enabled+' | '+fix)
+    print('PRESENT = recognized upstream fix; MISSING = legacy source pattern; UNKNOWN = source unavailable or unrecognized.')
+    print('Source/settings check only. Missing fix plus ON identifies an upstream bug candidate, not a confirmed cause.')
     print('Private report: '+name)
     print('Return report: cat '+shlex.quote(name))
     return 0 if complete else 1
