@@ -94,6 +94,24 @@ The last command reads Docker containers on all three nodes over SSH; enter joe'
 
 </details>
 
+### If an earlier failed attempt blocks the preview
+
+A recovered VM can be ACTIVE while `move-vm-state.json` still records an unresolved earlier attempt. The menu preserves it and requests no move.
+
+1. Review `/usr/bin/python3 scripts/phase5-move-vm.py --observe`. Require that the **specific migration UUID** has status `error`, and Nova reports the VM ACTIVE on its original source with no current task. This is API evidence; runtime, guest data and the timeout's root cause remain separate checks.
+2. After that review, run the explicit local reconciliation on R2d2. Replace `FAILED_MIGRATION_UUID` with that exact migration UUID:
+
+   ```bash
+   /usr/bin/python3 scripts/phase5-reconcile-migration.py --apply \
+     --migration-id FAILED_MIGRATION_UUID
+   ```
+
+3. Require `RESULT: FAILED_MIGRATION_RECONCILED`, then continue with the preview below.
+
+The helper authenticates normally, uses only GET requests after authentication, checks the API evidence twice and refuses active, completed, ambiguous or different attempts. It retains the **original local record byte for byte** under `private/phase5/migration-history/`, then closes only that failed attempt's local pending flag. Its existing identity, attempted status and history are retained. It sends no migration, VM power, service, volume or configuration change. Repeating the same completed reconciliation validates its saved original and makes no new record change.
+
+This closes an old tracking item; it does not mark the migration successful or fix its original cause. A fresh preview, guest/data checks and approval of the selected destination are still required. Other unresolved records remain blocked; never delete a checkpoint to bypass a check.
+
 <a id="1-open-the-preview-menu-on-r2d2"></a>
 
 ## 2. Open the preview menu on R2d2

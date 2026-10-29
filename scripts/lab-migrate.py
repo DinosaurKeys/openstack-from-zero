@@ -113,7 +113,8 @@ def pending_guard(folder,server=None,vid=None):
         if not path.exists() and not path.is_symlink():continue
         value=health.read_private(path)
         if value.get('pending') and ((server and value.get('server_id')==server) or (vid and value.get('volume_id')==vid)):
-            raise RuntimeError('Existing migration checkpoint requires review: '+path.name+'. It has been preserved; no move requested.')
+            action=(' After reviewing the phase5-move-vm.py --observe report, use scripts/phase5-reconcile-migration.py --apply --migration-id FAILED_MIGRATION_UUID for a confirmed failed attempt.' if path.name=='move-vm-state.json' else '')
+            raise RuntimeError('Existing migration checkpoint requires review: '+path.name+'. It has been preserved; no move requested.'+action)
 def checkpoints():
     result={}
     for phase in ('phase4','phase5'):

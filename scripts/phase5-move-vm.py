@@ -44,6 +44,9 @@ class API(volume.API):
         page=self.request('compute','GET','os-migrations?instance_uuid='+self.server_id+'&limit=100')
         rows=page.get('migrations')
         if not isinstance(rows,list) or any(r.get('instance_uuid')!=self.server_id or not volume.valid_uuid(r.get('uuid')) for r in rows):raise RuntimeError('Unexpected migration-history identities')
+        links=page.get('migrations_links',[])
+        if not isinstance(links,list) or any(not isinstance(link,dict) or link.get('rel')=='next' for link in links) or len(rows)>=100 or len({r['uuid'] for r in rows})!=len(rows):
+            raise RuntimeError('Migration history is incomplete or ambiguous; review required')
         return rows
 
 

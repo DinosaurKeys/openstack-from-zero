@@ -64,6 +64,8 @@ A new CA requires explicit review of the SHA256 printed by Phase 2 E. Successful
 - The course data disk has no fstab entry. After a guest reboot/cold move, identify the original volume and filesystem UUID before an explicit mount of that existing filesystem. Never format it to restore a mount. Verify the saved checksum afterward.
 - Keep exact operation allowlists, ownership/symlink guards, shared locks, pending-before-mutation records, no automatic retry and input/checkpoint preservation.
 
+The explicit `phase5-reconcile-migration.py --apply --migration-id UUID` action can acknowledge only the original fixed-route attempt after its reviewed Nova status is `error` and the same VM is ACTIVE/idle on its original source. Validate authenticated identity, unchanged deployment inputs, bounded unambiguous history, two matching GET snapshots and the original local record. Preserve that record byte for byte in private migration-history before updating only its pending/stage/resolution metadata. Completed reconciliation is idempotent; it does not establish VM/guest health, migration success or resolution of the old timeout. The menu's fresh readiness/approval gates remain required. Never reconcile automatically from `--plan` or send a cloud mutation from this action.
+
 ## Working and publishing
 
 Read relevant current scripts/docs, validate technical commands against pinned source or primary documentation, and run appropriate regression checks. Local fixtures/simulations are not live lab evidence. Do not send SSH, power, service or cloud mutations to Joe's lab from this environment.

@@ -74,6 +74,12 @@ class ApiTests(unittest.TestCase):
     def test_foreign_migration_history_is_rejected(self):
         api=self.api();bad=row();bad['instance_uuid']=ID
         with patch.object(api,'request',return_value={'migrations':[bad]}),self.assertRaises(RuntimeError):api.history()
+    def test_incomplete_or_duplicate_history_cannot_reconcile_an_attempt(self):
+        api=self.api(False)
+        for page in ({'migrations':[row()],'migrations_links':[{'rel':'next','href':'next'}]},
+                     {'migrations':[row(),row()]},{'migrations':[row()]*100},
+                     {'migrations':[row()],'migrations_links':None}):
+            with self.subTest(page=page),patch.object(api,'request',return_value=page),self.assertRaises(RuntimeError):api.history()
     def test_nonapproved_destination_refused(self):
         with self.assertRaises(RuntimeError):step.API(None,{},'token',SERVER,'node3')
 
