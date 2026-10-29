@@ -204,7 +204,10 @@ def render_brief(details):
     api_status('router HA (API state)','Router HA API placement')
     router=details.get('router HA (API state)',{})
     if authenticated and isinstance(router,dict) and isinstance(router.get('agents'),list):
-        for value in router['agents']:lines.append('        '+cell(value.get('host'))+'='+cell(value.get('ha_state')))
+        for value in router['agents']:
+            alive='UP' if value.get('alive') is True else 'DOWN' if value.get('alive') is False else 'UNKNOWN'
+            admin='enabled' if value.get('admin_state_up') is True else 'disabled' if value.get('admin_state_up') is False else 'unknown'
+            lines.append('        '+cell(value.get('host'))+'='+cell(value.get('ha_state'))+'; L3 agent='+alive+'/'+admin)
     preserved=next((r.get('status') for r in details.get('summary',[]) if r.get('check')=='Existing checkpoints/config preserved'),None)
     section('RESULT')
     emit({'PASS':'PASS','REVIEW':'FAIL'}.get(preserved,'BLOCKED'),'Saved checkpoints/config preserved')
