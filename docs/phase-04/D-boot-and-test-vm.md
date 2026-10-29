@@ -4,6 +4,8 @@
 
 **Status: complete — reviewed live report `phase4-boot-vm-20261027T124644Z-dl3xem1r.txt` passed.** Chapter B's report verified one active/two standby router replicas and two DHCP agents. Chapter C's report verified the Ubuntu image, flavor, guest key and firewall group.
 
+**Already have a VM?** Use [CLI commands to view, start and shut down VMs](#cli-vm-power-controls).
+
 ## 1. What we are building
 
 Think of the image as a template, the flavor as a hardware size, and the private network as the VM's virtual switch.
@@ -100,7 +102,47 @@ The private state is `private/phase4/vm.json`; guest SSH trust is `private/phase
 
 ## 7. View and recheck
 
-On R2d2:
+<a id="cli-vm-power-controls"></a>
+
+### CLI — view, start and shut down VMs
+
+Run **on R2d2 as joe**. These commands manage an existing VM. The creation script is not needed for these actions.
+
+**1. Load the CLI and connection settings once in this terminal:**
+
+```bash
+source "$HOME/venvs/openstack-client/bin/activate"
+source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
+```
+
+The CLI is installed in Phase 2 C; Phase 3 D creates the connection file. If either file is missing, complete [the CLI setup](../phase-03/D-client-access.md) first. Repeat these two source commands in each new terminal; keep credentials private.
+
+**2. List VMs and their compute hosts — read-only:**
+
+```bash
+openstack server list --all-projects --long -c Name -c Status -c Host -c ID
+```
+
+`Host` is the compute node. All-project listing and host visibility require the course admin account. Use the UUID from `ID` if names are duplicated or the VM belongs to another project; cross-project control requires admin policy access.
+
+**3. Choose one power action after reading the current status:**
+
+| Action | Command | Required starting status | Expected status afterward |
+|---|---|---|---|
+| Power on | `openstack server start lab-vm-01` | `SHUTOFF` | `ACTIVE` |
+| Shut down | `openstack server stop lab-vm-01` | `ACTIVE` | `SHUTOFF` |
+
+`lab-vm-01` is the course example. Replace it with the selected VM's name or UUID. Shutdown retains the VM and its disks. After a guest restart, [check the data-disk mount](E-cinder-volume.md#after-a-guest-reboot-or-cold-move) if Chapter E has been completed.
+
+**4. Confirm the result:** repeat the list command from step 2. Power requests can return without text; wait for the expected status before another action.
+
+**If the VM reports `ERROR`:** normal start requires `SHUTOFF`. Use [the read-only VM recovery check](../command-glossary.md#vm-power-controls) and review its report before recovery. Do not reset its status to bypass this check.
+
+[Full CLI reference](../openstack-cli.md) · [Horizon power controls](../command-glossary.md#start-or-shut-down-a-vm--use-horizon)
+
+### Other views and guest checks
+
+On R2d2, these existing helpers also show the VM and network objects:
 
 ```bash
 /usr/bin/python3 scripts/lab-view.py servers
@@ -135,6 +177,6 @@ Continue with [Chapter E — one Cinder data volume](E-cinder-volume.md), then c
 
 ## Local validation and limits
 
-Tests cover exact one-VM/port/floating-IP scope, quotas, conflicts, drift, partial and uncertain requests, repeat verification, restricted API actions, secret-safe errors, DHCP/route/identity checks and guest result handling. Real temporary Ed25519 keys are used to compare fingerprints with `ssh-keygen`; host-key mismatch cases block login. API/guest/agent responses are fixtures. These tests are not a live Nova boot, actual DHCP lease, SSH login, USB packet capture or failover result. Joe's reviewed live report supplies VM/guest-network evidence; failover and migration remain untested.
+Tests cover exact one-VM/port/floating-IP scope, quotas, conflicts, drift, partial and uncertain requests, repeat verification, restricted API actions, secret-safe errors, DHCP/route/identity checks and guest result handling. Real temporary Ed25519 keys are used to compare fingerprints with `ssh-keygen`; host-key mismatch cases block login. API/guest/agent responses are fixtures. These tests are not a live Nova boot, actual DHCP lease, SSH login, USB packet capture or failover result. Joe's reviewed live report supplies VM/guest-network evidence. Controlled failover tests and planned migration are covered separately in [Phase 5](../phase-05/README.md).
 
 [Nova server/console API](https://docs.openstack.org/api-ref/compute/) · [Neutron ports/floating IPs](https://docs.openstack.org/api-ref/network/v2/) · [cloud-init keys-to-console](https://docs.cloud-init.io/en/latest/reference/modules.html#keys-to-console)
