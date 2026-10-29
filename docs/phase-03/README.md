@@ -9,7 +9,7 @@
 | [A — Prepare the nodes](A-prepare-nodes.md) | Standard Kolla host dependencies; reuse verified preparation on existing hosts |
 | [B — Full Kolla prechecks](B-full-prechecks.md) | Validate the empty, prepared hosts and explicit HA configuration |
 | [C — Deploy OpenStack](C-deploy-openstack.md) | Install API Keepalived/HAProxy, MariaDB/Galera and HA-capable Neutron agents |
-| [D — Client access and API verification](D-client-access.md) | Prepare private client profiles, verify HTTPS/API reads and sign in to Horizon |
+| [D — CLI, HTTPS and Horizon](D-client-access.md) | Install/verify the CLI, load credentials, list VMs and verify API/browser access |
 | [E — HA verification](E-ha-verification.md) | Distinguish configuration/replication observations from controlled failover tests |
 
 For an existing deployment, start with the [fresh-install procedure](../fresh-install.md). It empties only the explained OpenStack scope and prepares the same final configuration used by Phase 2 E. No node OS reinstall, disk reprovisioning or CA rotation is required.
