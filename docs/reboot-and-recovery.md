@@ -28,7 +28,7 @@ git pull --ff-only
 
 ## Normal shutdown: two steps
 
-Finish cloud/storage operations and **cleanly shut down running VMs first**. The scripts check for active VM processes but do not shut down guests. Leave the hosts on while services stop.
+Finish cloud/storage operations and **cleanly shut down running VMs first** using the [VM power controls](command-glossary.md#vm-power-controls). The scripts check for active VM processes but do not shut down guests. Leave the hosts on while services stop.
 
 ### 1. Stop OpenStack services
 
