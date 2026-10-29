@@ -12,6 +12,39 @@ view=importlib.util.module_from_spec(spec);spec.loader.exec_module(view)
 
 
 class ViewingTableTests(unittest.TestCase):
+    def test_server_inventory_shows_api_state_and_compute_host_without_mutation(self):
+        class API:
+            def list(self,service,path,key):
+                if (service,path,key)!=('compute','servers/detail?limit=100&all_tenants=1','servers'):raise AssertionError('Unexpected route')
+                return [{'id':'vm-id','name':'lab-vm-01','status':'SHUTOFF','OS-EXT-SRV-ATTR:host':'node2','tenant_id':'project-id','private':'withheld'}]
+            def write(self,*args):raise AssertionError('Inventory must not write')
+        result=view.collect(API(),'servers',True);text=view.table('servers',result)
+        for value in ('Name','Status (Nova)','Compute host','VM ID','lab-vm-01','SHUTOFF','node2','vm-id'):
+            self.assertIn(value,text)
+        self.assertEqual(result['servers'][0]['tenant_id'],'project-id')
+        self.assertNotIn('withheld',str(result))
+
+    def test_volume_inventory_keeps_storage_backend_separate_from_attachment_compute(self):
+        class API:
+            def list(self,service,path,key):
+                if (service,path,key)!=('block-storage','volumes/detail?limit=100&all_tenants=1','volumes'):raise AssertionError('Unexpected route')
+                return [{'id':'volume-id','name':'data','size':1,'status':'in-use','os-vol-host-attr:host':'node3@lvm-1#lvm-1',
+                  'attachments':[{'server_id':'vm-id','host_name':'node1','device':'/dev/vdb'}]}]
+        text=view.table('volumes',view.collect(API(),'volumes',True))
+        self.assertIn('Storage backend',text);self.assertIn('node3@lvm-1#lvm-1',text);self.assertIn('vm-id',text)
+        self.assertNotIn('node1',text)
+
+    def test_default_inventory_keeps_existing_project_scope_and_unknown_host_is_not_invented(self):
+        class API:
+            def list(self,service,path,key):
+                if path!='servers/detail?limit=100':raise AssertionError('Scope changed')
+                return [{'id':'vm-id','name':'vm','status':'ACTIVE'}]
+        text=view.table('servers',view.collect(API(),'servers'))
+        self.assertIn('unknown',text);self.assertNotIn('node1',text)
+        text=view.table('volumes',{'volumes':[{'id':'v1','attachments':[]},{'id':'v2','attachments':None}]})
+        self.assertRegex(text.splitlines()[1],r'\| -\s*\| v1$')
+        self.assertIn('unknown',text.splitlines()[2])
+
     def test_disabled_reason_is_retained_in_json_and_table_without_mutation(self):
         class API:
             def list(self,service,path,key):
@@ -67,6 +100,14 @@ class ViewingTableTests(unittest.TestCase):
 
     def test_table_rejects_unsupported_objects_before_connection(self):
         with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):view.main(['router','--table'])
+
+    def test_all_projects_flag_survives_reexec_and_unsupported_views_cannot_use_it(self):
+        class Reexec(Exception):pass
+        with patch.object(view.step.deploy.validation.config_step,'load_step',return_value=SimpleNamespace(require_r2d2=lambda:None)),patch.object(view.step.deploy.tools,'check_paths'),patch.object(view.step.deploy.tools,'tool_environment',return_value={}),patch.object(view.os,'execve',side_effect=Reexec) as execute:
+            with self.assertRaises(Reexec):view.main(['servers','--table','--all-projects'])
+        self.assertEqual(execute.call_args.args[1][-3:],['servers','--table','--all-projects'])
+        with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):view.main(['agents','--all-projects'])
+        with self.assertRaisesRegex(RuntimeError,'only for servers and volumes'):view.collect(None,'router',True)
 
 
 if __name__=='__main__':unittest.main()
