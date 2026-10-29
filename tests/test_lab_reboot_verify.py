@@ -48,7 +48,7 @@ class RebootVerificationTests(unittest.TestCase):
 
     def test_compact_healthy_preserves_result_with_shorter_output(self):
         details=self.dashboard();compact=r.render_compact(details);full=r.render_brief(details)
-        self.assertLess(len(compact),len(full));self.assertLessEqual(len(compact),32)
+        self.assertLess(len(compact),len(full))
         for value in ('PASS    Galera: 3/3 Synced/Primary, size 3, same cluster UUID',
           'PASS    RabbitMQ cluster: 3/3 running members, no alarms or partitions',
           'PASS    HTTPS: login, Horizon and all five service API reads','RESULT: REBOOT_SERVICES_HEALTHY'):
@@ -56,6 +56,69 @@ class RebootVerificationTests(unittest.TestCase):
         self.assertNotIn('VM in Nova','\n'.join(compact))
         self.assertLess(next(i for i,v in enumerate(compact) if 'PASS    Galera:' in v),
                         next(i for i,v in enumerate(compact) if 'PASS    Placement:' in v))
+
+    def service_rows(self,lines,title):
+        start=lines.index(title)+2
+        end=start
+        while end<len(lines) and ' | ' in lines[end]:end+=1
+        return [[value.strip() for value in line.split(' | ')] for line in lines[start:end]]
+
+    def test_compact_includes_all_three_service_lists_without_probes_or_input_changes(self):
+        details=self.dashboard();before=json.dumps(details,sort_keys=True)
+        with patch.object(r.subprocess,'run',side_effect=AssertionError('No additional command')):
+            lines=r.render_compact(details)
+        for title,count in (('COMPUTE SERVICES — Nova',9),('NETWORK AGENTS — Neutron',12),('VOLUME SERVICES — Cinder',6)):
+            self.assertEqual(lines.count(title),1)
+            rows=self.service_rows(lines,title);self.assertEqual(len(rows),count)
+            self.assertEqual({row[0] for row in rows},set(r.inv.NODES))
+            self.assertTrue(all(row[2:]==['UP','enabled','-'] for row in rows))
+            self.assertLess(lines.index(title),lines.index('RESULT: REBOOT_SERVICES_HEALTHY'))
+        self.assertEqual(json.dumps(details,sort_keys=True),before)
+
+    def test_tables_show_down_heartbeat_separately_from_admin_and_storage_host(self):
+        details=self.dashboard()
+        next(v for v in details['Nova services'] if v['host']=='node2' and v['binary']=='nova-compute').update(state='down',status='disabled')
+        next(v for v in details['Neutron agents'] if v['host']=='node3' and v['binary']=='neutron-openvswitch-agent').update(alive=False,admin_state_up=True)
+        next(v for v in details['Cinder services'] if v['host']=='node3' and v['binary']=='cinder-volume').update(host='node3@lvm-1',state='down')
+        for row in details['cluster_summary']:
+            if row['check'] in ('Nova services','Neutron agents','Cinder services'):row['status']='REVIEW'
+        lines=r.render_compact(details)
+        self.assertIn(['node2','nova-compute','DOWN','disabled','REVIEW'],self.service_rows(lines,'COMPUTE SERVICES — Nova'))
+        self.assertIn(['node3','neutron-openvswitch-agent','DOWN','enabled','REVIEW'],self.service_rows(lines,'NETWORK AGENTS — Neutron'))
+        self.assertIn(['node3@lvm-1','cinder-volume','DOWN','enabled','REVIEW'],self.service_rows(lines,'VOLUME SERVICES — Cinder'))
+        self.assertIn('RESULT: REBOOT_SERVICES_NEED_REVIEW',lines)
+
+    def test_tables_mark_missing_duplicate_and_unexpected_service_rows(self):
+        details=self.dashboard()
+        details['Nova services']=[v for v in details['Nova services'] if not (v['host']=='node2' and v['binary']=='nova-compute')]
+        details['Nova services'].append(dict(details['Nova services'][0]))
+        details['Nova services'].append({'host':'other-node','binary':'nova-compute','state':'up','status':'enabled'})
+        next(v for v in details['cluster_summary'] if v['check']=='Nova services')['status']='REVIEW'
+        lines=r.render_compact(details);rows=self.service_rows(lines,'COMPUTE SERVICES — Nova')
+        self.assertIn(['node2','nova-compute','NOT LISTED','-','MISSING'],rows)
+        self.assertEqual(sum(row[-1]=='DUPLICATE' for row in rows),2)
+        self.assertIn(['other-node','nova-compute','UP','enabled','UNEXPECTED'],rows)
+        self.assertIn('RESULT: REBOOT_SERVICES_NEED_REVIEW',lines)
+
+    def test_unavailable_service_list_is_blocked_not_invented_down_and_other_lists_remain(self):
+        details=self.dashboard();details['Neutron agents']={'error':'HTTP 503 password=PRIVATE'}
+        next(v for v in details['cluster_summary'] if v['check']=='Neutron agents')['status']='UNKNOWN'
+        lines=r.render_compact(details);text='\n'.join(lines)
+        self.assertIn('BLOCKED: HTTP 503',lines)
+        self.assertNotIn('PRIVATE',text)
+        self.assertEqual(self.service_rows(lines,'NETWORK AGENTS — Neutron'),[])
+        self.assertEqual(len(self.service_rows(lines,'COMPUTE SERVICES — Nova')),9)
+        self.assertEqual(len(self.service_rows(lines,'VOLUME SERVICES — Cinder')),6)
+        self.assertIn('RESULT: REBOOT_SERVICES_NEED_REVIEW',lines)
+
+    def test_failed_auth_never_displays_old_service_rows_as_current(self):
+        details=self.dashboard()
+        next(v for v in details['cluster_summary'] if v['check']=='HTTPS authentication')['status']='UNKNOWN'
+        lines=r.render_compact(details)
+        self.assertEqual(lines.count('BLOCKED: authentication unavailable; service list not queried'),3)
+        for title in ('COMPUTE SERVICES — Nova','NETWORK AGENTS — Neutron','VOLUME SERVICES — Cinder'):
+            self.assertEqual(self.service_rows(lines,title),[])
+        self.assertIn('RESULT: REBOOT_SERVICES_NEED_REVIEW',lines)
 
     def test_compact_keeps_each_named_failure_and_safe_api_error(self):
         details=self.dashboard()
@@ -233,10 +296,12 @@ class RebootVerificationTests(unittest.TestCase):
             def apis(rows,details,env,include_workload=True):
                 self.assertFalse(include_workload)
             with patch.object(r.deploy,'source_guard'),patch.object(r.deploy.tools,'tool_environment',return_value={}),patch.object(r.deploy.validation,'local_checks',return_value=('inv','config')),patch.object(r.health.access,'input_hashes',return_value={}),patch.object(r.inv,'ensure_agent'),patch.object(r.getpass,'getpass',return_value='sudo'),patch.object(r.health,'host_observe',side_effect=lambda node,*args:fixture['hosts'][node]),patch.object(r.health,'host_rows',side_effect=hosts),patch.object(r.health,'api_checks',side_effect=apis),patch.object(r.health,'checkpoint_checks',side_effect=AssertionError('No migration/checkpoint interpretation')),patch.object(r,'workload',side_effect=AssertionError('No VM/guest checks')),patch.object(r.prep,'authenticate',side_effect=AssertionError('No additional workload authentication')):
-                output=[];details={};self.assertEqual(r.execute(output.append,details),0)
+                output=[];details={};self.assertEqual(r.execute(output.append,details,compact=True),0)
             text='\n'.join(output)
             self.assertIn('REBOOT_SERVICES_HEALTHY',text);self.assertNotIn('Checking the existing VM',text)
             self.assertNotIn('WORKLOAD RESULT',text)
+            for title in ('COMPUTE SERVICES — Nova','NETWORK AGENTS — Neutron','VOLUME SERVICES — Cinder'):
+                self.assertIn(title,output)
 
     def test_paused_domain_is_not_reported_as_running(self):
         helper=load('reboot_runtime_node_test','phase5-migration-node.py')
