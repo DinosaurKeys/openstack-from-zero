@@ -2,18 +2,21 @@
 
 [Home](../README.md) · [Command glossary](command-glossary.md) · [Migration](phase-05/E-vm-migration.md)
 
-**Goal:** use `openstack` to list VMs and control their power. Run these steps **on R2d2 as joe**. The client gets its own Python environment.
+**Goal:** use `openstack` to list VMs and control their power. Run these steps **on R2d2 as joe**. CLI installation is part of [Phase 2 C](phase-02/C-install-tools.md), and connection checks are part of [Phase 3 D](phase-03/D-client-access.md).
 
-## 1. Install the CLI — once
+## 1. Install or verify the CLI — once
+
+For an existing R2d2, install just the client:
 
 ```bash
-/usr/bin/python3 -m venv "$HOME/venvs/openstack-client"
+cd ~/openstack-from-zero
+git pull --ff-only
+/usr/bin/python3 scripts/phase2-install-tools.py --client-only --apply
 source "$HOME/venvs/openstack-client/bin/activate"
-python -m pip install "python-openstackclient==10.3.1"
 openstack --version
 ```
 
-Expected version: `openstack 10.3.1`. This client version is listed in the official OpenStack 2026.2 requirements. Installation affects the new client environment on R2d2; the Kolla environment remains separate.
+Expected: `RESULT: OPENSTACK_CLI_READY`, then `openstack 10.3.1`. The script uses a separate client environment and checks dependencies and command help. An already-matching client is verified without reinstalling it.
 
 ## 2. Load your existing connection settings
 
@@ -21,7 +24,7 @@ Expected version: `openstack 10.3.1`. This client version is listed in the offic
 source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
 ```
 
-This generated private file supplies the existing public API address, admin credentials, region and lab CA certificate. Source it; do not print or share its contents. No password needs to be pasted into a command.
+Complete [Phase 3 D, step 2](phase-03/D-client-access.md#2-prepare-connection-settings-and-verify-the-apis) to generate this file after deployment. It supplies the existing public API address, admin credentials, region and lab CA certificate. Source it; do not print or share its contents. No password needs to be pasted into a command.
 
 In each new terminal, repeat:
 
