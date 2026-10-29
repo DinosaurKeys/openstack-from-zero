@@ -75,7 +75,7 @@ After a power operation, refresh the inventory on R2d2:
 /usr/bin/python3 scripts/lab-view.py servers --table
 ```
 
-For CLI power controls, follow **[OpenStack CLI setup and commands](openstack-cli.md)**: install the client on R2d2, load the existing private connection settings, then use `openstack server list`, `start` or `stop` as appropriate. `openstack: command not found` means the CLI did not run and sent no power request. Kolla-Ansible and the OpenStack CLI are separate programs; choose either CLI or Horizon for routine power controls.
+The OpenStack CLI is installed in **[Phase 2 C](phase-02/C-install-tools.md)** and connected in **[Phase 3 D](phase-03/D-client-access.md)**. Follow the **[CLI command reference](openstack-cli.md)** to list VMs and use `openstack server start` or `openstack server stop` for the selected VM. Both CLI and Horizon are available for routine power controls.
 
 For the tracked course VM in ERROR, run this existing **read-only** check on R2d2 before recovery:
 
