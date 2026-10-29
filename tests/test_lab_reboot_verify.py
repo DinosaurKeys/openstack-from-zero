@@ -154,6 +154,19 @@ class RebootVerificationTests(unittest.TestCase):
         self.assertIn('BLOCKED Neutron agent heartbeats: HTTP 503',text)
         self.assertIn('PASS    MariaDB: 3/3 ready',text);self.assertNotIn('do-not-print',text)
 
+    def test_router_roles_do_not_hide_failed_hosting_l3_heartbeats(self):
+        details=self.dashboard()
+        for value in details['router HA (API state)']['agents']:
+            value['ha_state']='active' if value['host']=='node1' else 'standby'
+            value['alive']=value['host']=='node1'
+        next(v for v in details['cluster_summary'] if v['check']=='router HA (API state)')['status']='REVIEW'
+        text='\n'.join(r.render_compact(details))
+        self.assertIn('node1=active; L3 agent=UP/enabled',text)
+        self.assertIn('node2=standby; L3 agent=DOWN/enabled',text)
+        self.assertIn('node3=standby; L3 agent=DOWN/enabled',text)
+        self.assertIn('FAIL    Router HA API placement',text)
+        self.assertNotIn('RESULT: REBOOT_SERVICES_HEALTHY',text)
+
     def test_dashboard_shows_actual_service_agent_and_container_states(self):
         details=self.dashboard();details['Nova services'][2].update(state='down',status='disabled')
         details['Neutron agents'][0].update(alive=False,admin_state_up=True)
