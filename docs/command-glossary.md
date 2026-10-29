@@ -53,6 +53,40 @@ bash scripts/lab-containers.sh
 
 Add `node1`, `node2` or `node3` to view only that node. This is a read-only SSH/Docker view, including stopped containers. VMs are guests; Docker containers are the OpenStack services. The individual host commands below remain available.
 
+<a id="vm-power-controls"></a>
+
+### Start or shut down a VM — use Horizon
+
+No OpenStack CLI installation is required for these browser controls:
+
+1. Open **https://192.168.0.151/** and sign in.
+2. Select the project containing the VM, then open **Project → Compute → Instances**.
+3. Find the VM by name and ID. Open its action menu on the right.
+
+| Current state | Action | Expected result |
+|---|---|---|
+| `SHUTOFF` | **Start Instance** | Wait for `ACTIVE`, then check console/SSH. |
+| `ACTIVE` | **Shut Off Instance**, then confirm | Wait for `SHUTOFF`. The VM and its disks are retained. |
+| `ERROR` | Inspect the VM before selecting recovery | A normal Nova start requires `SHUTOFF`; the actual running state must be established first. |
+
+After a power operation, refresh the inventory on R2d2:
+
+```bash
+/usr/bin/python3 scripts/lab-view.py servers --table
+```
+
+`openstack: command not found` means the CLI did not run and sent no power request. Kolla-Ansible and the OpenStack CLI are separate programs; the course views already use the private HTTPS profile. Use Horizon for routine power controls.
+
+For the tracked course VM in ERROR, run this existing **read-only** check on R2d2 before recovery:
+
+```bash
+/usr/bin/python3 scripts/lab-reboot-verify.py --check --with-workload
+```
+
+It checks Nova state, the VM UUID's runtime on all three hypervisors, the volume attachment and saved migration record. If it finds a single running VM, it also attempts read-only guest network/data checks. It sends no start, stop, reboot, reset, mount, migration or checkpoint-clear action. Return the printed TXT report for review before choosing a recovery action. A volume marked `in-use` records an attachment; it is not proof that its VM is powered on.
+
+[Horizon instance guide](https://docs.openstack.org/horizon/latest/user/launch-instances.html) · [Nova power-action reference](https://docs.openstack.org/api-ref/compute/)
+
 ## 2. Host components — connect from R2d2
 
 For node1:
