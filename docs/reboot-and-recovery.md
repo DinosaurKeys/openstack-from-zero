@@ -4,12 +4,18 @@
 
 Start on **R2d2 as joe**, from `~/openstack-from-zero`. Manual service commands run **on the affected node**, as labelled below. Keep R2d2 running.
 
-**The order:** stop cloud services → power off hosts → power on hosts → check → repair only the named failures → check again.
+**Shutdown:** stop services → power off hosts. **After power-on:** check the cluster → identify the failed row → repair that component → check again.
+
+| Where to run commands | What runs there |
+|---|---|
+| **R2d2** | `openstack` viewing commands and the lab scripts |
+| **Affected node, inside SSH** | `sudo systemctl start/restart` for its Kolla services |
 
 | Need | Go to |
 |---|---|
 | Shut down the whole lab | [1. Stop services](#normal-shutdown-two-steps), then [2. Power off](#2-power-off-ubuntu) |
 | Start after a shutdown | [3. Power on](#after-power-on-check-the-cluster), then [4. Check](#4-read-the-live-dashboard) |
+| Read Nova, Neutron and Cinder status | [Simple CLI tables](#cli-service-checks) |
 | Database unavailable | [5. MariaDB recovery](#5-mariadb-cold-boot-recovery) |
 | Failed API or control containers | [6. Control-service recovery](#6-recover-failed-control-services) |
 | A service is stopped | [Start Nova compute](#b-start-a-stopped-nova-compute-service) or choose a component in [the restart quick reference](#c-restart-a-selected-running-service) |
@@ -93,7 +99,45 @@ This is read-only. Enter joe's sudo password for each node. Read **Galera and Ra
 
 **Container health, service heartbeat and scheduling permission are three different checks.** A healthy container alone does not prove that the service is communicating with OpenStack.
 
-If the result is **`REBOOT_SERVICES_HEALTHY`**, stop here. Otherwise, follow only the relevant repair below. The printed TXT report identifies failures; JSON is optional technical detail.
+If the result is **`REBOOT_SERVICES_HEALTHY`**, no service repair is needed. Continue to the [VM migration review](phase-05/E-vm-migration.md) when ready. Otherwise, follow the named failure below. The printed TXT report is the readable summary; JSON is extra detail.
+
+<a id="cli-service-checks"></a>
+
+#### Read service and agent status with the CLI — on R2d2
+
+Once authentication and APIs work, these tables help you find the affected **host and service**. They are viewing commands; they do not start or restart anything. CLI installation is covered in [Phase 3 D](phase-03/D-client-access.md).
+
+Activate the client and load the existing credentials in this terminal:
+
+```bash
+source "$HOME/venvs/openstack-client/bin/activate"
+source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
+```
+
+Run the three checks. `-c` selects the useful columns and hides the extra IDs/timestamps:
+
+```bash
+openstack compute service list -c Host -c Binary -c Status -c State
+openstack network agent list -c Host -c "Agent Type" -c Alive -c State
+openstack volume service list -c Host -c Binary -c Status -c State
+```
+
+| Table | What it checks | Expected reported state |
+|---|---|---|
+| Nova | Compute, scheduler and conductor | `State=up`, `Status=enabled` |
+| Neutron | Router/L3, DHCP, metadata and OVS agents | `Alive=:-)`, `State=UP` |
+| Cinder | Volume and scheduler services | `State=up`, `Status=enabled` |
+
+For Neutron, `Alive=XXX` means a missing heartbeat. Its `State` column is the administrative setting: `UP` means enabled, **not proof of a heartbeat**. JSON output uses boolean values for these fields.
+
+In this lab expect **9 Nova services, 12 Neutron agents and 6 Cinder services**, covering all three nodes. Missing expected rows also need review. These tables do not verify database/broker membership, all API containers or guest traffic; the full dashboard checks the cluster foundation. If login/API access fails, recover that dependency before using the tables.
+
+**The short repair loop:**
+
+1. Read the failed host/service row and its corresponding container status in the dashboard.
+2. Use [step 7](#manual-service-and-agent-restarts) to start a confirmed stopped process or restart the selected failed component after checking its dependencies.
+3. Return to R2d2 and repeat **only the matching CLI list**. A service must report its heartbeat again; `enabled` alone is insufficient.
+4. Finish with the full check in [step 8](#what-a-healthy-result-means). If a heartbeat remains missing, inspect the current error instead of repeating restarts.
 
 ## Recover only what needs repair
 
@@ -205,6 +249,7 @@ For another failed component, choose its exact restart command from this quick r
 | Neutron router / L3 agent | `sudo systemctl restart kolla-neutron_l3_agent-container.service` |
 | Neutron DHCP agent | `sudo systemctl restart kolla-neutron_dhcp_agent-container.service` |
 | Neutron metadata agent | `sudo systemctl restart kolla-neutron_metadata_agent-container.service` |
+| Cinder scheduler | `sudo systemctl restart kolla-cinder_scheduler-container.service` |
 
 The Open vSwitch **agent** is separate from `openvswitch_db` and `openvswitch_vswitchd`. Nova **compute** is separate from `nova_libvirt`. The commands above do not restart those dependencies.
 
@@ -291,10 +336,19 @@ This does not prove Nova's separate authenticated connection works. Its applicat
 
 </details>
 
-**Linux startup and OpenStack scheduling are separate.** `systemctl enable` controls boot startup; it does not change Nova's `disabled` scheduling status. Return to R2d2 with `exit` and read the reason there:
+**Return to R2d2** after the node checks:
 
 ```bash
-/usr/bin/python3 scripts/lab-view.py compute-services --table
+exit
+```
+
+Activate the CLI/load credentials as shown in [the CLI section](#cli-service-checks), then repeat the matching Nova, Neutron or Cinder list. The container can become healthy before its heartbeat appears in OpenStack.
+
+**Linux startup and OpenStack scheduling are separate.** `systemctl enable` controls boot startup. Nova's `enabled/disabled` controls scheduling. If Nova remains disabled, read the reason on R2d2:
+
+```bash
+openstack compute service list --long \
+  -c Host -c Binary -c Status -c State -c "Disabled Reason"
 ```
 
 Recover the heartbeat first. If it remains UP/disabled, review the reason before enabling scheduling; it may be deliberately in maintenance. An unknown reason is not permission to enable it. Continue to step 8 for the final service/agent check.
@@ -321,7 +375,7 @@ bash scripts/lab-recover.sh --check
 | Router: one active/two standby **and all hosting L3 agents UP/enabled** | Router placement and hosting-agent checks passed. |
 | Exactly one API VIP owner | `192.168.0.151` is held by one host. |
 
-Finish when the result is **`REBOOT_SERVICES_HEALTHY`**. This covers cluster services; VM startup, guest traffic/data and migration remain separate checks. Horizon's **System Information** page also provides **Compute Services** and **Network Agents** tabs for viewing service state; these views do not restart Kolla containers.
+Finish when the result is **`REBOOT_SERVICES_HEALTHY`**. This completes the service recovery check. Use [Chapter E — VM and storage migration](phase-05/E-vm-migration.md) to review the VM, data-volume location and migration prerequisites separately. Horizon's **System Information** page also provides **Compute Services** and **Network Agents** tabs for viewing service state; these views do not restart Kolla containers.
 
 <a id="finish-an-interrupted-network-helper-stop"></a>
 
@@ -381,3 +435,5 @@ Wait for the host to return, then run the dashboard before touching another node
 Local VM root disks, Cinder LVM and node1's Glance storage are not replicated. Cluster service HA does not provide storage HA or automatic VM recovery.
 
 [Ubuntu 24.04 systemctl manual](https://manpages.ubuntu.com/manpages/noble/man1/systemctl.1.html) · [Kolla troubleshooting and logs](https://docs.openstack.org/kolla-ansible/2026.2/user/troubleshooting.html) · [Pinned Kolla systemd units](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/module_utils/kolla_systemd_worker.py) · [Pinned MariaDB recovery](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/mariadb/tasks/recover_cluster.yml)
+
+[CLI compute service list](https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/compute/v2/index.html#compute-service-list) · [CLI network agent list](https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/network/v2/index.html#network-agent-list) · [Cinder service verification](https://docs.openstack.org/cinder/latest/install/cinder-verify.html)
