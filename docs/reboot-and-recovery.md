@@ -2,25 +2,20 @@
 
 [Home](../README.md) · [Command glossary](command-glossary.md)
 
-Use this page for a **whole-lab shutdown and startup**. Run commands on **R2d2 as joe**, from `~/openstack-from-zero`. Keep R2d2 running.
+Run commands on **R2d2 as joe**, from `~/openstack-from-zero`. Keep R2d2 running.
 
-| Order | Action | Command / result |
-|---|---|---|
-| 1 | Stop OpenStack services | `python3 scripts/lab-shutdown.py --apply` → wait for `READY_FOR_MANUAL_POWEROFF` |
-| 2 | Power off the three hosts | `bash scripts/lab-poweroff.sh --apply` |
-| 3 | Power the hosts on | node3 first, then node2 and node1; let all three boot |
-| 4 | Read the live dashboard | `bash scripts/lab-recover.sh --check` |
-| 5 | Only if MariaDB needs recovery | Use the coordinated database command in step 5; skip it when Galera is healthy |
-| 6 | Recover failed control services | `bash scripts/lab-recover.sh --apply` → review, confirm, repair, final check |
+**The order:** stop cloud services → power off hosts → power on hosts → check → repair only the named failures → check again.
 
-- [Shutdown: stop services, then power off](#normal-shutdown-two-steps)
-- [Power on and check the cluster](#after-power-on-check-the-cluster)
-- [Recover only what needs repair](#recover-only-what-needs-repair)
-- [What a healthy result means](#what-a-healthy-result-means)
-- [If shutdown is interrupted](#only-if-shutdown-is-interrupted)
-- [Manual commands and extra views](#manual-reference)
+| Need | Go to |
+|---|---|
+| Shut down the whole lab | [1. Stop services](#normal-shutdown-two-steps), then [2. Power off](#2-power-off-ubuntu) |
+| Start after a shutdown | [3. Power on](#after-power-on-check-the-cluster), then [4. Check](#4-read-the-live-dashboard) |
+| Database unavailable | [5. MariaDB recovery](#5-mariadb-cold-boot-recovery) |
+| Failed API or control containers | [6. Control-service recovery](#6-recover-failed-control-services) |
+| Compute or network agent still DOWN | [7. Manual service and agent restarts](#manual-service-and-agent-restarts) |
+| Check the final result | [8. Confirm recovery](#what-a-healthy-result-means) |
 
-Get the current scripts before starting:
+Get the current guide and scripts:
 
 ```bash
 cd ~/openstack-from-zero
@@ -32,7 +27,7 @@ git pull --ff-only
 
 ## Normal shutdown: two steps
 
-Finish active cloud/storage operations and **cleanly shut down running VMs first**. These scripts do not shut down guests. The service-stop check blocks active VM domains, including paused VMs. Leave the hosts powered on while services are stopping.
+Finish cloud/storage operations and **cleanly shut down running VMs first**. The scripts check for active VM processes but do not shut down guests. Leave the hosts on while services stop.
 
 ### 1. Stop OpenStack services
 
@@ -40,37 +35,31 @@ Finish active cloud/storage operations and **cleanly shut down running VMs first
 /usr/bin/python3 scripts/lab-shutdown.py --apply
 ```
 
-Enter joe's sudo passwords. The script checks all three nodes before making changes. If readiness fails, it does not begin stopping services. Type **`STOP ALL CLOUD SERVICES`** to approve.
+Enter joe's sudo passwords. Review the checks, then type **`STOP ALL CLOUD SERVICES`**.
 
-| Stage | What stops | Why this order |
-|---|---|---|
-| 1 | OpenStack applications, workers, agents and remaining DHCP/router helpers | Stop the users of the database and messaging first. |
-| 2 | Proxies/API VIP services, then RabbitMQ | Applications have stopped using these services. |
-| 3 | MariaDB on node1, then node2, then node3 | Stop the database last and record each member's clean exit and position. |
+| Order | What stops |
+|---|---|
+| First | OpenStack applications, workers, agents and DHCP/router helpers |
+| Next | Proxies/API VIP services, then RabbitMQ |
+| Last | MariaDB on node1, node2, then node3; each clean exit and database position is checked |
 
-This can take several minutes. Progress and a private report are printed. **Ubuntu is still running at this point.** Wait for:
+This can take several minutes. **Ubuntu stays on.** Continue only after:
 
 ```text
 RESULT: READY_FOR_MANUAL_POWEROFF
 ```
 
-This means the service-stop and database-position checks passed. **Node3 was the last database/broker member stopped.** It does not mean the hosts are powered off.
-
-If you get `SHUTDOWN_NEEDS_REVIEW`, leave the hosts on and keep the report. Use [the interrupted-shutdown section](#only-if-shutdown-is-interrupted); do not repeat the normal apply or proceed to poweroff.
+If shutdown needs review, keep the hosts on and use [the interrupted-shutdown reference](#only-if-shutdown-is-interrupted).
 
 ### 2. Power off Ubuntu
-
-Only after `READY_FOR_MANUAL_POWEROFF`:
 
 ```bash
 bash scripts/lab-poweroff.sh --apply
 ```
 
-Type **`POWER OFF ALL NODES`** and enter joe's sudo passwords. The script checks the completed service-stop record, verifies that containers and VM processes are stopped, then schedules normal Ubuntu poweroff in **one minute** on each node.
+Type **`POWER OFF ALL NODES`**. The script verifies the completed service-stop record and schedules normal Ubuntu poweroff in **one minute** on each host. Wait until all three physical hosts are off before removing electricity.
 
-Wait until **all three physical hosts are off** before removing electricity. Acknowledged shutdown requests are not proof that the machines have finished powering off. If a request fails, earlier hosts may already have poweroff scheduled; keep the output and review it.
-
-A separate `lab-shutdown.py --check` is optional: `--apply` already checks readiness. **`--finish` is not part of a normal successful shutdown.**
+`lab-shutdown.py --check` is optional: `--apply` already performs its checks. **`--finish` is only for a reviewed interrupted shutdown.**
 
 <a id="1-check-after-power-on"></a>
 
@@ -78,11 +67,9 @@ A separate `lab-shutdown.py --check` is optional: `--apply` already checks readi
 
 ### 3. Start the hosts
 
-1. Power on **node3** first: it was the last database/broker member stopped by the procedure above.
-2. Power on **node2 and node1**. Do not wait for a healthy database before starting them.
-3. Let all three Ubuntu hosts boot, then run the check from R2d2.
-
-Starting node3 first does **not** itself bootstrap Galera. A complete database shutdown can require coordinated recovery to form a Primary cluster again. This is different from losing just one member while the others remain online.
+1. Power on **node3 first**. It is the last database/broker member stopped by the procedure above.
+2. Power on **node2 and node1**. Let all three Ubuntu hosts boot.
+3. Continue from R2d2. Starting node3 first does not itself recover the database cluster.
 
 ### 4. Read the live dashboard
 
@@ -90,40 +77,36 @@ Starting node3 first does **not** itself bootstrap Galera. A complete database s
 bash scripts/lab-recover.sh --check
 ```
 
-This collects the existing service/agent checks and displays a short summary. It changes no services. Enter joe's sudo password for each node. Healthy groups show one PASS line; failed groups name the node and container. The full by-node tables remain available in the optional reference.
+This is read-only. Enter joe's sudo password for each node. Read **Galera and RabbitMQ first**, then containers, APIs and service/agent heartbeats.
 
-| Output | Plain meaning |
+| What you see | Meaning / next action |
 |---|---|
-| `PASS` | That check passed. |
-| `FAIL` | The observed check did not pass. The affected node/container is shown. |
-| `BLOCKED` | The check could not finish or its dependency was unavailable. It does not prove the service is down. |
-| `EXITED exit=0` | The container stopped without reporting an error; it is not currently serving requests. |
-| `running/unhealthy` | A process is running, but its configured healthcheck is failing. |
-| `running/starting` | Startup has not finished yet. |
+| `PASS` | That check passed; leave it alone. |
+| `FAIL` | A named check did not pass; follow its component below. |
+| `BLOCKED` | The check could not finish; this is not proof the component is down. |
+| Container `EXITED` | Its process is stopped. Exit 0 means it stopped without reporting an error. |
+| Container `running/unhealthy` | Its process runs, but its healthcheck fails. |
+| Container `running/starting` | Startup is still being checked. Observe before choosing a restart. |
+| Service `DOWN` / agent `alive=False` | OpenStack is not receiving a current heartbeat, even if the container is healthy. |
+| Service `disabled` | It is excluded from new scheduling work. This is separate from whether it is UP or DOWN. |
 
-Read **MariaDB/Galera first**, then APIs and service/agent heartbeats. If the database is unavailable, several API checks can fail together; that alone does not establish a separate fault in each service. `Horizon` showing a login page is not enough to prove the cloud is working.
+**Container health, service heartbeat and scheduling permission are three different checks.** A healthy container alone does not prove that the service is communicating with OpenStack.
 
-- **`REBOOT_SERVICES_HEALTHY`:** stop here; no repair is needed.
-- **`REBOOT_SERVICES_NEED_REVIEW`:** use the recovery step below for supported failures.
-- **`REBOOT_RECOVERY_NEEDS_REVIEW`:** the checker could not finish; read its error first.
-
-The report path is printed under `reports/`. Share the short **TXT** report when review is needed; you do not need to read the JSON.
+If the result is **`REBOOT_SERVICES_HEALTHY`**, stop here. Otherwise, follow only the relevant repair below. The printed TXT report identifies failures; JSON is optional technical detail.
 
 ## Recover only what needs repair
 
-Follow the same dependency order as the [previous lab's runbook](https://github.com/DinosaurKeys/openstack-zero-to-hero/blob/main/docs/openstack-reboot-and-recovery-runbook.md): **MariaDB → ProxySQL → Placement → control services → API and agent checks**.
-
 <a id="5-mariadb-cold-boot-recovery"></a>
 
-### 5. Recover the database — only if needed
+### 5. Recover MariaDB — only when needed
 
-| MariaDB/Galera result | Action |
+| Galera result | Action |
 |---|---|
-| All three Synced/Primary, connected/ready, size 3 and same UUID | **Skip this step.** Leave the database running. |
-| All three database containers confirmed stopped, with exit 0, after a whole-lab shutdown | Review this state, then run coordinated Kolla recovery below. |
-| A Primary survives, a node is unreachable, or the state is partial/starting/unclear | Return the report for review. Do not select a bootstrap member or restart all database members blindly. |
+| All three Synced/Primary, size 3, connected/ready, same cluster UUID | Skip database recovery. |
+| All three MariaDB containers confirmed stopped with exit 0 after a whole-lab shutdown | Use the coordinated recovery command below. |
+| A Primary member survives, a node is unreachable, or state is partial/unclear | Review the report first; this is not the complete-outage procedure. |
 
-For the reviewed complete database outage, run once from R2d2:
+For the reviewed complete database outage, run once on R2d2:
 
 ```bash
 source /home/joe/venvs/kolla/bin/activate
@@ -134,187 +117,174 @@ ANSIBLE_BECOME_ASK_PASS=True kolla-ansible mariadb-recovery \
   -e ansible_python_interpreter=/usr/bin/python3
 ```
 
-Kolla checks the recovery positions, chooses the starting member and rejoins the others. **No separate manual MariaDB restart is needed first.** Do not edit `grastate.dat`, force `safe_to_bootstrap`, or run `galera_new_cluster` yourself.
+Kolla checks database positions and coordinates recovery. **Do not manually restart all MariaDB containers first.** Do not select a bootstrap node or edit `grastate.dat` yourself.
 
-Require `failed=0` and `unreachable=0` for all three nodes, then check:
-
-```bash
-bash scripts/lab-recover.sh --check
-```
-
-Continue only when Galera is **3/3 Synced/Primary, size 3, connected/ready, same UUID**, and ProxySQL/RabbitMQ checks pass. If recovery fails, keep the output and return it; do not repeat recovery or delete database volumes.
+Require `failed=0` and `unreachable=0` for all nodes, then run the dashboard again. Continue only with **3/3 Synced/Primary**, size 3, same UUID and healthy RabbitMQ/ProxySQL. If recovery fails, keep its report instead of repeating it.
 
 ### 6. Recover failed control services
 
-When the database is healthy but control services remain stopped or unhealthy:
+When Galera, RabbitMQ and the proxies are healthy but API/control containers fail:
 
 ```bash
 bash scripts/lab-recover.sh --apply
 ```
 
-The command checks all three nodes again, leaves healthy MariaDB running, and prints a small plan table. Each cell shows the observed state and proposed action:
+Review the node/container plan and type **`RESTART LISTED SERVICES`**. Healthy containers are skipped; each approved failed target gets at most one restart. Starting targets are observed first. **DEFER** means no restart was sent and the target still needs checking.
 
-| Cell | What it will do |
+| This helper can restart | It leaves for manual review |
 |---|---|
-| `healthy / skip` | Leave that service running. |
-| `unhealthy / restart` or `stopped / restart` | Request one restart of that exact Kolla service, then wait for it to become healthy. |
-| `starting / wait` | Observe this service when its turn comes. If it becomes healthy, skip it. If it stops or becomes unhealthy, it is eligible for one approved restart. |
+| Placement API; Nova API, metadata, conductor and scheduler; Neutron server, RPC server and periodic worker; Cinder API | Nova compute/libvirt, Neutron agents, Cinder scheduler/volume, identity/image/dashboard services, proxies and RabbitMQ |
 
-Review the named containers and nodes, then type **`RESTART LISTED SERVICES`** to approve. For a preview without changes, `bash scripts/lab-recover.sh --plan` is optional; a separate plan run is not required.
+The helper checks all services and agents at the end, but its automatic restart list covers **control containers only**. A final failure is not necessarily another API failure.
 
-The supported containers are **Placement; Nova API, metadata, conductor and scheduler; Neutron server, RPC server and periodic worker; Cinder API**. There are at most 27 candidates across the three nodes; healthy services are skipped. Placement and the failed APIs are handled before the background workers.
+**If it reports `Control-container restart targets: 0`, stop repeating `--apply`.** Use step 7 for any named compute or agent failures. The helper does not restart a healthy container just because its service heartbeat is DOWN, and it does not enable disabled computes.
 
-A starting control worker does not block unrelated approved repairs. The command waits up to 90 seconds for a starting target at its turn. If it is still starting, it prints **DEFER**, sends no restart for that target, and continues the other approved repairs. The root helper checks again immediately before restarting, so a newly starting process is also left alone.
+`--plan` is an optional read-only preview of the supported container restarts. A missing observation, changed identity or uncertain restart outcome stops automatic repair. Keep the report and progress records.
 
-The final dashboard still reports deferred or failed services as needing attention. **DEFER does not mean repaired.** Missing observations, changed identities or failed database/broker/proxy dependencies stop the procedure. A failed restart or unknown outcome stops further repairs and preserves its progress record; return the report instead of repeatedly applying or deleting that record.
+<a id="manual-reference"></a>
+<a id="2-read-the-result-and-choose-the-action"></a>
+<a id="if-a-cluster-check-fails"></a>
+<a id="3-restart-one-failed-service-or-agent"></a>
+<a id="manual-service-and-agent-restarts"></a>
 
-This step does not restart ProxySQL, RabbitMQ, compute/libvirt, network agents or Cinder volume services, and does not enable disabled computes. Those require separate review if their checks fail. VM and migration records remain unchanged.
+### 7. Restart one failed service or agent manually
 
-## What a healthy result means
+**Use a fresh dashboard to choose one node and one component.** First check its log and dependencies. A DOWN heartbeat with a healthy container does not establish the cause. Repair one selected component, then check its heartbeat before moving on.
 
-Successful verification ends with:
+Restarting compute/agent processes can interrupt management or network activity. Keep VM/migration/storage operations paused during this procedure.
 
-```text
-RESULT: REBOOT_SERVICES_HEALTHY
+#### A. Connect to the affected node
+
+Choose **one** connection from R2d2:
+
+| Node | Command |
+|---|---|
+| node1 | `ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200` |
+| node2 | `ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.201` |
+| node3 | `ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.202` |
+
+Run `hostname -s` to confirm the node. An eventual **“Connection … closed”** after `exit` is normal.
+
+#### B. Inspect the selected component
+
+Example: `nova_compute`. Change only the first line to a container name from the table below:
+
+```bash
+lab_service=nova_compute
+lab_unit="kolla-${lab_service}-container.service"
+sudo systemctl status "$lab_unit" --no-pager
+sudo docker inspect --format 'State={{.State.Status}} Health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$lab_service"
+sudo journalctl -u "$lab_unit" -n 30 --no-pager
 ```
 
-| Component | Required result |
-|---|---|
-| Hosts | node1/node2/node3 accessible; expected clock and USB/br-ex checks pass |
-| MariaDB/Galera | 3 Synced/Primary members, connected/ready, size 3, same UUID |
-| RabbitMQ | 3 running members, no alarms or partitions |
-| API VIP | Exactly one owner of `192.168.0.151` |
-| Core containers | Running and healthy where a healthcheck exists; Glance on node1 only |
-| HTTPS | Authentication, Horizon and the image/compute/network/volume/placement reads pass |
-| Nova and hypervisors | 9 expected Nova services and 3 hypervisors up/enabled |
-| Cinder | 6 expected scheduler/volume services up/enabled |
-| Neutron | 12 expected agents alive/enabled; router one active and two standby |
+`systemctl`/Docker show the process and its startup history. **The application log shows why the service may not be communicating.** For a running container, use the matching read command:
 
-This confirms **cluster service recovery**. It does not start a VM, repair a migration, prove guest traffic, or verify guest data. Those remain separate exercises. If APIs pass but an agent heartbeat is down, the final result still needs review; the helper does not silently restart that agent.
+| Dashboard component | `lab_service` | Application log command on that node |
+|---|---|---|
+| `nova-compute` | `nova_compute` | `sudo docker exec nova_compute tail -n 40 /var/log/kolla/nova/nova-compute.log` |
+| Open vSwitch agent | `neutron_openvswitch_agent` | `sudo docker exec neutron_openvswitch_agent tail -n 40 /var/log/kolla/neutron/neutron-openvswitch-agent.log` |
+| Router / L3 agent | `neutron_l3_agent` | `sudo docker exec neutron_l3_agent tail -n 40 /var/log/kolla/neutron/neutron-l3-agent.log` |
+| DHCP agent | `neutron_dhcp_agent` | `sudo docker exec neutron_dhcp_agent tail -n 40 /var/log/kolla/neutron/neutron-dhcp-agent.log` |
+| Metadata agent | `neutron_metadata_agent` | `sudo docker exec neutron_metadata_agent tail -n 40 /var/log/kolla/neutron/neutron-metadata-agent.log` |
+
+If the container is stopped, `docker exec` cannot run. Read `sudo docker logs --tail 40 "$lab_service"` and its journal instead. Log excerpts can contain private information; review before sharing.
+
+For **Nova compute**, require a working libvirt connection before choosing a compute restart. This read-only query checks the configured local libvirt service can answer:
+
+```bash
+sudo docker exec --user root nova_libvirt virsh --readonly -c qemu:///system list --all
+```
+
+This does not prove Nova's separate authenticated libvirt connection works; use the compute log for its connection errors. For **Neutron agents**, require healthy RabbitMQ/control services and Open vSwitch first. A failed libvirt, OVS or broker dependency needs its own repair; repeatedly restarting its client is not a fix.
+
+#### C. Restart the selected unit once
+
+After reviewing that node/component and its dependencies, run on the affected node:
+
+```bash
+sudo systemctl restart "$lab_unit"
+sudo systemctl is-active "$lab_unit"
+sudo docker inspect --format 'State={{.State.Status}} Health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$lab_service"
+```
+
+Example: `lab_service=nova_compute` restarts **`kolla-nova_compute-container.service`**. Selecting `neutron_l3_agent` restarts **`kolla-neutron_l3_agent-container.service`**. Underscores matter.
+
+A successful restart command means systemd accepted the operation; startup and heartbeats still need verification. Allow startup to finish. If it exits again, remains unhealthy or still has a DOWN heartbeat, keep the new errors and stop repeating restarts.
+
+**A disabled compute needs a separate decision.** Return to R2d2 with `exit`, then read its reason:
+
+```bash
+/usr/bin/python3 scripts/lab-view.py compute-services --table
+```
+
+First recover the heartbeat to UP. If it remains **UP/disabled**, review the reason before enabling scheduling; it may be deliberately in maintenance. An unknown reason is not permission to enable it. Enabling scheduling does not repair a DOWN service.
+
+#### Other application containers
+
+The same `lab_service`/Kolla-unit procedure applies after selecting the failed component:
+
+| Component | Container names — choose one |
+|---|---|
+| Placement | `placement_api` |
+| Nova control | `nova_api`, `nova_metadata`, `nova_conductor`, `nova_scheduler` |
+| Neutron control | `neutron_server`, `neutron_rpc_server`, `neutron_periodic_worker` |
+| Cinder control | `cinder_api`, `cinder_scheduler` |
+| Identity | `keystone_api`, `keystone_fernet`, `keystone_ssh` |
+| Images — node1 only | `glance_api` |
+| Dashboard | `horizon` |
+
+**Review infrastructure separately:** MariaDB, ProxySQL, RabbitMQ, HAProxy/Keepalived, `nova_libvirt`, `cinder_volume`, `openvswitch_db` and `openvswitch_vswitchd`. Their restart impact differs from a client/agent restart. Do not restart Docker, every container or every node as a substitute for selecting the failed component.
+
+<a id="6-confirm-service-recovery"></a>
+<a id="what-a-healthy-result-means"></a>
+
+### 8. Confirm recovery
+
+If still connected to a node, run `exit` to return to R2d2. Then:
+
+```bash
+bash scripts/lab-recover.sh --check
+```
+
+| Required result | What it proves |
+|---|---|
+| Galera: 3/3 Synced/Primary, size 3, same UUID | The three database members are ready and in the same cluster. |
+| RabbitMQ: 3 members, no alarms/partitions | The broker cluster checks passed. |
+| Containers and HTTPS checks PASS | Expected processes/healthchecks and authenticated API reads passed. |
+| Nova: 9/9 UP/enabled; hypervisors: 3/3 UP/enabled | Compute/control heartbeats and scheduling state passed. |
+| Cinder: 6/6 UP/enabled | Scheduler/volume service heartbeats passed. |
+| Neutron: 12/12 alive/enabled | All expected network agents are reporting. |
+| Router: one active/two standby **and all hosting L3 agents UP/enabled** | Router placement and hosting-agent checks passed. |
+| Exactly one API VIP owner | `192.168.0.151` is held by one host. |
+
+Finish when the result is **`REBOOT_SERVICES_HEALTHY`**. This covers cluster services; VM startup, guest traffic/data and migration remain separate checks. Horizon's **System Information** page also provides **Compute Services** and **Network Agents** tabs for viewing service state; these views do not restart Kolla containers.
 
 <a id="finish-an-interrupted-network-helper-stop"></a>
 
 ## Only if shutdown is interrupted
 
 <details>
-<summary>Open only for a reviewed interruption in the DHCP/router-helper shutdown stage</summary>
+<summary>Continue a reviewed interruption in the DHCP/router-helper stage</summary>
 
-Keep the private TXT report and saved progress file. Some services may already be stopped.
+Keep the hosts on and retain the TXT report and saved progress file. After reviewing that stage:
 
 ```bash
 /usr/bin/python3 scripts/lab-shutdown.py --finish
 ```
 
-`--finish` checks the saved stage and current state on all three nodes, then asks for confirmation. It skips the completed first service-stop stage and continues with the remaining helpers, proxies, RabbitMQ and MariaDB. Ubuntu stays on.
-
-It is not a general retry: another failure stage, unhealthy dependencies, active VMs/clients or unclear progress blocks it. Do not delete the saved progress file. After `READY_FOR_MANUAL_POWEROFF`, use **step 2**. If it fails, keep the hosts on and return the report.
-
-</details>
-
-<a id="2-read-the-result-and-choose-the-action"></a>
-<a id="if-a-cluster-check-fails"></a>
-
-## Manual reference
-
-Use these commands only for a separately reviewed component. The normal recovery command above already checks and verifies its supported repairs.
-
-- A healthy container with a `DOWN` service heartbeat needs application/dependency review.
-- `disabled` needs its disable reason reviewed; restarting does not authorize enabling it.
-- `running/no-check` means process-only evidence, not a successful application healthcheck.
-- Recent Galera log views are labelled with their log time; they are not live SQL status.
-
-<a id="3-restart-one-failed-service-or-agent"></a>
-
-### Restart one failed service or agent
-
-<details>
-<summary>Open only after selecting and approving the failed node/container</summary>
-
-Connect from R2d2 to the affected node. Example: **node2**:
-
-```bash
-ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.201
-```
-
-On that node, confirm the hostname and select **one** reviewed container. Example: `nova_compute`:
-
-```bash
-hostname -s
-lab_service=nova_compute
-lab_unit="kolla-${lab_service}-container.service"
-sudo systemctl status "$lab_unit" --no-pager
-sudo journalctl -u "$lab_unit" -n 40 --no-pager
-```
-
-After approval of that exact node/service:
-
-```bash
-sudo systemctl restart "$lab_unit"
-sudo systemctl is-active "$lab_unit"
-sudo docker inspect --format 'State={{.State.Status}} Health={{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' "$lab_service"
-```
-
-Allow startup to finish. If it remains unhealthy or exits again, review its new errors rather than repeatedly restarting it. Return to R2d2:
-
-```bash
-exit
-/usr/bin/python3 scripts/lab-reboot-verify.py --check
-```
-
-Require both container health and the relevant API/service/agent checks to recover. Do not replace one selected restart with a restart of Docker, `kolla.target` or every container.
-
-| Component | Container names — select one |
-|---|---|
-| Identity | `keystone_api`, `keystone_fernet`, `keystone_ssh` |
-| Images — node1 only | `glance_api` |
-| Placement | `placement_api` |
-| Compute APIs/workers | `nova_api`, `nova_metadata`, `nova_scheduler`, `nova_conductor`, `nova_compute` |
-| Network APIs/workers | `neutron_server`, `neutron_rpc_server`, `neutron_periodic_worker` |
-| Volume APIs/workers | `cinder_api`, `cinder_scheduler` |
-| Dashboard | `horizon` |
-| DHCP agent | `neutron_dhcp_agent` |
-| Router agent | `neutron_l3_agent` |
-| Open vSwitch agent | `neutron_openvswitch_agent` |
-| Metadata agent | `neutron_metadata_agent` |
-
-For these main containers, the unit pattern is **`kolla-CONTAINER_NAME-container.service`**, preserving underscores. For example, DHCP uses `kolla-neutron_dhcp_agent-container.service`.
-
-**Infrastructure needs its own impact review:** `mariadb`, `proxysql`, `rabbitmq`, `haproxy`, `keepalived`, `nova_libvirt`, `cinder_volume`, `openvswitch_db`, `openvswitch_vswitchd`. Do not treat these as ordinary application restarts. Router-agent recovery alone does not prove forwarding or restart every router helper. Local Cinder storage and running VMs require separate consideration.
+This checks the saved stage and current state, asks for confirmation, skips the completed initial stop and continues stopping the remaining services. It is not a general retry. After `READY_FOR_MANUAL_POWEROFF`, use step 2. If it fails, keep the hosts on and return the report; retain progress records.
 
 </details>
 
 <a id="4-supported-api-recovery-helper"></a>
-
-### Fixed API recovery profile
-
-<details>
-<summary>Special-purpose helper; use lab-recover.sh for this runbook</summary>
-
-Use **lab-recover.sh** for the reboot procedure on this page. `lab-recover-api.py` has a separate fixed 14-container scope and does not include all Nova control workers. It retains its original scope and progress file; do not delete that file or rerun a completed apply to force another repair.
-
-The reboot helper keeps its own progress records and preserves existing API and VM/migration records.
-
-</details>
-
-<a id="6-confirm-service-recovery"></a>
-
-The recovery command already performs a final service/agent dashboard. For a later independent snapshot, run `bash scripts/lab-recover.sh --check`. A healthy container alone does not prove application operation.
-
 <a id="8-optional-service-and-agent-views"></a>
 
-### Extra checks and component views
+## Extra views and references
 
 <details>
-<summary>Extra checks, saved reports and individual component views</summary>
+<summary>Individual components, full tables and saved reports</summary>
 
-| Optional command | Purpose |
-|---|---|
-| `/usr/bin/python3 scripts/lab-reboot-verify.py --check --details` | Show the full by-node tables instead of the grouped summary. Also works with `--report FILE --details` to redisplay saved tables. |
-| `/usr/bin/python3 scripts/lab-shutdown.py --check` | Preview shutdown readiness without stopping services; already included in normal `--apply`. |
-| `bash scripts/lab-poweroff.sh --check` | Check readiness for final host poweroff without scheduling it. |
-| `/usr/bin/python3 scripts/lab-reboot-verify.py --report reports/reboot-verify-TIMESTAMP-ID.json` | Redisplay an actual saved report; labelled SAVED SNAPSHOT, with no new lab checks. |
-
-Individual service views:
+Run on R2d2:
 
 ```bash
 /usr/bin/python3 scripts/lab-view.py compute-services --table
@@ -324,38 +294,26 @@ Individual service views:
 /usr/bin/python3 scripts/lab-view.py router
 ```
 
-Target: expected services/hypervisors up and enabled, all twelve expected Neutron agents alive/enabled, router one active/two standby. A service restart is not permission to enable a disabled service. Heartbeats do not prove guest traffic or storage operation.
+For full node/container tables, use `/usr/bin/python3 scripts/lab-reboot-verify.py --check --details`. `--report` with the actual saved JSON path redisplays a **saved snapshot**, without checking the lab again. `--with-workload` adds separate read-only VM/guest/migration checks; it performs no recovery.
 
-Only when workload verification is separately requested:
-
-```bash
-/usr/bin/python3 scripts/lab-reboot-verify.py --check --with-workload
-```
-
-This adds read-only VM/runtime/guest/data/migration checks. It does not start VMs, mount/format data, change attachments, retry migrations or clear records.
-
-| Node | Management IP |
-|---|---|
-| node1 | `192.168.0.200` |
-| node2 | `192.168.0.201` |
-| node3 | `192.168.0.202` |
-
-API VIP: **192.168.0.151**. The API VIP and virtual-router HA are separate. Local VM root disks, Cinder LVM and node1's Glance storage are not replicated; no automatic VM recovery is provided.
+The older `lab-recover-api.py` is a separate fixed 14-container helper. Use `lab-recover.sh` for this runbook; keep existing receipts and VM/migration records.
 
 </details>
 
 <details>
 <summary>Reboot just one host</summary>
 
-Run the live cluster check first. Review that node's VMs/storage and approve the interruption separately. Cleanly shut down its guests, or use a separately verified migration plan. Example for **node1**, from R2d2:
+Check the cluster and review that node's VMs and local storage first. Cleanly stop its guests, or use a separately verified migration. For the selected **node1**, from R2d2:
 
 ```bash
 ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200 \
   'test "$(hostname -s)" = node1 && sudo reboot'
 ```
 
-Wait for that node to return, then run the live cluster check again before touching another node. The full service-stop/poweroff procedure above is for a whole-lab outage, not a rolling reboot.
+Wait for the host to return, then run the dashboard before touching another node. The whole-lab shutdown procedure is separate.
 
 </details>
 
-[Pinned Kolla systemd units](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/module_utils/kolla_systemd_worker.py) · [Pinned MariaDB recovery](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/mariadb/tasks/recover_cluster.yml)
+Local VM root disks, Cinder LVM and node1's Glance storage are not replicated. Cluster service HA does not provide storage HA or automatic VM recovery.
+
+[Operating Kolla](https://docs.openstack.org/kolla-ansible/2026.2/user/operating-kolla.html) · [Pinned Kolla systemd units](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/module_utils/kolla_systemd_worker.py) · [Pinned MariaDB recovery](https://github.com/openstack/kolla-ansible/blob/4b493ef36ace2b90257ecf94feb00e2c6e8014c9/ansible/roles/mariadb/tasks/recover_cluster.yml)
