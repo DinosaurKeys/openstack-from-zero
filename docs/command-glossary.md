@@ -34,14 +34,24 @@ git pull --ff-only
 | Images | `/usr/bin/python3 scripts/lab-view.py images` | `active` means available for boot, not that a VM booted |
 | VM sizes | `/usr/bin/python3 scripts/lab-view.py flavors` | RAM in MB, disk in GB, vCPUs |
 | Guest firewall rules | `/usr/bin/python3 scripts/lab-view.py security-groups` | Direction, protocol, ports and allowed source CIDR |
-| VMs | `/usr/bin/python3 scripts/lab-view.py servers` | Name, status and assigned addresses; read actual placement and addresses |
+| VMs across projects | `/usr/bin/python3 scripts/lab-view.py servers --table --all-projects` | Name, Nova status, compute host and VM ID; requires admin policy access |
 | Floating IPs | `/usr/bin/python3 scripts/lab-view.py floating-ips` | External IP, mapped private IP and status |
-| Volumes | `/usr/bin/python3 scripts/lab-view.py volumes` | Size, status and attachments; a root disk on local compute storage is not listed here |
+| Volumes across projects | `/usr/bin/python3 scripts/lab-view.py volumes --table --all-projects` | Size, status, storage backend, attached VM ID and volume ID; local VM root disks are not listed here |
 | Nova services | `/usr/bin/python3 scripts/lab-view.py compute-services --table` | Service host, heartbeat `up` and administrative state `enabled` |
 | Hypervisors | `/usr/bin/python3 scripts/lab-view.py hypervisors --table` | Three compute hosts, each enabled/up |
 | Cinder services | `/usr/bin/python3 scripts/lab-view.py cinder-services --table` | Three scheduler and three volume services, each enabled/up |
 
 These are fresh API reads; a list command does not test end-to-end operation. Keep credentials private: do not print `clouds.yaml`, openrc files or token values.
+
+Omit `--all-projects` to use the current project. Omit `--table` for the existing JSON view, including VM addresses. `ACTIVE` is Nova's reported state; the [migration preview](phase-05/E-vm-migration.md) also checks actual runtime before a move.
+
+For all container names/states on the three nodes, run **on R2d2**:
+
+```bash
+bash scripts/lab-containers.sh
+```
+
+Add `node1`, `node2` or `node3` to view only that node. This is a read-only SSH/Docker view, including stopped containers. VMs are guests; Docker containers are the OpenStack services. The individual host commands below remain available.
 
 ## 2. Host components — connect from R2d2
 
