@@ -176,6 +176,18 @@ class HealthTests(unittest.TestCase):
         data=agents();self.assertTrue(h.neutron_health(data)[0]);data[-1]['alive']=False
         self.assertFalse(h.neutron_health(data)[0]);self.assertFalse(h.neutron_health(data[:-1])[0])
 
+    def test_cinder_validation_preserves_backend_hosts_and_detects_down_or_duplicate(self):
+        rows=services(('cinder-scheduler','cinder-volume'))
+        for row in rows:
+            if row['binary']=='cinder-volume':row['host']+='@lvm-1'
+        before=json.dumps(rows,sort_keys=True)
+        ok,observed=h.cinder_service_health(rows)
+        self.assertTrue(ok)
+        self.assertEqual([v['host'] for v in observed if v['binary']=='cinder-volume'],['node1@lvm-1','node2@lvm-1','node3@lvm-1'])
+        self.assertEqual(json.dumps(rows,sort_keys=True),before)
+        self.assertFalse(h.cinder_service_health(rows+rows[-1:])[0])
+        rows[-1]['state']='down';self.assertFalse(h.cinder_service_health(rows)[0])
+
     def test_pending_migration_preserved_byte_for_byte(self):
         with tempfile.TemporaryDirectory() as folder,patch.object(h,'REPO',Path(folder)):
             path=Path(folder)/'private/phase5/move-vm-state.json';path.parent.mkdir(parents=True)
@@ -234,6 +246,8 @@ class HealthTests(unittest.TestCase):
           urls['network']+'/v2.0/routers/'+ROUTER+'/l3-agents':{'agents':[{'host':node,'alive':True,'admin_state_up':True,'ha_state':'active' if node=='node2' else 'standby'} for node in h.NODES]},
           urls['compute']+'/servers/'+SERVER:{'server':{'id':SERVER,'status':'ACTIVE','OS-EXT-STS:task_state':None,'OS-EXT-SRV-ATTR:host':'node1','os-extended-volumes:volumes_attached':[{'id':VOLUME}]}},
           urls['block-storage']+'/volumes/'+VOLUME:{'volume':{'id':VOLUME,'status':'in-use','attachments':[{'server_id':SERVER}],'os-vol-host-attr:host':'node3@lvm-1#lvm-1'}}}
+        for row in api_data[urls['block-storage']+'/os-services']['services']:
+            if row['binary']=='cinder-volume':row['host']+='@lvm-1'
         for service,(path,key) in h.access.API_PATHS.items():api_data[urls[service]+'/'+path]={key:[]}
         class Client:
             def horizon(self):return {'https_verified':True,'login_form_present':True}
@@ -250,6 +264,7 @@ class HealthTests(unittest.TestCase):
         with patch.object(h.deploy.validation,'local_checks',return_value=('inventory','config')),patch.object(h.prep,'authenticate',return_value=(original,PROJECT,USER)),patch.object(h,'read_private',side_effect=lambda p:states[p.name]):
             rows=[];details={};h.api_checks(rows,details,{})
             self.assertTrue(all(r['status']=='PASS' for r in rows),rows)
+            self.assertIn('node3@lvm-1',[row['host'] for row in details['Cinder services']])
             self.assertNotIn(original.token,json.dumps(details))
             mode[0]='image-down';api_data[urls['compute']+'/servers/'+SERVER]['server']['status']='ERROR'
             rows=[];details={};h.api_checks(rows,details,{})
