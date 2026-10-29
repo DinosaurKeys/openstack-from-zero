@@ -19,14 +19,16 @@ QUERIES = {
     'images': ('image', 'v2/images?limit=100', 'images', ('id', 'name', 'status', 'size', 'disk_format', 'min_disk', 'min_ram')),
     'flavors': ('compute', 'flavors/detail?limit=100', 'flavors', ('id', 'name', 'vcpus', 'ram', 'disk', 'os-flavor-access:is_public')),
     'security-groups': ('network', 'v2.0/security-groups', 'security_groups', ('id', 'name', 'description', 'security_group_rules')),
-    'servers': ('compute', 'servers/detail?limit=100', 'servers', ('id', 'name', 'status', 'addresses', 'OS-EXT-SRV-ATTR:host')),
-    'volumes': ('block-storage', 'volumes/detail?limit=100', 'volumes', ('id', 'name', 'status', 'size', 'attachments')),
+    'servers': ('compute', 'servers/detail?limit=100', 'servers', ('id', 'name', 'status', 'addresses', 'OS-EXT-SRV-ATTR:host', 'tenant_id')),
+    'volumes': ('block-storage', 'volumes/detail?limit=100', 'volumes', ('id', 'name', 'status', 'size', 'attachments', 'os-vol-host-attr:host', 'os-vol-tenant-attr:tenant_id')),
     'compute-services': ('compute', 'os-services', 'services', ('id', 'binary', 'host', 'zone', 'status', 'state', 'disabled_reason')),
     'hypervisors': ('compute', 'os-hypervisors/detail', 'hypervisors', ('id', 'hypervisor_hostname', 'state', 'status')),
     'cinder-services': ('block-storage', 'os-services', 'services', ('binary', 'host', 'zone', 'status', 'state')),
     'floating-ips': ('network', 'v2.0/floatingips', 'floatingips', ('id', 'floating_ip_address', 'fixed_ip_address', 'port_id', 'router_id', 'status')),
 }
 TABLES = {
+    'servers': ('servers', (('Name','name'),('Status (Nova)','status'),('Compute host','OS-EXT-SRV-ATTR:host'),('VM ID','id'))),
+    'volumes': ('volumes', (('Name','name'),('Status','status'),('GiB','size'),('Storage backend','os-vol-host-attr:host'),('Attached VM ID','attachments'),('Volume ID','id'))),
     'compute-services': ('services', (('Host','host'),('Service','binary'),('Enabled state','status'),('Heartbeat','state'),('Disabled reason','disabled_reason'))),
     'cinder-services': ('services', (('Host','host'),('Service','binary'),('Enabled state','status'),('Heartbeat','state'))),
     'hypervisors': ('hypervisors', (('Host','hypervisor_hostname'),('Enabled state','status'),('State','state'))),
@@ -39,13 +41,22 @@ def table(what, result):
     def cell(value):
         if type(value) is bool:return 'yes' if value else 'no'
         return re.sub(r'[\x00-\x1f\x7f]', '?', str(value if value is not None else 'unknown'))[:100]
+    def value(row,field):
+        if what=='volumes' and field=='attachments':
+            items=row.get(field)
+            if not isinstance(items,list):return 'unknown'
+            if not items:return '-'
+            return ', '.join(str(v.get('server_id') or 'unknown') if isinstance(v,dict) else 'unknown' for v in items)
+        if field=='disabled_reason' and row.get('status')=='enabled' and row.get(field) is None:return '-'
+        return row.get(field)
     rows = [[heading for heading,_ in columns]]
-    rows += [['-' if field=='disabled_reason' and row.get('status')=='enabled' and row.get(field) is None else cell(row.get(field)) for _,field in columns] for row in result[key]]
+    rows += [[cell(value(row,field)) for _,field in columns] for row in result[key]]
     widths = [max(len(row[i]) for row in rows) for i in range(len(columns))]
     return '\n'.join(' | '.join(value.ljust(widths[i]) for i,value in enumerate(row)).rstrip() for row in rows)
 
 
-def collect(api, what):
+def collect(api, what, all_projects=False):
+    if all_projects and what not in ('servers','volumes'):raise RuntimeError('All-projects is supported only for servers and volumes')
     if what == 'router':
         routers = api.list('network', 'v2.0/routers?name=lab-router', 'routers')
         routers = [r for r in routers if r.get('name') == 'lab-router']
@@ -58,21 +69,25 @@ def collect(api, what):
                 'ports': [{k: p.get(k) for k in ('id', 'device_owner', 'fixed_ips', 'status')} for p in ports if p.get('device_id') == identifier],
                 'hosting_agents': [{k: a.get(k) for k in ('host', 'alive', 'admin_state_up', 'ha_state')} for a in agents]}
     service, path, key, fields = QUERIES[what]
+    if all_projects:path+='&all_tenants=1'
     return {key: [{k: obj.get(k) for k in fields} for obj in api.list(service, path, key)]}
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('object', choices=['router', *QUERIES]); p.add_argument('--table', action='store_true', help='compact services, hypervisors or agents table'); args = p.parse_args(argv)
-    if args.table and args.object not in TABLES:p.error('--table supports compute-services, hypervisors, cinder-services and agents')
+    p.add_argument('object', choices=['router', *QUERIES]); p.add_argument('--table', action='store_true', help='compact VM, volume, service, hypervisor or agent table')
+    p.add_argument('--all-projects', action='store_true', help='list VMs or volumes across projects; requires admin policy access')
+    args = p.parse_args(argv)
+    if args.table and args.object not in TABLES:p.error('--table supports servers, volumes, compute-services, hypervisors, cinder-services and agents')
+    if args.all_projects and args.object not in ('servers','volumes'):p.error('--all-projects supports servers and volumes only')
     step.deploy.validation.config_step.load_step('view_r2d2', 'phase2-check.py').require_r2d2()
     step.deploy.tools.check_paths(step.ENV)
     if Path(sys.prefix) != step.ENV:
-        os.execve(str(step.ENV/'bin/python'), [str(step.ENV/'bin/python'), str(Path(__file__).resolve()), args.object]+(['--table'] if args.table else []), step.deploy.tools.tool_environment())
+        os.execve(str(step.ENV/'bin/python'), [str(step.ENV/'bin/python'), str(Path(__file__).resolve()), args.object]+(['--table'] if args.table else [])+(['--all-projects'] if args.all_projects else []), step.deploy.tools.tool_environment())
     step.deploy.source_guard(); env = step.deploy.tools.tool_environment()
     _, config = step.deploy.validation.local_checks(lambda line: None, env, step.deploy.validation.CA_FINGERPRINT)
     api, _, _ = step.authenticate(config)
-    result=collect(api, args.object)
+    result=collect(api, args.object, args.all_projects)
     print(table(args.object,result) if args.table else json.dumps(result, indent=2))
     return 0
 
