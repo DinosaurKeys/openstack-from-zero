@@ -1,106 +1,103 @@
-# Chapter D — Client access and API verification
+# Chapter D — OpenStack CLI, HTTPS and Horizon access
 
 [Phase 3](README.md) · [Previous: deploy OpenStack](C-deploy-openstack.md)
 
-**Goal: verify access to the fresh HA deployment.** Complete Chapter C and its database/VIP observations before running these checks.
+**Goal:** finish the installation with a working `openstack` command and browser access. Complete Chapter C's deployment/database/VIP checks first. Run terminal commands **on R2d2 as joe**.
 
-## 1. Purpose
+## 1. Install or verify the CLI
 
-Prove that R2d2 can log in to OpenStack over verified HTTPS and read the service APIs. Then sign in to Horizon from your browser.
-
-The last chapter checked the machinery: containers, database cluster, VIP and bridges. This chapter checks the front door: authentication, API addresses and the dashboard.
-
-## 2. What changes
-
-Run on **R2d2 as joe**. The script reuses the existing private inventory, globals, passwords and lab CA under `~/openstack-from-zero/private/phase2/`.
-
-Kolla's standard `post-deploy` command generates these private files in `private/phase2/kolla/` on **R2d2 only**:
-
-| File | Purpose |
-|---|---|
-| `clouds.yaml` | Connection profiles containing the API address, existing admin credentials, region and CA path |
-| `admin-openrc.sh`, `admin-openrc-system.sh` | Shell settings for the internal project/system admin connection |
-| `public-openrc.sh`, `public-openrc-system.sh` | Shell settings for the public project/system admin connection |
-
-The files have mode `0600`, so only joe can read/write them. Repeating the command refreshes these generated files from the existing configuration. They contain passwords: keep them private and out of Git.
-
-The script also saves one private report. It checks that the existing deployment inputs stay unchanged. No software installation, node sudo prompt, service restart, certificate rotation or cloud-resource creation is part of this chapter. Authentication creates a normal short-lived token held in memory; its value is never printed in the report.
-
-No OpenStack CLI installation is needed for these checks: the script uses Python's HTTPS client with the prepared credentials and CA. To use `openstack` commands yourself, follow the separate **[CLI setup on R2d2](../openstack-cli.md)**. It reuses these generated private credentials and CA.
-
-## 3. What the script checks
-
-1. Validate the existing local configuration, certificates and pinned Kolla source.
-2. Run Kolla `post-deploy` limited to `localhost` to prepare client files.
-3. Validate the live API certificate against the existing lab CA and VIP address while requesting an admin project token from Keystone.
-4. Read Keystone's service catalog and registrations. Require enabled public endpoints for Identity, Glance, Nova, Neutron, Cinder and Placement in the configured region. Every selected endpoint must use HTTPS on `192.168.0.151`.
-5. Use the token for read-only API requests: images, servers, networks, volumes and Placement resource providers. Empty lists are valid; this chapter creates none of those resources. These reads prove API access, not successful scheduling, image upload or volume attachment.
-6. Request Horizon over verified HTTPS and check that its login form is present. **This is not a browser login.** Complete that separately below.
-
-The Cinder service type in the pinned release is `block-storage`. Glance uses node1's local file storage; this chapter does not change its placement or storage.
-
-## 4. Run — on R2d2 as joe
+The OpenStack CLI is included in [Phase 2 C](../phase-02/C-install-tools.md). This command installs it if missing and verifies an existing matching installation:
 
 ```bash
 cd ~/openstack-from-zero
 git pull --ff-only
+/usr/bin/python3 scripts/phase2-install-tools.py --client-only --apply
+```
+
+Expected: `RESULT: OPENSTACK_CLI_READY`. The client is installed in `/home/joe/venvs/openstack-client`; this command leaves the existing Kolla/Ansible installation unchanged.
+
+## 2. Prepare connection settings and verify the APIs
+
+```bash
 /usr/bin/python3 scripts/phase3-access.py --run
 ```
 
-The script selects the existing `/home/joe/venvs/kolla` environment. No node sudo passwords or SSH connections are needed. Do not enter passwords into chat.
+This runs standard Kolla `post-deploy` on R2d2 only. It prepares private client files from the existing credentials and lab CA, then checks HTTPS authentication, service registration, API reads and Horizon's login page.
 
-Without `--run`, it prints its plan and performs no checks or file creation.
+| Private file under `private/phase2/kolla/` | Purpose |
+|---|---|
+| `public-openrc.sh` | Connection settings for the CLI using the public HTTPS endpoints |
+| `clouds.yaml` | Connection profiles used by the course helpers |
+| Other generated `*-openrc*.sh` files | Internal or system-scoped admin connections |
 
-## 5. Return the API result
+These files contain credentials and are restricted to joe. Keep them private. The script's report excludes passwords and token values. This step creates no VM, network or volume and restarts no node services.
 
-When the command returns, use the exact `cat` command printed at the end and send that report. It is compact and does not include passwords, bearer tokens, response bodies or credential-file contents.
-
-Expected marker:
+Expected:
 
 ```text
 RESULT: OPENSTACK_API_ACCESS_PASSED
 ```
 
-If it reports `OPENSTACK_API_ACCESS_NEEDS_REVIEW`, send the report before retrying or changing settings. The script performs no automatic repair.
+Read the private report using the printed `cat` command. It must confirm HTTPS access to Identity, Images, Compute, Network, Volumes and Placement. If it needs review, return the report before continuing.
 
-## 6. Sign in to Horizon — in your chosen browser
+## 3. Activate the CLI and connect
 
-After the API checks pass:
+```bash
+source "$HOME/venvs/openstack-client/bin/activate"
+source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
+openstack --version
+openstack token issue -f value -c expires
+```
 
-1. On R2d2, display your existing login details privately:
+The first command selects the installed CLI. The second loads the existing API address, admin credentials, region and CA certificate. The final command checks authentication and prints **only the token's expiry time**.
+
+In each new terminal, repeat the two `source` commands. Do not print or share the connection file or use `--insecure`.
+
+## 4. View VMs and services
+
+List VMs across projects, including their compute hosts:
+
+```bash
+openstack server list --all-projects --long \
+  -c ID -c Name -c Status -c Host
+```
+
+An empty list is valid before creating the first VM. `Host` is the node running the VM; a data volume can be stored on a different node. All-project/host visibility uses the prepared admin account's permissions.
+
+For service and agent lists:
+
+```bash
+openstack compute service list
+openstack network agent list
+openstack volume service list
+```
+
+These are viewing commands. Later, use the [CLI VM reference](../openstack-cli.md#4-start-or-shut-down-a-vm) for normal start/shutdown commands after checking the selected VM's state.
+
+## 5. Sign in to Horizon
+
+1. Display your existing login details privately on R2d2:
 
    ```bash
    /usr/bin/python3 scripts/phase3-access.py --show-login
    ```
 
-   This reads the generated profile and displays the username, domain and password **only in your terminal**. It creates no report and changes no credentials. Do not paste this output into chat or GitHub.
+2. In the browser where you imported the lab CA, open **https://192.168.0.151/**.
+3. Confirm that the browser accepts the certificate. Resolve any certificate warning before signing in.
+4. Enter the displayed username/password and domain if requested, then click **Sign In**.
+5. Confirm that the dashboard loads. Return only **“Horizon login works”** or the visible error text without credentials.
 
-2. In the Windows Chrome or Linux Firefox browser where you previously imported the lab CA, open **https://192.168.0.151/**.
-3. Check that the browser accepts the HTTPS certificate. If it shows a certificate warning, stop and report the warning text; do not bypass it.
-4. Use the displayed username and password. Enter the displayed domain if the login form asks for it. Click **Sign In**.
-5. Confirm that the dashboard loads. Send only **“Horizon login works”**, or the visible error text without credentials.
+The scripted login-page check and a successful browser sign-in are separate checks.
 
-The scripted API pass and your browser login confirmation are two separate finish checks.
+## 6. Finish check
 
-## 7. Finish check and short lesson
+- [ ] CLI version is `openstack 10.3.1`.
+- [ ] API access report passed.
+- [ ] CLI authentication and VM list succeeded.
+- [ ] Horizon opened over trusted HTTPS and browser sign-in succeeded.
 
-- [ ] Fresh deployment's host/container/VIP/Galera observations reviewed.
-- [ ] HTTPS authentication, required service registrations and API reads passed.
-- [ ] Horizon login-page certificate/form checks passed.
-- [ ] Joe confirmed an actual browser sign-in and loaded dashboard.
+This completes client access. VM boot, guest traffic, Cinder persistence and controlled HA failover have their own tests. Glance remains on node1's local storage; client setup does not change service placement.
 
-The API reads and browser sign-in prove access to this deployment. They do not prove virtual-router takeover, guest boot, volume persistence or database failure recovery. Those are separate tests. The script's browser-login field deliberately leaves the manual sign-in checkpoint for Joe.
+**Next:** [Chapter E — HA verification](E-ha-verification.md), then [Phase 4 — networking and first VM](../phase-04/README.md). Phase 4 explains and tests the external USB NIC → `br-ex` → virtual router → VM connection. Node management and API VIP traffic use the built-in NICs.
 
-## 8. USB virtual networking — Phase 4
-
-The physical USB NICs are already connected to `br-ex` and have no host IP addresses. The API VIP and node management addresses use the built-in NICs.
-
-**Phase 4 will document and test the actual virtual networking on GitHub**, before Joe runs the configuration steps. That guide will explain the external/provider network, tenant network, subnet, virtual router and floating IP, followed by the observed packet path from the VM through OpenStack and `br-ex` to the USB NIC, physical switch and home network. It will show which addresses belong to hosts, router ports and VMs. Names, interfaces and allocations will be checked against the live configuration rather than guessed.
-
-The approved proposed VM external allocation range remains `.152–.199`; this chapter does not allocate those addresses or create a network. VM traffic, VM creation, Cinder volume use and failover remain later tests.
-
-## Local validation and limits
-
-Local tests cover command scope, credential privacy, TLS failures, endpoint selection, response validation, redirects and unchanged deployment inputs. The pinned Kolla CLI task selection and credential templates are checked with an isolated inventory and temporary credentials. In-memory TLS handshakes test trusted certificates and certificate rejection. Full post-deploy execution on R2d2, real API responses and browser login remain live checks.
-
-[Kolla quickstart and post-deploy](https://docs.openstack.org/kolla-ansible/2026.2/user/quickstart.html) · [Identity API](https://docs.openstack.org/api-ref/identity/v3/) · [Compute API](https://docs.openstack.org/api-ref/compute/) · [Block Storage API](https://docs.openstack.org/api-ref/block-storage/v3/)
+[CLI reference](../openstack-cli.md) · [Kolla post-deploy](https://docs.openstack.org/kolla-ansible/2026.2/user/quickstart.html) · [OpenStack CLI configuration](https://docs.openstack.org/python-openstackclient/latest/configuration/index.html)
