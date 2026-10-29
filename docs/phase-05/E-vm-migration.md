@@ -21,26 +21,23 @@ To move **compute and all disks**, move the VM/OS disk, verify it, then move the
 
 ## 1. Read the services and inventory — on R2d2
 
-Activate the CLI and load the existing private connection settings:
+Check services with the same command used after a reboot:
 
 ```bash
 cd ~/openstack-from-zero
-git pull --ff-only
+bash scripts/lab-recover.sh --check
+```
+
+It includes the **compute-service, network-agent and volume-service tables** automatically. If you already have a current healthy check, continue below. Otherwise, resolve its named failures using [the reboot guide](../reboot-and-recovery.md) before planning a move.
+
+For VM/storage inventory, activate the CLI and load the existing connection settings once in this terminal:
+
+```bash
 source "$HOME/venvs/openstack-client/bin/activate"
 source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
 ```
 
-If the client is not installed yet, complete [Phase 3 D](../phase-03/D-client-access.md). Keep the credentials private.
-
-Use the same readable service tables as the reboot guide:
-
-```bash
-openstack compute service list -c Host -c Binary -c Status -c State
-openstack network agent list -c Host -c "Agent Type" -c Alive -c State
-openstack volume service list -c Host -c Binary -c Status -c State
-```
-
-Require the expected Nova/Cinder services `up/enabled`, and Neutron agents `Alive=:-)` with `State=UP`. A missing/down/disabled row needs review. [The reboot guide explains these columns and selected repairs](../reboot-and-recovery.md#cli-service-checks). These are API observations; the migration preview checks the wider cluster and actual VM runtime too.
+[Phase 3 D](../phase-03/D-client-access.md) covers CLI installation. Keep credentials private. The migration preview still checks actual VM runtime and destination capacity.
 
 **List VMs and their compute hosts:**
 
