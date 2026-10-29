@@ -55,7 +55,7 @@ For a browser view, use **Horizon → Admin → Compute → Instances**; its tab
 <details>
 <summary>Equivalent standard OpenStack CLI command</summary>
 
-If the OpenStack CLI is already installed and authenticated with the required admin access:
+For CLI installation and loading the existing admin credentials, follow [CLI setup on R2d2](../openstack-cli.md). Once it is installed and authenticated:
 
 ```bash
 openstack server list --all-projects --long \
