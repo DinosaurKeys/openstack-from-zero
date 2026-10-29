@@ -19,11 +19,58 @@ For **compute and all storage**, do two exercises: move the VM/OS disk, verify i
 
 The menu covers this lab's three compute nodes, image-based VMs with local OS disks, and ordinary unencrypted, single-attachment iSCSI data volumes without snapshots or group membership. Other storage/device types need a separately checked plan. OpenStack documents an attached LVM-volume migration using Nova's libvirt driver; this does not prove that a particular live request will succeed in our lab.
 
-## 1. Open the preview menu on R2d2
+## 1. See what exists — run on R2d2
 
 ```bash
 cd ~/openstack-from-zero
 git pull --ff-only
+/usr/bin/python3 scripts/lab-view.py servers --table --all-projects
+/usr/bin/python3 scripts/lab-view.py volumes --table --all-projects
+```
+
+The VM table shows **Name, Status (Nova), Compute host and VM ID**. The volume table shows its **storage backend and attached VM ID**. A volume can be on node3 while its VM runs on node1; those are separate locations. The VM's local OS disk is not a Cinder volume.
+
+| VM status | What to do before migration |
+|---|---|
+| `ACTIVE` | Candidate for a live or cold preview; the menu still verifies the actual runtime. |
+| `SHUTOFF` | Candidate for a cold preview. |
+| `ERROR`, unknown host, or an operation in progress | Review that VM first. Do not request a migration or reset its state to hide the problem. |
+
+Use the UUID to distinguish duplicate VM names. These API lists are read-only. All-project views require admin policy access; the migration menu selects VMs in the authenticated course project only. Missing host/backend information is shown as unknown, not guessed.
+
+To see **all Docker containers, including stopped ones**, on the three nodes:
+
+```bash
+bash scripts/lab-containers.sh
+```
+
+This connects to each node and prints its container names and states. Enter joe's sudo password when asked. Add `node2` to view only node2. It sends no restart commands.
+
+**VMs are the guests you migrate. Containers run the OpenStack services.** Moving a VM does not move those service containers. `Up` in the container list is a process state; the VM's `ACTIVE` state comes from Nova. Neither is a substitute for the migration readiness checks.
+
+For a browser view, use **Horizon → Admin → Compute → Instances**; its table includes **Host**. Use the CLI/table commands above when returning evidence for review.
+
+<details>
+<summary>Equivalent standard OpenStack CLI command</summary>
+
+If the OpenStack CLI is already installed and authenticated with the required admin access:
+
+```bash
+openstack server list --all-projects --long \
+  -c ID -c Name -c Status -c Host
+```
+
+`--long` includes the Host field in the extended list. The course's `lab-view.py` commands use the existing private HTTPS profile and need no separate CLI setup.
+
+</details>
+
+<a id="1-open-the-preview-menu-on-r2d2"></a>
+
+## 2. Open the preview menu on R2d2
+
+Once the selected VM's inventory is understood:
+
+```bash
 bash scripts/lab-migrate.sh --plan
 ```
 
@@ -39,7 +86,7 @@ The choices are:
 0) Cancel
 ```
 
-## 2. Select the VM and locations
+## 3. Select the VM and locations
 
 1. Choose the operation.
 2. Choose a source-node filter, or all nodes.
@@ -51,7 +98,7 @@ The **source is read from OpenStack**, then checked. Selecting another source me
 
 For an attached-volume move, the VM must be ACTIVE and the volume attached only to that VM. For an offline-volume move, the volume must already be detached and `available`. Shutting down a VM alone does not detach its data volume.
 
-## 3. Review readiness
+## 4. Review readiness
 
 The menu checks:
 
@@ -64,7 +111,7 @@ An unresolved saved migration remains preserved and blocks another move of that 
 
 These are observed prerequisites; Nova/Cinder still run their own scheduling, migration and transfer checks. A control-connection read does not prove the later disk/memory transfer will complete.
 
-## 4. Run the reviewed move
+## 5. Run the reviewed move
 
 Only after the preview and exact VM/destinations have been reviewed and approved:
 
@@ -82,7 +129,7 @@ It rechecks the selections before sending one migration request. It shows state 
 
 A cold move normally reaches `VERIFY_RESIZE`: Nova is waiting for acceptance of the new placement. After destination/runtime checks pass, the menu asks for a second approval to confirm it. If you decline, it leaves the move awaiting confirmation and preserves the record. Nova may auto-confirm if configured to do so; the menu observes that state rather than sending another request.
 
-## 5. Read the result
+## 6. Read the result
 
 | Result | Meaning |
 |---|---|
@@ -97,7 +144,7 @@ The menu preserves existing Phase 4/5 exercise files and deployment inputs. Afte
 
 ## Run order for this lesson
 
-1. Preview the current VM/storage state and resolve any readiness blocker.
+1. Read the VM/volume inventory, choose the VM, then preview its current state and resolve any readiness blocker.
 2. Review and approve the live VM/OS-disk move first.
 3. Check guest access, network and data.
 4. Review and approve the attached data-volume move, subject to the observed backend path.
@@ -106,4 +153,4 @@ The menu preserves existing Phase 4/5 exercise files and deployment inputs. Afte
 
 The earlier fixed-route script `phase5-move-vm.py` has a different saved plan and scope. The numbered menu does not replay it or clear its record.
 
-[Menu script](../../scripts/lab-migrate.py) · [Nova live migration](https://docs.openstack.org/nova/2026.2/admin/configuring-migrations.html) · [Nova cold migration](https://docs.openstack.org/nova/latest/contributor/resize-and-cold-migrate.html) · [Cinder volume migration](https://docs.openstack.org/cinder/2026.2/admin/volume-migration.html)
+[Menu script](../../scripts/lab-migrate.py) · [Command glossary](../command-glossary.md) · [Server list reference](https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/compute/v2/index.html#server-list) · [Nova live migration](https://docs.openstack.org/nova/2026.2/admin/configuring-migrations.html) · [Nova cold migration](https://docs.openstack.org/nova/latest/contributor/resize-and-cold-migrate.html) · [Cinder volume migration](https://docs.openstack.org/cinder/2026.2/admin/volume-migration.html)
