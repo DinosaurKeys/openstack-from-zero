@@ -73,6 +73,51 @@ def safe_reason(value):
     return (match[1]+'; read unavailable') if match else 'check unavailable; see private JSON details'
 
 
+def render_service_lists(details):
+    """Show the CLI-equivalent service rows from this snapshot; no new queries."""
+    authenticated=any(row.get('check')=='HTTPS authentication' and row.get('status')=='PASS'
+                      for row in details.get('cluster_summary',[]))
+    groups=(('COMPUTE SERVICES — Nova','Nova services',('nova-scheduler','nova-conductor','nova-compute'),False),
+      ('NETWORK AGENTS — Neutron','Neutron agents',('neutron-dhcp-agent','neutron-l3-agent','neutron-openvswitch-agent','neutron-metadata-agent'),True),
+      ('VOLUME SERVICES — Cinder','Cinder services',('cinder-scheduler','cinder-volume'),False))
+    lines=[];nodes=tuple(inv.NODES)
+    def host_node(row):return str(row.get('host','')).split('@')[0].split('.')[0]
+    def display(row,agent,duplicate=False,unexpected=False):
+        if agent:
+            alive=row.get('alive');enabled=row.get('admin_state_up')
+            heartbeat='UP' if alive is True else 'DOWN' if alive is False else 'UNKNOWN'
+            admin='enabled' if enabled is True else 'disabled' if enabled is False else 'unknown'
+        else:
+            state=row.get('state');status=row.get('status')
+            heartbeat=state.upper() if state in ('up','down') else 'UNKNOWN'
+            admin=status if status in ('enabled','disabled') else 'unknown'
+        review='UNEXPECTED' if unexpected else 'DUPLICATE' if duplicate else 'REVIEW' if (heartbeat,admin)!=('UP','enabled') else '-'
+        return [row.get('host'),row.get('binary'),heartbeat,admin,review]
+    for title,key,binaries,agent in groups:
+        values=details.get(key)
+        if not authenticated:
+            lines+=['',title,'BLOCKED: authentication unavailable; service list not queried']
+            continue
+        if not isinstance(values,list):
+            reason=safe_reason(values.get('error')) if isinstance(values,dict) else 'service list unavailable'
+            lines+=['',title,'BLOCKED: '+reason]
+            continue
+        records=[row for row in values if isinstance(row,dict)];rows=[]
+        for node in nodes:
+            for binary in binaries:
+                found=[row for row in records if host_node(row)==node and row.get('binary')==binary]
+                if not found:rows.append([node,binary,'NOT LISTED','-','MISSING'])
+                else:rows.extend(display(row,agent,duplicate=len(found)>1) for row in found)
+        rows.extend(display(row,agent,unexpected=True) for row in records
+                    if host_node(row) not in nodes or row.get('binary') not in binaries)
+        lines+=table(title,['Host','Agent' if agent else 'Service','Heartbeat','Admin','Review'],rows)
+        if len(records)!=len(values):lines.append('REVIEW: an API row could not be displayed')
+    lines.append('Heartbeat = OpenStack-reported UP/DOWN; Admin = enabled/disabled.')
+    if any(line.startswith('BLOCKED:') or line.rstrip().endswith('MISSING') for line in lines):
+        lines.append('MISSING = absent from a returned list; BLOCKED = list unavailable. Neither proves a stopped process.')
+    return lines
+
+
 def render_brief(details):
     """Grouped PASS/FAIL/BLOCKED display from the same read-only observations."""
     hosts=details.get('hosts',{});nodes=tuple(inv.NODES)
@@ -208,6 +253,7 @@ def render_brief(details):
             alive='UP' if value.get('alive') is True else 'DOWN' if value.get('alive') is False else 'UNKNOWN'
             admin='enabled' if value.get('admin_state_up') is True else 'disabled' if value.get('admin_state_up') is False else 'unknown'
             lines.append('        '+cell(value.get('host'))+'='+cell(value.get('ha_state'))+'; L3 agent='+alive+'/'+admin)
+    lines+=render_service_lists(details)
     preserved=next((r.get('status') for r in details.get('summary',[]) if r.get('check')=='Existing checkpoints/config preserved'),None)
     section('RESULT')
     emit({'PASS':'PASS','REVIEW':'FAIL'}.get(preserved,'BLOCKED'),'Saved checkpoints/config preserved')
@@ -246,6 +292,8 @@ def render_compact(details):
             if section=='HTTPS API CHECKS' and api_ok:lines.append('PASS    HTTPS: login, Horizon and all five service API reads')
             continue
         if not line:continue
+        if line in ('COMPUTE SERVICES — Nova','NETWORK AGENTS — Neutron','VOLUME SERVICES — Cinder'):
+            lines.append('')
         if section=='HOSTS' and host_ok and ' management SSH/identity OK' in line:continue
         if section=='CORE CONTAINERS':
             if db_ok and line=='PASS    MariaDB: 3/3 ready':
