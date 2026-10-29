@@ -62,7 +62,7 @@ def playbook(folder):
 
 def execute(log, work):
     deploy.source_guard(); env = deploy.tools.tool_environment()
-    inventory, config = deploy.validation.local_checks(lambda line: None, env, deploy.validation.CA_FINGERPRINT)
+    inventory, config = deploy.validation.local_checks(lambda line: None, env)
     baseline = access.input_hashes(config, inventory)
     profile = access.load_profile(config); client = access.Client(profile['cacert'])
     log('Reading Neutron networks, subnets, routers, ports, agents and floating IPs over verified HTTPS.')

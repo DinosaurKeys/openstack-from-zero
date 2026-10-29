@@ -128,7 +128,7 @@ def workflow(nodes,records,apply,save,log,verify_inputs):
 
 def execute(mode,log,details):
     deploy.source_guard();env=deploy.tools.tool_environment()
-    inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda line:None,env)
     inv.ensure_agent(env,log);folder=REPO/'private/phase5';inv.private_dir(folder);handles=[];passwords={}
     try:
         paths=[folder/n for n in ('api-recovery.lock','api-vip.lock','mariadb.lock','router.lock','migration.lock')]

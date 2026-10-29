@@ -284,7 +284,7 @@ def continuation(mode,log):
 
 
 def observe(log):
-    deploy.source_guard();env=deploy.tools.tool_environment();inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+    deploy.source_guard();env=deploy.tools.tool_environment();inventory,config=deploy.validation.local_checks(lambda line:None,env)
     folder=REPO/'private/phase5';path=folder/'migration.lock'
     if path.is_symlink():raise RuntimeError('Unsafe migration lock')
     with path.open('a') as lock:

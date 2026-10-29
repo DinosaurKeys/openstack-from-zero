@@ -158,7 +158,7 @@ After a successful move, repeat the VM list and the selected volume's `show` com
 | VM/OS disk | Same VM UUID, expected compute `Host`; data-volume backend unchanged |
 | Data volume | Same volume UUID and size, expected storage backend; compute host unchanged |
 
-Also check **inside the guest**: console/SSH access, networking, the data disk's mount and the same saved file/checksum from before the move. API/host success does not establish guest data integrity or zero downtime.
+Also check **inside the guest**: console/SSH access, networking, the data disk's mount and the same saved file/checksum from before the move. After a guest reboot or cold move, the course data filesystem may need an explicit mount: use [the existing-filesystem mount and checksum steps](../phase-04/E-cinder-volume.md#after-a-guest-reboot-or-cold-move). API/host success does not establish guest data integrity or zero downtime.
 
 <a id="run-order-for-this-lesson"></a>
 

@@ -131,7 +131,7 @@ If the result is **`REBOOT_SERVICES_HEALTHY`**, no service repair is needed. Con
 2. Follow the matching repair below. Use [step 7](#manual-service-and-agent-restarts) for a selected compute/agent process after checking its dependencies.
 3. Run `bash scripts/lab-recover.sh --check` again. It prints the service tables again and verifies the wider cluster.
 
-The result `REBOOT_SERVICES_HEALTHY` ends service recovery. VM startup, guest data and migration are separate. [Manual CLI views](command-glossary.md#cli-service-checks--run-on-r2d2) remain available when you want to query a service yourself.
+The result `REBOOT_SERVICES_HEALTHY` ends service recovery. VM startup, guest data and migration are separate. After a guest reboot, use the [data-disk mount/checksum procedure](phase-04/E-cinder-volume.md#after-a-guest-reboot-or-cold-move) once that VM and its original attachment are verified. [Manual CLI views](command-glossary.md#cli-service-checks--run-on-r2d2) remain available when you want to query a service yourself.
 
 ## Recover only what needs repair
 

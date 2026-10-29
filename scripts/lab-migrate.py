@@ -419,7 +419,7 @@ def main(argv=None):
     if not sys.stdin.isatty():raise RuntimeError('Use joe\'s interactive R2d2 terminal')
     if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve())]+(['--plan'] if args.plan else []),deploy.tools.tool_environment())
     os.umask(0o077);env=deploy.tools.tool_environment();deploy.source_guard()
-    inventory,config=deploy.validation.local_checks(lambda _:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda _:None,env)
     inputs=move.access.input_hashes(config,inventory);inv.ensure_agent(env,print)
     original,project,_=prep.authenticate(config);api=API(original,read_only=args.plan)
     folder=REPO/'private/phase5';reports=REPO/'reports';inv.private_dir(folder);inv.private_dir(reports)

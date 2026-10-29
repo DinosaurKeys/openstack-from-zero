@@ -10,7 +10,7 @@
 
 1. Download [Ubuntu Server 24.04 LTS amd64](https://releases.ubuntu.com/24.04/).
 2. Attach the ISO to the management VM and select NAT networking.
-3. Install Ubuntu with hostname `r2d2`, your local account, the VM's intended OS disk and **Install OpenSSH server** selected.
+3. Install Ubuntu with hostname `r2d2`, account **`joe`**, the VM's intended OS disk and **Install OpenSSH server** selected.
 4. Check the disk summary, complete installation, detach the ISO and reboot.
 5. Sign in through the VM console.
 

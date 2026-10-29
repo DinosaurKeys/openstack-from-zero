@@ -583,7 +583,7 @@ def workload(nodes,api,project,user,rows,details,log):
 
 def execute(log,details,include_workload=False,detailed=False,compact=False):
     deploy.source_guard();env=deploy.tools.tool_environment()
-    inventory,config=deploy.validation.local_checks(lambda _:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda _:None,env)
     before=snapshot();input_hashes=health.access.input_hashes(config,inventory);handles=[];passwords={}
     try:
         for folder,name in [('phase5',n) for n in ('api-recovery.lock','api-vip.lock','mariadb.lock','router.lock','migration.lock')]+[('phase4',n) for n in ('vm.lock','volume.lock','networks.lock')]:

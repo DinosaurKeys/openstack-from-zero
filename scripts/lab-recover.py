@@ -299,7 +299,7 @@ def workflow(nodes,records,apply,confirm,save,log,unchanged,recover_db,prior=lam
 
 def execute(mode,log,details,report):
     deploy.source_guard();env=deploy.tools.tool_environment()
-    inventory,config=deploy.validation.local_checks(lambda _:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda _:None,env)
     inv.ensure_agent(env,log);folder=REPO/'private/phase5';inv.private_dir(folder)
     handles=[];passwords={}
     try:

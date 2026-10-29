@@ -311,6 +311,14 @@ class ObservationTests(unittest.TestCase):
         for method in ('POST','PUT','DELETE','PATCH'):
             with self.assertRaises(RuntimeError):api.request('compute',method,'any',{})
         with self.assertRaises(RuntimeError):api.write('compute','POST','anything',{},200)
+    def test_completed_checkpoint_is_preserved_without_claiming_a_new_data_check(self):
+        value,get=self.fixture();value.update(stage='complete',pending=None)
+        before=copy.deepcopy(value)
+        result=step.observe(SimpleNamespace(get=get),value,PROJECT)
+        self.assertEqual(value,before);self.assertEqual(result['checkpoint']['stage'],'complete')
+        self.assertIsNone(result['checkpoint']['pending'])
+        self.assertIn('does not check guest data',result['persistence'])
+        self.assertNotIn('Not yet verified after reattachment',result['persistence'])
     def test_local_checkpoint_is_byte_identical_after_observation(self):
         value,get=self.fixture();urls={'compute':'url','block-storage':'other'};value.update(apis=urls,user_id='user')
         with tempfile.TemporaryDirectory() as folder:

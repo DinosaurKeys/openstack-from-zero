@@ -244,7 +244,7 @@ def wait_dhcp(api, network_id):
 
 def execute(log):
     deploy.source_guard(); env = deploy.tools.tool_environment()
-    inventory, config = deploy.validation.local_checks(lambda line: None, env, deploy.validation.CA_FINGERPRINT)
+    inventory, config = deploy.validation.local_checks(lambda line: None, env)
     baseline = access.input_hashes(config, inventory)
     # Inspect non-default routes visible on R2d2; this cannot enumerate Windows/VPN routes.
     p = subprocess.run(['ip', '-j', '-4', 'route', 'show', 'table', 'all'], capture_output=True, text=True, check=True, timeout=15)

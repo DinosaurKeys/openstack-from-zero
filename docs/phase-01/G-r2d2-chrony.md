@@ -1,99 +1,110 @@
-# Chapter G — Install Chrony on R2d2
+# Chapter G — Prepare time synchronization
 
-[Phase 1](README.md) · [Previous: node names](F-r2d2-hosts.md)
+[Phase 1](README.md) · [Previous: node names](F-r2d2-hosts.md) · [Next: USB NICs](H-nics-and-storage.md)
 
-**Goal:** use Chrony to keep R2d2's clock synchronized.
+**Goal:** Chrony running, enabled and synchronized on **R2d2 and all three nodes**. Complete this before Phase 2 readiness checks. Each machine uses its configured time sources; R2d2 is not the nodes' time server.
 
-**Status: complete.** Joe's report from 2026-10-23 ends with `R2D2_CHRONY_READY`. The full installation steps remain below for study and rebuilding.
+## 1. Why this is needed
 
-## 1. Purpose
+Chrony keeps the clocks aligned. This helps authentication and makes logs comparable. A synchronized clock using another time client does not satisfy this course's Chrony service check.
 
-Your inspection confirmed that R2d2's clock was already synchronized through `systemd-timesyncd`. Chrony is an alternative time-sync service. This agreed step switches R2d2 to Chrony, the service already working on all three nodes.
-
-Accurate clocks help you compare logs and support time-sensitive authentication. This step installs a time client on R2d2; it does not configure R2d2 as the nodes' time server.
-
-## 2. What the script runs and why
-
-Read [phase1-chrony.py](../../scripts/phase1-chrony.py). Run it **on R2d2 as joe**, without putting sudo before it.
-
-| Command inside the script | Purpose |
+| Machine | Required result |
 |---|---|
-| `timedatectl status` | Show the current clock and time-service state |
-| `dpkg-query` | Check whether Chrony is already installed |
-| `apt-get update` | Refresh package lists if installation is needed; this does not run a system upgrade |
-| `apt-get --simulate ... install chrony` | Show the package plan; stop if it proposes removing anything other than `systemd-timesyncd` |
-| `apt-get ... install chrony` | Install Chrony and required dependencies; APT may replace the previous time client |
-| `systemctl enable --now chrony.service` | Start Chrony and enable it for future boots |
-| `systemctl is-active` / `is-enabled` | Check Chrony is active and enabled, and the previous time client is inactive |
-| `chronyc waitsync 24 0.1 0 2` | Wait up to about 48 seconds for synchronization and less than 0.1 second remaining clock correction |
-| `chronyc tracking` / `chronyc -n sources -v` | Show the clock estimate and selected time source |
+| R2d2 | Chrony active, enabled and synchronized |
+| node1, node2, node3 | The same checks on each node |
 
-The script uses Ubuntu's supplied Chrony configuration for a fresh installation. It does not choose custom time-server addresses or edit the source configuration. If Chrony configuration already exists, the installation keeps it. If the package is already installed, the script skips package installation and checks the service.
+The existing lab already reported synchronized node clocks. For a clean Ubuntu installation, prepare the nodes explicitly using step 3 below.
 
-All work is local to R2d2. The script leaves the nodes, SSH keys, hosts files, NICs and timezone unchanged. It does not issue a manual `makestep` command; Chrony follows its installed clock-correction policy.
+## 2. Prepare R2d2
 
-## 3. Understand the prompts
-
-- **Sudo password:** enter joe's Ubuntu login password **on R2d2**. This is not the SSH-key passphrase.
-- **APT `Do you want to continue? [Y/n]`:** review the displayed package plan. Installing Chrony can remove `systemd-timesyncd`, because they perform the same job. Enter `Y` to proceed with the explained replacement. The script does not automatically answer this prompt.
-
-The private report records command output, not your password. Package installation is a real change: if installation or verification stops, keep the report for review. The script does not automatically undo package changes.
-
-## 4. Download and run on R2d2
-
-These commands enter your course folder, download this update and run the explained installation. `--apply` allows local package and service changes.
+Run **on R2d2 as joe**, without putting sudo before the script:
 
 ```bash
 cd ~/openstack-from-zero
-git pull --ff-only
-python3 scripts/phase1-chrony.py --apply
+/usr/bin/python3 scripts/phase1-chrony.py --apply
 ```
 
-Without `--apply`, the script only describes the planned work. Internet access to Ubuntu repositories and the configured time sources is needed for a fresh installation and synchronization.
+Enter joe's **R2d2 sudo password**. The script installs Chrony if missing, shows the package transaction, enables it and waits for synchronization. APT can replace `systemd-timesyncd`; it preserves existing Chrony configuration and does not choose a custom time server.
 
-## 5. Check and return the result
-
-Success requires all these checks:
-
-- Chrony is active and enabled for boot.
-- `systemd-timesyncd` is inactive or absent.
-- Chrony's synchronization wait succeeds.
-- Tracking shows `Leap status : Normal`.
-- The sources table has a selected source marked with `*`, commonly `^*`.
-
-The script must finish with:
+Expected:
 
 ```text
 RESULT: R2D2_CHRONY_READY
 ```
 
-It prints the private report's path and its exact `cat` command. Run that printed command and send back the output. **Stop here for review before the next configuration step.**
+Keep the printed private report. This script works on R2d2 only; it does not prepare the nodes.
+
+## 3. Prepare each node
+
+From R2d2, choose **one** connection:
+
+| Node | Connect from R2d2 |
+|---|---|
+| node1 | `ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.200` |
+| node2 | `ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.201` |
+| node3 | `ssh -t -o IdentitiesOnly=yes -i ~/.ssh/openstack-from-zero joe@192.168.0.202` |
+
+Inside that node's SSH session, confirm its name and read the current clock:
+
+```bash
+hostname -s
+systemctl is-active chrony.service
+systemctl is-enabled chrony.service
+timedatectl show --property=NTPSynchronized --value
+```
+
+If the answers are **active**, **enabled** and **yes**, its time preparation is complete; skip the installation block. An absent/inactive service can return a nonzero exit code here.
+
+Otherwise, run **on that node**:
+
+```bash
+sudo apt-get update
+sudo apt-get --no-upgrade install chrony
+sudo systemctl enable --now chrony.service
+chronyc waitsync 24 0.1 0 2
+```
+
+Enter joe's password **for that node**. Review APT's transaction before answering Y. Replacing `systemd-timesyncd` is the explained time-client change; return any other proposed removal for review. Existing configuration is retained by choosing the existing local version if prompted.
+
+`waitsync` can take about 48 seconds. A failed wait means synchronization has not been established; review the time-source output before continuing.
+
+## 4. Verify and return to R2d2
+
+Still on the node:
+
+```bash
+systemctl is-active chrony.service
+systemctl is-enabled chrony.service
+timedatectl show --property=NTPSynchronized --value
+chronyc tracking
+chronyc -n sources -v
+```
+
+Require **active**, **enabled**, **yes**, `Leap status : Normal`, and a selected source marked `*`, commonly `^*`. The selected time-server address can differ between machines.
+
+Return to R2d2:
+
+```bash
+exit
+```
+
+Repeat steps 3–4 for the other nodes. These commands change time-service preparation only; they do not configure NICs, storage or OpenStack.
+
+## 5. Finish check
+
+- [ ] R2d2 returned `R2D2_CHRONY_READY`.
+- [ ] node1: active, enabled and synchronized.
+- [ ] node2: active, enabled and synchronized.
+- [ ] node3: active, enabled and synchronized.
+
+Keep these results for review before [Chapter H](H-nics-and-storage.md). Phase 2 F checks node time again before deployment preparation.
 
 ## 6. Reviewed result
 
-| Check | Result from Joe's run |
-|---|---|
-| Installation | Chrony 4.5 installed, with the `tzdata-legacy` dependency |
-| Previous time client | `systemd-timesyncd` package removed; service inactive |
-| Chrony service | Active and enabled for boot |
-| Synchronization wait | Passed on the second check |
-| Tracking | `Leap status : Normal` |
-| Selected source | `^* 185.125.190.56` in this report |
-| System clock | `timedatectl` reports synchronized |
-| Timezone | Remains `Etc/UTC` |
+Joe's R2d2 report from 23 October 2026 returned `R2D2_CHRONY_READY`; the node inspection also reported active, synchronized Chrony on all three nodes. These are recorded observations. A rebuilt machine must pass its own checks above.
 
-The final marker was **`RESULT: R2D2_CHRONY_READY`**. This run worked only on R2d2. No node connection was made.
+## 7. Short lecture — what the result means
 
-## 7. Short lecture — what your result means
+**Active** means Chrony runs now. **Enabled** means it is configured to start at boot. **Synchronized** means it has established time synchronization; running alone does not prove this.
 
-Chrony now runs in the background, comparing R2d2's clock with network time sources and correcting it. Enabling the service means it is configured to start on future boots; this run did not perform a reboot test.
-
-In the sources table, `^*` marks the selected server and `^+` marks a source combined with it. A `^-` source is not being combined; that symbol alone is not a failure. The selected server can change later.
-
-`Leap status : Normal` and the successful wait confirm initial synchronization. This first snapshot does not prove long-term clock accuracy. The script checks remaining clock correction below 0.1 second; it does not impose a frequency-skew limit.
-
-The former time client was replaced, so Chrony now handles this job. R2d2 was not configured as a time server for the nodes.
-
-**Checkpoint complete.** Keep all setup commands above. The next step will be agreed with Joe before proceeding.
-
-References: [Ubuntu Chrony installation](https://ubuntu.com/server/docs/how-to/networking/serve-ntp-with-chrony/) · [Ubuntu 24.04 chronyc commands](https://manpages.ubuntu.com/manpages/noble/man1/chronyc.1.html).
+[Ubuntu Chrony setup](https://ubuntu.com/server/docs/how-to/networking/serve-ntp-with-chrony/) · [Ubuntu 24.04 chronyc commands](https://manpages.ubuntu.com/manpages/noble/man1/chronyc.1.html)

@@ -89,7 +89,13 @@ def collect(node):
     facts['CPU threads'] = os.cpu_count()
     facts['MemTotal'] = next((line for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemTotal:')), 'unknown')
     facts['KVM note'] = 'Device presence is observed only; usable acceleration is checked in Phase 3.'
-    check('Chrony active', command(['systemctl','is-active','chrony.service']) == 'active')
+    try:
+        chrony_active = command(['systemctl','is-active','chrony.service']) == 'active'
+    except RuntimeError:
+        chrony_active = False
+    check('Chrony active', chrony_active)
+    if not chrony_active:
+        facts['Chrony action'] = 'Chrony is inactive or unavailable. Complete Phase 1 Chapter G on this node before validation.'
     check('clock synchronized', command(['timedatectl','show','--property=NTPSynchronized','--value']) == 'yes')
     vgs = json.loads(command(['vgs','--reportformat','json','--units','b','--nosuffix','-o','vg_name,pv_count,lv_count']))['report'][0]['vg']
     groups = [v for v in vgs if v['vg_name'].strip() == 'cinder-volumes']

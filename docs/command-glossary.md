@@ -212,7 +212,7 @@ sudo cat /mnt/lab-data/persistence-test.txt
 sudo sha256sum /mnt/lab-data/persistence-test.txt
 ```
 
-This is a separate data volume, not the VM's local root disk. A mount or persistent file does not prove storage HA. No format command is needed to view a disk.
+This is a separate data volume, not the VM's local root disk. A mount or persistent file does not prove storage HA. No format command is needed to view a disk. If the original filesystem is unmounted after a guest reboot, follow [the existing-filesystem mount procedure](phase-04/E-cinder-volume.md#after-a-guest-reboot-or-cold-move).
 
 ## 6. Manual API VIP failover and restoration
 

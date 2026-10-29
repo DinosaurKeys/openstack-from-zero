@@ -4,13 +4,13 @@
 
 **Storage step: inspect the SATA disks on node1, node2 and node3.** We review one combined report before preparing any Cinder storage pools.
 
-**Current step: read-only inspection on all three nodes, authorized by Joe.** SSH keys, node-name resolution and Chrony on R2d2 are complete. **Disk inspection is complete and reviewed.** Cinder-pool creation remains pending. For a rebuild, follow the preceding chapters first.
+**Purpose: inspect all three SATA disks before preparing Cinder storage.** The reviewed inspection and subsequent [pool creation](J-cinder-lvm.md#6-reviewed-creation-result) are complete for the existing lab. A rebuild needs fresh disk evidence.
 
 A Cinder volume is a virtual disk you can attach to a VM. Before assigning physical storage to Cinder, we need current evidence that identifies the intended disk and shows any existing use.
 
 ![All three nodes: existing Ubuntu on NVMe and separate SATA disks for planned local Cinder pools](../images/storage-layout.svg)
 
-Each node has its own SATA disk and its own Cinder LVM pool. Pool creation is now verified in [Chapter J](J-cinder-lvm.md#6-reviewed-creation-result). Cinder services and VM volumes are still future work; the original inspection result below describes the disks before preparation.
+Each node has its own SATA disk and its own Cinder LVM pool. Pool creation is now verified in [Chapter J](J-cinder-lvm.md#6-reviewed-creation-result). The inspection result below describes the disks **before pool creation**. Deployment and guest-volume tests are covered in Phases 3 and 4.
 
 ## 1. Which disk and why?
 
@@ -64,6 +64,8 @@ The inspection commands are:
 - `smartctl --all`: read available SMART health information, without starting a self-test.
 
 There is no `--apply` mode. No formatting, erasing or LVM creation is included.
+
+Before inspection, the nodes need the LVM tools used by this chapter and Chapter J. On each node, check `command -v pvs vgs lvs`. If any is missing, run `sudo apt-get update`, then `sudo apt-get --no-upgrade install lvm2` **on that node**. Review the package plan and repeat the tool check. This installs tools; it creates no pool.
 
 ## 3. Run on R2d2
 
@@ -135,7 +137,7 @@ Ubuntu's disks are separate: the NVMe disk contains partitions and the existing 
 
 In LVM terminology, a **physical volume (PV)** is a disk or partition prepared for LVM. A **volume group (VG)** combines that space into a pool. **Logical volumes (LVs)** are virtual disks allocated from the pool.
 
-The intended next preparation would create one SATA-backed pool on each node. Those would be three separate local pools, with no automatic replication between them. The provisioning script and its Kolla requirement are now explained in **[Chapter J — Create the three Cinder LVM pools](J-cinder-lvm.md)**. Read its pending decision before applying. All inspection commands above remain available for rebuilding.
+Next, [Chapter J](J-cinder-lvm.md) prepares one SATA-backed pool on each node after the disk report is reviewed. These are separate local pools without replication. For an existing deployed lab, do not rerun pool creation against occupied storage.
 
 The intended layout uses a separate local LVM pool on each storage node. These pools do not automatically replicate volumes between nodes. Before provisioning, we must validate the Kolla configuration for separate LVM backends; the Kolla guide flags limitations in multi-controller configurations. Keep Kolla prechecks enabled. Volume access from both computes is tested in the first-VM phase.
 

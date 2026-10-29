@@ -50,7 +50,7 @@ def validate_config(config):
     legacy = {k: v for k, v in expected.items() if k not in HA_KEYS}
     if actual not in (expected, legacy): raise RuntimeError('Unexpected globals; no destruction')
     fingerprint = config_step.verify_certificates(config/'certificates')
-    if fingerprint != validation.CA_FINGERPRINT: raise RuntimeError('Existing CA differs; no destruction or rotation')
+    if fingerprint != validation.reviewed_ca(config): raise RuntimeError('Existing CA differs; no destruction or rotation')
     config_step.verify_proxysql_certificates(config/'certificates')
     passwords = yaml.safe_load((config/'passwords.yml').read_text())
     template = yaml.safe_load((ENV/'share/kolla-ansible/etc_examples/kolla/passwords.yml').read_text())

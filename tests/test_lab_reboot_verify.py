@@ -423,7 +423,7 @@ class GuestDataTests(unittest.TestCase):
     def test_documentation_links_and_single_final_command(self):
         doc=(ROOT/'docs/reboot-and-recovery.md').read_text()
         self.assertIn('scripts/lab-reboot-verify.py --check',doc)
-        self.assertTrue((ROOT/'docs/reboot-recovery-reference.md').is_file())
+        self.assertFalse((ROOT/'docs/reboot-recovery-reference.md').exists())
         self.assertIn('Neutron',doc);self.assertIn('compute-services --table',doc)
 
 

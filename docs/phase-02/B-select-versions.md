@@ -4,13 +4,13 @@
 
 **Goal:** agree on one compatible set of OpenStack, Kolla-Ansible, Ansible and Python versions.
 
-**Status: version set and environment path agreed by Joe on 2026-10-23.** Chapter A's report is reviewed: Ubuntu 24.04.5 LTS and system Python 3.12.3 on R2d2, with no active virtual environment. Read the plan; no installation command is ready in this chapter yet.
+**Status: version set and environment path agreed by Joe on 2026-10-23.** Chapter A's report is reviewed: Ubuntu 24.04.5 LTS and system Python 3.12.3 on R2d2, with no active virtual environment. This chapter explains the selected versions; [Chapter C](C-install-tools.md) installs and verifies them.
 
 ## 1. Purpose
 
 These tools work together. Installing arbitrary versions separately can produce an incompatible combination. We choose the set before writing the installation script.
 
-## 2. Planned steps
+## 2. Version selection
 
 1. Review Chapter A's actual OS, Python and existing-tool information.
 2. Check release-specific official support documentation for Ubuntu 24.04 and its Python version.
@@ -21,7 +21,7 @@ These tools work together. Installing arbitrary versions separately can produce 
 
 ## 3. Reviewed compatibility proposal
 
-Checked on **2026-10-23** against official release records and the released Kolla source. Joe has agreed to the version set below. These are **selected versions**, not yet confirmed installed tools.
+Checked on **2026-10-23** against official release records and the released Kolla source. Joe has agreed to the version set below. These are the course versions. Chapter C checks the installed versions; this table alone does not establish readiness.
 
 | Component | Proposal | Reason |
 |---|---|---|
@@ -33,7 +33,7 @@ Checked on **2026-10-23** against official release records and the released Koll
 | Tool environment | **/home/joe/venvs/kolla** | Proposed separate folder on R2d2; Chapter A found this candidate absent |
 | OpenStack CLI | **10.3.1**, in **/home/joe/venvs/openstack-client** | Standard `openstack` commands; version listed in the official 2026.2 client constraints |
 
-The Kolla release record identifies source commit `4b493ef36ace2b90257ecf94feb00e2c6e8014c9` for **23.0.0**. The installation plan will use this released reference rather than a moving development branch.
+The Kolla release record identifies source commit `4b493ef36ace2b90257ecf94feb00e2c6e8014c9` for **23.0.0**. The installer uses this released source commit.
 
 **Why this set:** it uses your existing Ubuntu/Python and a released OpenStack installer. The Ansible version satisfies that installer's declared range. This is a compatibility recommendation, not a claim that our three-node deployment has passed.
 
@@ -50,7 +50,7 @@ cinder_cluster_skip_precheck: true
 
 This block explains the later Chapter E configuration; **do not paste or apply it now**. Each node keeps its own `cinder-volumes` pool. No shared storage or replication is implied. All other prechecks remain enabled. This continues Joe's existing storage decision; it does not require a new storage choice.
 
-### What Chapter C would install
+### What Chapter C installs
 
 Only on **R2d2**, the released quickstart lists these Ubuntu prerequisites:
 
@@ -64,7 +64,7 @@ Only on **R2d2**, the released quickstart lists these Ubuntu prerequisites:
 | `libdbus-glib-1-dev` | Build support required by the documented prerequisite list |
 | `python3-venv` | Create the separate Python environment, including its initial pip |
 
-The script will show the APT plan before installation. Then it will create the proposed environment as joe, install the pinned tools and Kolla's Ansible collection dependencies, and verify their versions. It will preserve existing paths and stop if an unexpected setup would be replaced.
+Chapter C shows the APT plan, creates the environments as joe, installs the pinned tools and required collections, then verifies them. Unexpected existing directories require review.
 
 System-wide `python3-pip` is not needed for this plan: pip will run inside the virtual environment. No node connections, Docker installation, inventory/configuration creation, password generation or deployment belong to this R2d2 tool-installation step. Internet access will be required for downloads.
 
@@ -88,7 +88,7 @@ This is a documentation/review step. It needs no lab mutation script. The chosen
 
 ## 5. Finish check
 
-The table above records the proposed components and compatibility evidence. Joe's agreement is **recorded**; Chapter C's actual installation report is pending. Earlier use of 2026.1 documentation for the storage design is a source review, not a claim that this release is installed on R2d2.
+The table records the selected components and source evidence. Run Chapter C to establish that a new R2d2 has the expected tools. Installation and live cloud checks remain separate.
 
 ## 6. Short lecture — after agreement
 
@@ -96,4 +96,4 @@ Ubuntu provides the Python runtime. Ansible Core supplies the automation engine;
 
 References to consult: [Kolla release selector and support matrix](https://docs.openstack.org/kolla-ansible/latest/user/support-matrix.html) · [Kolla installation sequence](https://docs.openstack.org/kolla-ansible/latest/user/quickstart.html). Use the matching release selector when making the final choice.
 
-[Next planned chapter: install management tools](C-install-tools.md).
+[Next: install management tools](C-install-tools.md).

@@ -176,7 +176,7 @@ def main(argv=None):
         path=health.ENV/name
         if path.is_symlink() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:
             raise RuntimeError('Shutdown source differs from reviewed Kolla release: '+name)
-    inventory,config=health.deploy.validation.local_checks(lambda _:None,env,health.deploy.validation.CA_FINGERPRINT)
+    inventory,config=health.deploy.validation.local_checks(lambda _:None,env)
     health.inv.ensure_agent(env,print)
     folder=REPO/'private/phase5';health.inv.private_dir(folder)
     reports=REPO/'reports';health.inv.private_dir(reports)

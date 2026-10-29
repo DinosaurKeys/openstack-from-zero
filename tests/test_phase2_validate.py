@@ -65,15 +65,35 @@ class ValidationTests(unittest.TestCase):
     step.local_checks(lines.append,{},fingerprint)
     with self.assertRaises(RuntimeError):step.local_checks(lines.append,{},'0'*64)
     self.assertEqual(runner.return_value.run.call_count,2)
+    with self.assertRaisesRegex(RuntimeError,'CA fingerprint differs'):
+     step.local_checks(lines.append,{})
+    self.assertFalse((config.parent/step.CA_REVIEW_FILE).exists())
+    step.record_reviewed_ca(config,fingerprint)
+    pin=config.parent/step.CA_REVIEW_FILE
+    self.assertEqual(pin.stat().st_mode&0o777,0o600)
+    self.assertEqual(json.loads(pin.read_text())['sha256'],fingerprint)
+    saved=pin.read_bytes()
+    step.local_checks(lines.append,{})
+    client=load('fresh_ca_client','phase3-access.py')
+    with patch.object(client.deploy,'validation',step),patch.object(client.deploy,'source_guard'),patch.object(client.deploy.tools,'tool_environment',return_value={}),patch.object(client,'input_hashes',return_value={}),patch.object(client,'post_command',side_effect=RuntimeError('POST_DEPLOY_BOUNDARY_REACHED')) as post:
+     with self.assertRaisesRegex(RuntimeError,'POST_DEPLOY_BOUNDARY_REACHED'):
+      client.execute(lines.append)
+     post.assert_called_once()
+    self.assertEqual(pin.read_bytes(),saved)
+    with self.assertRaisesRegex(RuntimeError,'saved approval'):
+     step.local_checks(lines.append,{},'0'*64)
    self.assertNotIn('PRIVATE_SENTINEL','\n'.join(lines));self.assertEqual(before,{p:p.read_bytes() for p in before})
    result=subprocess.run(['openssl','verify','-CAfile',str(config/'certificates/ca/lab-root.crt'),'-verify_ip',node.VIP,str(config/'certificates/server.crt')],capture_output=True)
    self.assertEqual(result.returncode,0)
  def test_node_readiness_full_fixture_is_read_only_and_detects_unexpected_lvs(self):
+  chrony_available=True
   values={'vgs':{'report':[{'vg':[{'vg_name':'cinder-volumes','pv_count':'1','lv_count':'0'}]}]},'pvs':{'report':[{'pv':[{'pv_name':'/dev/sda','vg_name':'cinder-volumes'}]}]},'lsblk':{'blockdevices':[{'serial':'50026B7766070422','size':240057409536}]}}
   def cmd(args):
    if args[0]=='ip' and 'address' in args:return json.dumps([{'ifname':node.MGMT,'addr_info':[{'local':'192.168.0.200','prefixlen':24}]},{'ifname':'enx00e04c557e58','address':'00:e0:4c:55:7e:58','flags':['UP','LOWER_UP'],'addr_info':[]}])
    if args[0]=='ip':return json.dumps([{'dev':node.MGMT,'gateway':'192.168.0.1'}])
-   if args[0]=='systemctl':return 'active'
+   if args[0]=='systemctl':
+    if not chrony_available:raise RuntimeError('service absent or inactive')
+    return 'active'
    if args[0]=='timedatectl':return 'yes'
    return json.dumps(values[args[0]])
   def read(p,*a,**k):
@@ -83,6 +103,11 @@ class ValidationTests(unittest.TestCase):
    values['vgs']['report'][0]['vg'][0]['lv_count']='1'
    self.assertFalse(node.collect('node1')['ready'])
    self.assertEqual({c.args[0][0] for c in commands.call_args_list},{'ip','systemctl','timedatectl','vgs','pvs','lsblk'})
+   values['vgs']['report'][0]['vg'][0]['lv_count']='0'
+   chrony_available=False
+   result=node.collect('node1')
+   self.assertFalse(result['ready']);self.assertFalse(result['checks']['Chrony active'])
+   self.assertIn('Phase 1 Chapter G',result['facts']['Chrony action'])
  def test_wrong_node_stops_before_lvm_or_network_probe(self):
   with patch.object(node.os,'geteuid',return_value=0),patch.dict(os.environ,{'SUDO_USER':'joe'}),patch.object(node.socket,'gethostname',return_value='wrong'),patch.object(Path,'read_text',return_value='ID=ubuntu\nVERSION_ID="24.04"'),patch.object(node,'command',return_value='[]') as command,patch.object(node,'vip_conflicts') as arp:
    self.assertFalse(node.collect('node1')['ready']);self.assertEqual(command.call_count,1);arp.assert_not_called()
@@ -104,5 +129,60 @@ class ValidationTests(unittest.TestCase):
    p.chmod(0o600);step.private_file(p)
    link=Path(d)/'link';link.symlink_to(p)
    with self.assertRaises(RuntimeError):step.private_file(link)
+
+
+class SavedCAApprovalTests(unittest.TestCase):
+ def config(self,root):
+  config=root/'private/phase2/kolla';config.mkdir(parents=True)
+  return config
+ def write(self,config,value):
+  path=config.parent/step.CA_REVIEW_FILE
+  path.write_text(json.dumps(value));path.chmod(0o600);return path
+ def record(self,pin='a'*64):return {'version':1,'vip':step.config_step.VIP,'sha256':pin}
+ def test_legacy_compatibility_does_not_create_a_pin_or_accept_a_discovered_ca(self):
+  with tempfile.TemporaryDirectory() as d:
+   config=self.config(Path(d));before=list(config.parent.iterdir())
+   self.assertEqual(step.reviewed_ca(config),step.CA_FINGERPRINT)
+   self.assertEqual(step.reviewed_ca(config,'a'*64),'a'*64)
+   self.assertEqual(list(config.parent.iterdir()),before)
+ def test_saved_approval_is_used_by_an_independently_loaded_tool_and_never_overwritten(self):
+  with tempfile.TemporaryDirectory() as d:
+   config=self.config(Path(d));path=self.write(config,self.record());before=path.read_bytes()
+   peer=load('independent_approval_reader','phase2-validate.py')
+   self.assertEqual(peer.reviewed_ca(config),'a'*64)
+   with self.assertRaisesRegex(RuntimeError,'saved approval'):step.record_reviewed_ca(config,'b'*64)
+   self.assertEqual(path.read_bytes(),before)
+ def test_invalid_json_schema_permissions_and_symlinks_never_fall_back_to_legacy(self):
+  with tempfile.TemporaryDirectory() as d:
+   config=self.config(Path(d));path=self.write(config,self.record())
+   for value in ({},dict(self.record(),extra=True),dict(self.record(),version=True),dict(self.record(),sha256='auto')):
+    path.write_text(json.dumps(value))
+    with self.assertRaises(RuntimeError):step.reviewed_ca(config)
+   path.write_text('{')
+   with self.assertRaises(RuntimeError):step.reviewed_ca(config)
+   path.write_text(json.dumps(self.record()));path.chmod(0o644)
+   with self.assertRaises(RuntimeError):step.reviewed_ca(config)
+   path.unlink();target=config/'other';target.write_text(json.dumps(self.record()));target.chmod(0o600);path.symlink_to(target)
+   with self.assertRaises(RuntimeError):step.reviewed_ca(config)
+ def test_a_different_actual_certificate_cannot_be_approved_or_saved(self):
+  with tempfile.TemporaryDirectory() as d:
+   config=self.config(Path(d))
+   with patch.object(step.config_step,'verify_certificates',return_value='b'*64):
+    with self.assertRaisesRegex(RuntimeError,'CA changed'):step.record_reviewed_ca(config,'a'*64)
+   self.assertFalse((config.parent/step.CA_REVIEW_FILE).exists())
+ def test_failed_node_readiness_does_not_save_an_approval(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);config=self.config(root);work=root/'work';work.mkdir()
+   with patch.object(step.tools,'tool_environment',return_value={}),patch.object(step,'local_checks',return_value=(root/'inventory',config)),patch.object(step.inv,'ensure_agent'),patch.object(step.tools,'Runner'),patch.object(step,'node_result',side_effect=lambda tree,node:{'node':node,'ready':node!='node2'}):
+    with self.assertRaisesRegex(RuntimeError,'node checks'):step.execute(lambda _:None,work,'a'*64,False)
+   self.assertFalse((config.parent/step.CA_REVIEW_FILE).exists())
+ def test_saved_approval_is_part_of_protected_installation_inputs(self):
+  pre=load('pin_hashes','phase3-prechecks.py')
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);config=self.config(root);inventory=config.parent/'inventory.ini';inventory.write_text('fixture')
+   path=self.write(config,self.record());before=pre.private_inputs(config,inventory)
+   self.assertIn(str(path),before)
+   path.write_text(json.dumps(self.record('b'*64)))
+   self.assertNotEqual(before,pre.private_inputs(config,inventory))
 
 if __name__=='__main__':unittest.main()

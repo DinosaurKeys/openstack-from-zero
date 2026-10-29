@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 ENV = Path('/home/joe/venvs/kolla')
 CA_FINGERPRINT = '278a4e6a84b761f954b9bbf1f8051c3560b63f0eb073efc9e95d8d1c69df3cbb'
 TRUST_TARGET = Path('/usr/local/share/ca-certificates/openstack-from-zero-lab.crt')
+CA_REVIEW_FILE = 'reviewed-ca.json'
 
 def private_file(path):
     if any(p.is_symlink() for p in [path,*path.parents]) or not path.is_file():
@@ -30,7 +31,49 @@ def private_file(path):
     if path.stat().st_uid != os.getuid() or path.stat().st_mode & 0o077:
         raise RuntimeError('Private file ownership/permissions require review: '+str(path))
 
-def local_checks(log, env, expected_ca):
+def reviewed_ca(config, expected=None):
+    """Use an explicitly reviewed pin; never accept a certificate by discovery."""
+    if expected is not None and not re.fullmatch('[0-9a-f]{64}', expected):
+        raise RuntimeError('Reviewed CA fingerprint must be 64 lowercase hexadecimal characters')
+    path = config.parent/CA_REVIEW_FILE
+    if path.exists() or path.is_symlink():
+        private_file(path)
+        try:
+            record = json.loads(path.read_text())
+        except (ValueError, UnicodeError):
+            raise RuntimeError('Saved CA review is invalid; preserved without replacement') from None
+        if (not isinstance(record, dict) or set(record) != {'version', 'vip', 'sha256'}
+                or type(record['version']) is not int or record['version'] != 1
+                or record['vip'] != config_step.VIP
+                or not isinstance(record['sha256'], str)
+                or not re.fullmatch('[0-9a-f]{64}', record['sha256'])):
+            raise RuntimeError('Saved CA review needs review; preserved without replacement')
+        if expected is not None and expected != record['sha256']:
+            raise RuntimeError('Explicit CA fingerprint differs from the saved approval; no replacement')
+        return record['sha256']
+    # Compatibility for the existing lab, whose CA was reviewed before this file existed.
+    return expected if expected is not None else CA_FINGERPRINT
+
+
+def record_reviewed_ca(config, expected):
+    """Persist only a supplied, matching approval after the preparation checks pass."""
+    if expected is None:
+        return
+    approved = reviewed_ca(config, expected)
+    if config_step.verify_certificates(config/'certificates') != approved:
+        raise RuntimeError('CA changed before approval could be recorded; no pin saved')
+    path = config.parent/CA_REVIEW_FILE
+    if path.exists():
+        return
+    inv.private_dir(path.parent)
+    record = {'version': 1, 'vip': config_step.VIP, 'sha256': approved}
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'w') as output:
+        json.dump(record, output, indent=2)
+        output.write('\n'); output.flush(); os.fsync(output.fileno())
+
+
+def local_checks(log, env, expected_ca=None):
     import yaml
     if importlib.metadata.version('kolla-ansible') != '23.0.0' or importlib.metadata.version('ansible-core') != '2.21.5':
         raise RuntimeError('Expected Kolla-Ansible 23.0.0 and Ansible-core 2.21.5')
@@ -65,7 +108,7 @@ def local_checks(log, env, expected_ca):
         if path.is_file():
             private_file(path)
     fingerprint = config_step.verify_certificates(config/'certificates')
-    if fingerprint != expected_ca:
+    if fingerprint != reviewed_ca(config, expected_ca):
         raise RuntimeError('CA fingerprint differs from the reviewed Chapter E fingerprint; no trust changes made')
     config_step.verify_proxysql_certificates(config/'certificates')
     log('PASS tool versions, all-three-node roles, globals, NIC mapping and credential completeness.')
@@ -123,6 +166,9 @@ def execute(log, work, expected_ca, trust):
         all_ready = all_ready and result['ready']
     if not all_ready:
         raise RuntimeError('One or more node checks require review; no automatic configuration repair')
+    record_reviewed_ca(config, expected_ca)
+    if expected_ca is not None:
+        log('PASS reviewed CA fingerprint saved for later install, client and recovery commands.')
     log('RESULT: PREPARATION_CHECKS_PASSED')
     if trust:
         trust_ca(config,log,env)
@@ -136,9 +182,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run',action='store_true',help='run explained local and node checks; write a private report')
     parser.add_argument('--trust-r2d2',action='store_true',help='after checks pass, add only the verified public CA to R2d2 Ubuntu trust')
-    parser.add_argument('--expected-ca',default=CA_FINGERPRINT,help='reviewed Chapter E SHA256 fingerprint; change only for an intentional fresh rebuild')
+    parser.add_argument('--expected-ca',help='explicitly reviewed Chapter E SHA256 fingerprint; saved after checks pass')
     args = parser.parse_args(argv)
-    if not re.fullmatch('[0-9a-f]{64}',args.expected_ca):
+    if args.expected_ca is not None and not re.fullmatch('[0-9a-f]{64}',args.expected_ca):
         parser.error('--expected-ca must be 64 lowercase hexadecimal characters')
     if args.trust_r2d2 and not args.run:
         parser.error('--trust-r2d2 also needs --run')

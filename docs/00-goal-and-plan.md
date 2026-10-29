@@ -11,9 +11,9 @@ Build and understand a three-node OpenStack HA lab: API Keepalived/HAProxy, Mari
 | Machine | Address | Planned job |
 |---|---|---|
 | R2d2 | 192.168.162.131/24 — DHCP on the NAT network | Management: Git, Ansible, Kolla-Ansible and later Terraform |
-| node1 | 192.168.0.200 | Controller, compute and local Cinder LVM storage |
-| node2 | 192.168.0.201 | Controller, compute and local Cinder LVM storage |
-| node3 | 192.168.0.202 | Controller, compute and local Cinder LVM storage |
+| node1 | 192.168.0.200 | Controller, network, compute and local Cinder LVM storage |
+| node2 | 192.168.0.201 | Controller, network, compute and local Cinder LVM storage |
+| node3 | 192.168.0.202 | Controller, network, compute and local Cinder LVM storage |
 
 Nodes use Ubuntu Server 24.04 LTS. Each uses its built-in NIC for management and its USB NIC for external VM traffic.
 
@@ -52,6 +52,6 @@ R2d2 is installed: Ubuntu 24.04.5 LTS on VMware, hostname `r2d2`, account `joe`,
 
 The combined SSH inspection passed on all three nodes: Ubuntu 24.04, correct hostnames, management IPs and login as `joe`. Their configured gateway and DNS are `192.168.0.1`; R2d2 uses `192.168.162.2`. USB preparation also passed on all three, preserving management access. The NIC result and short lesson are in [Chapter H](phase-01/H-nics-and-storage.md); the separate Cinder disk step is [Chapter I](phase-01/I-cinder-storage.md).
 
-The nodes share an untagged mini switch and TP-Link home router. Home DHCP allocates `.2–.150`. The initial cloud-address proposal is API VIP `.151` and external pool `.152–.199`, preserving nodes `.200–.202`. Current execution instructions stay in [Phase 1](phase-01/README.md).
+The nodes share an untagged mini switch and TP-Link home router. Home DHCP allocates `.2–.150`. The initial cloud-address proposal is API VIP `.151` and external pool `.152–.199`, preserving nodes `.200–.202`. Start a rebuild with [Phase 1](phase-01/README.md). The [main README](../README.md#current-learning-step) identifies the current learning checkpoint.
 
 Ceph/HA storage and automatic VM recovery are deferred. Complete one reviewed exercise at a time; obtain approval before service interruptions or VM migration.

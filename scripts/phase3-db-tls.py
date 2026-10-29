@@ -20,7 +20,7 @@ def prepare_existing(log,expected_ca):
     if yaml.safe_load((config/'globals.yml').read_text())!=step.settings(config):
         raise RuntimeError('Globals differ from the reviewed lab configuration; preserved')
     fingerprint=step.verify_certificates(certs)
-    if fingerprint!=expected_ca:
+    if fingerprint!=validation.reviewed_ca(config,expected_ca):
         raise RuntimeError('Existing CA fingerprint differs from the reviewed value; no files added')
     original={p:p.read_bytes() for p in [config/'globals.yml',*(certs/name for name in ('ca/lab-root.crt','private/lab-root.key','private/server.key','server.crt','haproxy.pem','haproxy-internal.pem'))]}
     step.ensure_proxysql_certificates(certs)
@@ -34,8 +34,8 @@ def prepare_existing(log,expected_ca):
     log('R2d2 local files only. No passwords read, sudo, packages, node connections or TLS-setting changes.')
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--apply',action='store_true');p.add_argument('--expected-ca',default=validation.CA_FINGERPRINT);args=p.parse_args(argv)
-    if not re.fullmatch('[0-9a-f]{64}',args.expected_ca):p.error('--expected-ca needs 64 lowercase hexadecimal characters')
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--apply',action='store_true');p.add_argument('--expected-ca',help='optional pin; normally use the saved Phase 2 CA approval');args=p.parse_args(argv)
+    if args.expected_ca is not None and not re.fullmatch('[0-9a-f]{64}',args.expected_ca):p.error('--expected-ca needs 64 lowercase hexadecimal characters')
     if not args.apply:
         print('PLAN ONLY: verify existing lab certificates and add/reuse the three private ProxySQL TLS files on R2d2.')
         print('No node connections, file changes, new certificates or changed TLS settings.');return 0

@@ -346,7 +346,7 @@ def reviewed_data_volume(api,folder,vm,project,user):
 
 def execute(log,verify_only=False):
     deploy.source_guard();env=deploy.tools.tool_environment()
-    inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda line:None,env)
     baseline=access.input_hashes(config,inventory)
     for name in ('ssh','ssh-keyscan','ssh-keygen','ssh-add','ssh-agent','ping'):
         if not shutil.which(name):raise RuntimeError('Required existing client tool unavailable: '+name)

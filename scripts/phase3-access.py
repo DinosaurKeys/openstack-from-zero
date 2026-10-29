@@ -191,7 +191,7 @@ def load_profile(config):
 
 def execute(log):
     deploy.source_guard(); env = deploy.tools.tool_environment()
-    inventory, config = deploy.validation.local_checks(lambda line: None, env, deploy.validation.CA_FINGERPRINT)
+    inventory, config = deploy.validation.local_checks(lambda line: None, env)
     before = input_hashes(config, inventory)
     for name in OUTPUTS:
         path = config/name

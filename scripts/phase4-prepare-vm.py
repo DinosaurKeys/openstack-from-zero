@@ -283,7 +283,7 @@ def prepare(api, state, project, public, image_path, metadata, save, log):
 
 def execute(log):
     deploy.source_guard(); env = deploy.tools.tool_environment()
-    inventory, config = deploy.validation.local_checks(lambda line: None, env, deploy.validation.CA_FINGERPRINT)
+    inventory, config = deploy.validation.local_checks(lambda line: None, env)
     baseline = access.input_hashes(config, inventory)
     folder = REPO/'private/phase4'; deploy.inv.private_dir(folder)
     lock = folder/'vm-preparation.lock'

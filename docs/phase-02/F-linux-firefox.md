@@ -4,7 +4,7 @@
 
 **Goal:** let Firefox on your Linux computer recognize the lab CA.
 
-**Status: Joe confirmed completing this Linux Firefox procedure.** The Windows Chrome import is also user-confirmed. The steps below remain for study and rebuilding. The Linux computer's exact path, distribution and transfer route were not reported and are not assumed. Live Horizon HTTPS is still pending deployment.
+**Status: Joe confirmed completing this Linux Firefox procedure.** The Windows Chrome import is also user-confirmed. The steps below remain for study and rebuilding. The Linux computer's exact path, distribution and transfer route were not reported and are not assumed. [Phase 3 D](../phase-03/D-client-access.md) holds the live HTTPS/API checks and the separate browser sign-in step.
 
 ## A. Where to work
 
@@ -43,13 +43,7 @@ openssl x509 -in lab-root.crt -noout -fingerprint -sha256
 
 It reads the certificate and prints its identity. It changes no settings and does not import trust. If the program is unavailable, return that observation before installing anything.
 
-The expected certificate SHA256 fingerprint is:
-
-```text
-27:8A:4E:6A:84:B7:61:F9:54:B9:BB:F1:F8:05:1C:35:60:B6:3F:0E:B0:73:EF:C9:E9:5D:8D:1C:69:DF:3C:BB
-```
-
-Upper/lowercase and colon separators do not change the value. Stop if it differs. A fresh rebuilt lab uses its newly reviewed CA fingerprint.
+Compare the fingerprint with the **reviewed public CA SHA256 from Phase 2 E**. Upper/lowercase and colon separators do not change its value. A clean installation uses its newly reviewed CA; do not copy the identity of a different lab. Stop before import if it differs.
 
 ## D. Import into Linux Firefox — after the fingerprint matches
 
@@ -75,7 +69,7 @@ Use **Authorities**, not the **Your Certificates** tab. If labels differ, return
 - [ ] CA appears in Linux Firefox's Authorities list with website trust.
 - [ ] Live Horizon HTTPS tested later, after deployment.
 
-No Horizon page is expected yet: OpenStack has not been deployed.
+For live Horizon access after deployment, continue with Phase 3 D. Certificate import alone does not prove browser sign-in.
 
 ## F. Short lecture — after import is confirmed
 

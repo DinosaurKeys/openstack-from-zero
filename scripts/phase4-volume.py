@@ -92,12 +92,13 @@ def observe(api,state,project):
         'volume':{k:volume.get(k) for k in ('id','name','status','size','os-vol-host-attr:host','attachments')},
         'server':{k:server.get(k) for k in ('id','name','status','OS-EXT-SRV-ATTR:host','OS-EXT-STS:task_state','OS-EXT-STS:vm_state','os-extended-volumes:volumes_attached')},
         'nova_attachments':rows,'identity_issues':issues,
-        'persistence':'Not yet verified after reattachment; pending state is preserved regardless of API observations.'}
+        'persistence':('Not yet verified after reattachment; pending state is preserved regardless of API observations.' if state.get('pending') else
+            'This API snapshot does not check guest data. The saved persistence checkpoint is preserved.')}
 
 
 def execute_observation(log):
     deploy.source_guard();env=deploy.tools.tool_environment()
-    inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda line:None,env)
     hashes=access.input_hashes(config,inventory);folder=REPO/'private/phase4';path=folder/'volume.json'
     deploy.validation.private_file(path);before=path.read_bytes();state=json.loads(before)
     original,project,user=prep.authenticate(config);api=ReadOnlyAPI(original.client,original.urls,original.token)
@@ -363,7 +364,7 @@ def wait_guest(probe,action):
 
 def execute(log,verify=False,reattach=False):
     deploy.source_guard();env=deploy.tools.tool_environment()
-    inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda line:None,env)
     hashes=access.input_hashes(config,inventory)
     folder=REPO/'private/phase4';deploy.inv.private_dir(folder)
     # Also take Chapter D's lock so its command cannot race this attachment exercise.

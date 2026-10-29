@@ -208,7 +208,7 @@ def require_preparation(mode,plan):
 
 def execute(mode,log):
     deploy.source_guard();env=deploy.tools.tool_environment()
-    inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda line:None,env)
     hashes=access.input_hashes(config,inventory);inv.ensure_agent(env,log)
     folder=REPO/'private/phase5';inv.private_dir(folder);lock=folder/'api-vip.lock'
     if lock.is_symlink():raise RuntimeError('Unsafe lock path')

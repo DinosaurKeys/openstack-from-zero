@@ -123,8 +123,8 @@ def execute(log,private_log,work,expected_ca):
   for node in inv.NODES:child.pop('OFZ_SUDO_'+node,None)
 
 def main(argv=None):
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--apply',action='store_true');p.add_argument('--expected-ca',default=validation.CA_FINGERPRINT);args=p.parse_args(argv)
- if not re.fullmatch('[0-9a-f]{64}',args.expected_ca):p.error('--expected-ca requires 64 lowercase hexadecimal characters')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--apply',action='store_true');p.add_argument('--expected-ca',help='optional pin; normally use the saved Phase 2 CA approval');args=p.parse_args(argv)
+ if args.expected_ca is not None and not re.fullmatch('[0-9a-f]{64}',args.expected_ca):p.error('--expected-ca requires 64 lowercase hexadecimal characters')
  if not args.apply:
   print('PLAN ONLY: verify existing configuration and nodes, run fresh full prechecks, deploy through Kolla, observe core containers/VIP/USB bridges, save one private report.')
   print('Read Phase 3 Chapter C before --apply. No files changed or nodes contacted.');return 0

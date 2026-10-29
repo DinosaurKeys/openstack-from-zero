@@ -180,7 +180,7 @@ def read_private(path):
 
 def api_checks(rows,details,env,include_workload=True):
     try:
-        _,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+        _,config=deploy.validation.local_checks(lambda line:None,env)
         original,project,user=prep.authenticate(config)
         api=ReadAPI(original.client,original.urls,original.token)
     except Exception as error:

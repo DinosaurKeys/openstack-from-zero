@@ -42,7 +42,7 @@ Read [phase2-inventory.py](../../scripts/phase2-inventory.py). It uses the insta
 | `reports/phase2-inventory-<UTC>-<random>.txt` | One combined result, including Ansible task output |
 | Matching `.ansible.log` file in `reports/` | Private task log used to include errors in the combined report |
 
-Existing files with identical contents are reused. If either generated working file has different contents, the script stops and preserves it. Passwords and private-key contents are never written into the inventory. These working files and reports stay outside Git.
+A fresh inventory assigns all three nodes to all four roles directly. Existing files with identical contents are reused. If either generated working file has different contents, the script stops and preserves it. Passwords and private-key contents are never written into the inventory. These working files and reports stay outside Git.
 
 The important groups will be:
 
@@ -74,25 +74,7 @@ SSH host-key checking stays enabled. The script selects only the existing `/home
 
 If it needs a new SSH agent, the script starts one for its child commands and loads the key for four hours. An already loaded key keeps its existing lifetime. This does not export a new agent into your parent terminal.
 
-### Existing lab: add node1 to compute
-
-Joe's completed report returned `INVENTORY_ACCESS_READY for all`: identity, Python and sudo checks passed on every node with `changed=0`. That run used the earlier two-compute layout. Joe requested compute on **all three nodes**, then completed the update below. The previous inventory was saved as `inventory-before-add-node1-kbim52ac.ini`; the update report returned `COMPUTE_ROLES_UPDATED`. These commands remain available for rebuilding.
-
-For this existing lab, run the following on **R2d2 as joe**. It updates only the known earlier private inventory. It makes no SSH connections and asks for no passwords.
-
-```bash
-cd ~/openstack-from-zero
-git pull --ff-only
-/usr/bin/python3 scripts/phase2-inventory.py --add-node1-compute
-```
-
-The command validates the three-compute candidate with Ansible, saves the earlier inventory as a private `inventory-before-add-node1-<random>.ini` backup, then replaces the working inventory. If it finds other edits, it preserves them and stops. Repeating a completed update simply verifies the current layout.
-
-Expected marker: **`RESULT: COMPUTE_ROLES_UPDATED`**. Send the report using the exact `cat` command printed at the end. This marker confirms role assignment in the local inventory; it does not mean Nova services have been deployed.
-
-**Use this update command for the current lab. The full setup below is retained for a fresh rebuild.**
-
-### Download and run
+### Create or verify the three-node inventory
 
 Run these commands **on R2d2 as joe**. They enter the repository, download the guide/script and create/verify the inventory.
 
@@ -129,12 +111,12 @@ RESULT: INVENTORY_ACCESS_READY for all
 
 Use the exact `cat` command printed at the end and send back that combined report. **Stop before Chapter E.** If it reports `INVENTORY_ACCESS_NEEDS_REVIEW`, return the report before rerunning or changing settings.
 
-Before publication, nine local regression tests passed, including backup, repeat-run and unknown-edit preservation checks. The two-to-three-compute inventory update also passed real Ansible parsing in an isolated development folder. Real Ansible Core 2.21.5 parsed the generated inventory, verified its expected host/group mappings and syntax-checked the playbook against Kolla 23.0.0's template. Its template engine also evaluated the hostname/account/IP/root assertions with fixture data and rejected a wrong hostname. This development environment restricts the socket operations needed to run Ansible tasks; live SSH, module execution and sudo on your nodes remain unverified until your report.
+Local regression checks cover repeat runs and preservation of unknown edits. Real Ansible Core 2.21.5 parsed the generated inventory, verified its expected host/group mappings and syntax-checked the playbook against Kolla 23.0.0's template. Its template engine also evaluated the hostname/account/IP/root assertions with fixture data and rejected a wrong hostname. This development environment restricts the socket operations needed to run Ansible tasks; live SSH, module execution and sudo on your nodes remain unverified until your report.
 
 ## 5. Short lecture — after review
 
 The completed access checks prove that Ansible can reach the intended machines as joe, execute Python modules and use sudo. An inventory group is a role assignment for later deployment; it does not install services by itself.
 
-All three nodes are now the selected compute targets. The inventory update is now verified; service deployment remains a later step. Later, removing a deployed compute requires first moving or shutting down its VMs and decommissioning the service; editing the inventory alone does not remove running services.
+All three nodes are the selected compute targets. Inventory creation establishes roles; service deployment belongs in Phase 3. Later, removing a deployed compute requires first moving or shutting down its VMs and decommissioning the service; editing the inventory alone does not remove running services.
 
-[Next planned chapter: configure the lab](E-configure-lab.md).
+[Next: configure the lab](E-configure-lab.md).

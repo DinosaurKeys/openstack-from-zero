@@ -92,6 +92,8 @@ Everything below is on **R2d2**, under `~/openstack-from-zero/private/phase2/`:
 
 The configuration stays in the project's private folder rather than replacing an unknown `/etc/kolla` setup on R2d2. Later Kolla commands must use this configuration directory explicitly with `--configdir`. Service configuration on the nodes is created only during later deployment.
 
+Phase 2 F records an explicitly reviewed CA fingerprint in `private/phase2/reviewed-ca.json` for use by later tools. This approval file is outside the Kolla configuration directory.
+
 Existing, matching files are reused. An unexpected configuration folder or conflicting settings file is preserved and stops the script. Existing generated passwords and certificates are reused; a rerun does not rotate them.
 
 ### C. Understand passwords and HTTPS

@@ -18,17 +18,13 @@ Kolla calls this preparation **bootstrap**. It prepares hosts; deploying OpenSta
 - Each existing Cinder pool has one confirmed SATA PV and zero LVs.
 - R2d2 CA trust passed. Windows Chrome and Linux Firefox imports are user-confirmed; live Horizon HTTPS remains a deployment-stage check.
 
-## 3. Proposed steps
+## 3. Preparation order
 
-1. Review the **installed, pinned release's** bootstrap tasks and effective settings.
-2. Publish a short list of the exact packages, services and configuration files it would change on our three nodes. Include any effects on hosts-file entries, time synchronization, firewall or access settings before asking Joe to run it.
-3. Resolve any new choices with Joe. Keep the existing roles, NIC selection, storage pools and approved Cinder cluster-check exception.
-4. Prepare and test one wrapper using the existing private inventory and configuration directory.
-5. Publish the finished guide and script, with passwords/prompts and changes explained.
-6. After agreement on that concrete scope, Joe pulls and runs it on R2d2.
-7. Review one private combined report before moving to Chapter B.
-
-The selected release and public quick-start establish the order: host bootstrap, full prechecks, then service deployment. The public quick-start uses example paths; our eventual wrapper must use the already prepared lab paths.
+1. Complete Phase 1, including Chrony on every machine and the reviewed Cinder pools.
+2. Complete Phase 2 tools, inventory, configuration and certificate approval.
+3. Read the [host-change table](A-host-changes.md).
+4. Run the bootstrap command below on R2d2.
+5. Require a passing report before full prechecks in Chapter B.
 
 ## 4. Understand the wrapper
 
@@ -88,13 +84,12 @@ The post-checks verify Docker's service/API, expected packages, host-name resolu
 
 If it reports `HOST_BOOTSTRAP_NEEDS_REVIEW`, return the report before another command. Earlier Kolla tasks may already have changed hosts; the wrapper does not perform automatic rollback or rerun the whole bootstrap. Completed reports stay private under `reports/`.
 
-For a deliberate fresh rebuild with a new CA, use the newly reviewed fingerprint through `--expected-ca`, as explained in [Phase 2 Chapter F](../phase-02/F-validate-preparation.md#rebuilding-later).
+For a clean installation with a new CA, complete the one-time fingerprint approval in [Phase 2 F](../phase-02/F-validate-preparation.md#rebuilding-later). Bootstrap and later tools then read the saved approval automatically.
 
-## 6. Finish check — future result
+## 6. Required result for a rebuild
 
-- [ ] Standard bootstrap scope agreed; concrete changes published for reading before execution.
-- [ ] Wrapper tested locally and published.
-- [ ] Joe's run completed on all three nodes.
+- [ ] Read and approve the explained host-change scope.
+- [ ] This bootstrap run completed on all three nodes.
 - [ ] Docker service/API, fresh node access and the recorded host checks passed.
 - [ ] Combined report reviewed; Chapter B is next.
 
@@ -124,4 +119,4 @@ Nine regression tests passed: default-plan isolation, explicit configuration pat
 These checks did not perform a live Ubuntu APT/Docker installation or SSH/sudo run against Joe's nodes. A live host result must be reviewed separately. This chapter does not claim that full Kolla prechecks, live Horizon HTTPS or deployment have passed.
 
 
-[Next: Chapter B — Full Kolla prechecks](B-full-prechecks.md). The wrapper is ready to run; its live result is pending. All Chapter A run commands remain above for rebuilding.
+[Next: Chapter B — Full Kolla prechecks](B-full-prechecks.md). A rebuild must supply its own passing bootstrap report; a recorded earlier result is not a new host check.

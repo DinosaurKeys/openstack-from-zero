@@ -76,7 +76,7 @@ def execute(log,work,expected_ca):
  log('Host preparation only. Return this report before full Kolla prechecks or deployment.')
 
 def main(argv=None):
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--apply',action='store_true');p.add_argument('--expected-ca',default=validation.CA_FINGERPRINT);args=p.parse_args(argv)
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--apply',action='store_true');p.add_argument('--expected-ca',help='optional pin; normally use the saved Phase 2 CA approval');args=p.parse_args(argv)
  if not args.apply:
   print('PLAN ONLY: validate files and all three nodes; run reviewed Kolla host bootstrap; verify and save one private report.')
   print('Approved standard preparation includes firewall/package changes. Read Phase 3 Chapter A before --apply.');return 0

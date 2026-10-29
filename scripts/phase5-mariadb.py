@@ -137,7 +137,7 @@ def exercise(nodes,plan,profile,client,server_id,save,log,sampler_factory=vip.Sa
 
 def execute(mode,target,log):
     deploy.source_guard();env=deploy.tools.tool_environment()
-    inventory,config=deploy.validation.local_checks(lambda line:None,env,deploy.validation.CA_FINGERPRINT)
+    inventory,config=deploy.validation.local_checks(lambda line:None,env)
     hashes=access.input_hashes(config,inventory);inv.ensure_agent(env,log)
     folder=REPO/'private/phase5';inv.private_dir(folder);handles=[]
     try:

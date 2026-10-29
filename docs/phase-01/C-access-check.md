@@ -45,7 +45,7 @@ cd ~/openstack-from-zero
 python3 scripts/phase1-check.py --ssh --user joe
 ```
 
-Here, `--ssh` enables node inspection and `--user joe` selects the node login account. Replace `joe` only if the nodes use a different account. Password login is supported.
+Here, `--ssh` enables node inspection and `--user joe` selects the node login account. Use `joe` throughout this course; later scripts require that account. Password login is supported.
 
 On a first connection, verify the displayed host fingerprint against the node console before accepting it. For an ED25519 host key, display it at that node's console with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. A changed-key warning remains visible for review.
 
@@ -75,7 +75,7 @@ Sudo, disk health, permission to erase a disk and full OpenStack readiness are s
 
 All three use `enp0s31f6` for management, with configured gateway and DNS `192.168.0.1`. Their reports and R2d2's report show `NTPSynchronized=yes`.
 
-NIC identities are recorded in [Chapter H](H-nics-and-storage.md). Node3's storage candidate is recorded in [Chapter I](I-cinder-storage.md). The full private report stays outside Git.
+NIC identities are recorded in [Chapter H](H-nics-and-storage.md). The three SATA storage candidates are recorded in [Chapter I](I-cinder-storage.md). The full private report stays outside Git.
 
 ## 5. Short lecture — what your result means
 

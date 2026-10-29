@@ -85,7 +85,7 @@ def main(argv=None):
     if Path(sys.prefix) != step.ENV:
         os.execve(str(step.ENV/'bin/python'), [str(step.ENV/'bin/python'), str(Path(__file__).resolve()), args.object]+(['--table'] if args.table else [])+(['--all-projects'] if args.all_projects else []), step.deploy.tools.tool_environment())
     step.deploy.source_guard(); env = step.deploy.tools.tool_environment()
-    _, config = step.deploy.validation.local_checks(lambda line: None, env, step.deploy.validation.CA_FINGERPRINT)
+    _, config = step.deploy.validation.local_checks(lambda line: None, env)
     api, _, _ = step.authenticate(config)
     result=collect(api, args.object, args.all_projects)
     print(table(args.object,result) if args.table else json.dumps(result, indent=2))

@@ -4,7 +4,7 @@
 
 **Purpose:** let your browser recognize the lab's HTTPS certificate when Horizon is deployed.
 
-**Current checkpoint:** Joe confirmed the public CA import into **Chrome on Windows 11**. The certificate was copied to `C:\Users\joe\lab-root.crt`, and Joe reported the Step 4 verification marker. Joe subsequently confirmed completing Linux Firefox setup. The chosen browser imports are user-confirmed. The Linux path, distribution and transfer route were not supplied; they are not inferred. Live Horizon HTTPS has not been tested.
+**Reviewed browser preparation:** Joe confirmed the public CA import into **Chrome on Windows 11**. The certificate was copied to `C:\Users\joe\lab-root.crt`, and Joe reported the Step 4 verification marker. Joe subsequently confirmed completing Linux Firefox setup. The chosen browser imports are user-confirmed. The Linux path, distribution and transfer route were not supplied; they are not inferred. Live HTTPS/API evidence belongs in [Phase 3 D](../phase-03/D-client-access.md); browser sign-in requires its own confirmation.
 
 ## Choose your browser path
 
@@ -75,7 +75,9 @@ If `scp` reports an error, return it before proceeding. A successful copy normal
 $labCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($labCaFile)
 $labFingerprint = $labCertificate.GetCertHashString([System.Security.Cryptography.HashAlgorithmName]::SHA256)
 $labFingerprint
-if ($labFingerprint -ne '278A4E6A84B761F954B9BBF1F8051C3560B63F0EB073EFC9E95D8D1C69DF3CBB') { throw 'Certificate fingerprint mismatch. Stop before importing.' }
+$labExpectedFingerprint = (Read-Host 'Reviewed CA SHA256 from Phase 2 E').Trim()
+if ($labExpectedFingerprint -notmatch '^[0-9A-Fa-f]{64}$') { throw 'Expected 64 hexadecimal characters.' }
+if ($labFingerprint -ne $labExpectedFingerprint) { throw 'Certificate fingerprint mismatch. Stop before importing.' }
 Write-Output "CA_CERTIFICATE_VERIFIED: $labCaFile"
 ```
 

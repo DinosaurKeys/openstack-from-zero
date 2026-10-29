@@ -97,7 +97,7 @@ Use the exact `cat` command printed at the end and return that report. It includ
 - The same volume remains **attached and mounted** at `/mnt/lab-data`.
 - The root-owned test file remains in that filesystem; the VM continues running.
 - Nova's attachment is explicitly configured to retain the volume if the VM is deleted. Deleting a VM is not part of this chapter.
-- No persistent mount entry is added. After a guest reboot, do not assume that `/mnt/lab-data` is mounted; reboot/mount configuration is a separate exercise.
+- No persistent mount entry is added. After a guest reboot or cold move, follow the [existing-filesystem mount steps](#after-a-guest-reboot-or-cold-move) below before checking data.
 - The local root disk and the Cinder data volume remain separate. A data volume does not convert this VM into a boot-from-volume VM.
 
 A later repeat of `--apply` on a completed exercise checks the tracked volume; it does not format it or repeat detach/reattach. Explicit verification mode reads the completed mounted volume without create, attach, detach, format or mount commands:
@@ -151,6 +151,54 @@ sudo sha256sum /mnt/lab-data/persistence-test.txt
 ```
 
 `lsblk` lists disks, `findmnt` shows the mounted filesystem, `cat` reads the file, and `sha256sum` prints its fingerprint. Do not copy a device name from an example into a format command.
+
+## After a guest reboot or cold move
+
+**Mounting reconnects an existing filesystem to a directory. It does not create another disk or filesystem.** This procedure is for the tracked course volume only, after the VM is confirmed running with that original volume attached. An ERROR VM, uncertain migration or identity mismatch needs review first.
+
+### 1. Read the saved identity — on R2d2
+
+```bash
+/usr/bin/python3 scripts/phase4-volume.py --observe
+```
+
+Read the printed report. Note the original **volume ID**, **filesystem UUID** and **SHA256**, and confirm Cinder/Nova still attach that volume to the intended VM. The filesystem UUID identifies the ext4 contents; it is different from Cinder's volume ID. This API snapshot alone does not prove the guest is running.
+
+Connect to the VM using [Chapter D's pinned SSH command](D-boot-and-test-vm.md#7-view-and-recheck), with its verified current floating IP.
+
+### 2. Identify the disk — inside the Ubuntu guest
+
+```bash
+lsblk -b -o NAME,SIZE,TYPE,FSTYPE,UUID,MOUNTPOINTS,SERIAL
+findmnt --mountpoint /mnt/lab-data
+```
+
+Require exactly one matching data disk and one occurrence of its filesystem UUID. Match all three: the saved volume ID in the disk serial (possibly its first 20 characters), capacity **1073741824 bytes**, and the saved filesystem UUID with type **ext4**. Select the data disk, not Ubuntu's root disk. A different device letter after a move is not a new volume.
+
+If the matching disk is already mounted at `/mnt/lab-data`, skip to step 4. If `findmnt` returns no mount, its nonzero exit is expected; continue only after the identity matches and the disk has no other mount.
+
+### 3. Mount the existing filesystem
+
+Replace `FILESYSTEM_UUID_FROM_REPORT` below with the saved filesystem UUID. Confirm `/mnt/lab-data` is the existing empty directory. Then run **inside the guest**:
+
+```bash
+test -d /mnt/lab-data && test ! -L /mnt/lab-data &&
+  lab_mount_contents=$(sudo ls -A /mnt/lab-data) &&
+  test -z "$lab_mount_contents" &&
+  sudo mount -t ext4 -o nodev,nosuid,noexec \
+    UUID=FILESYSTEM_UUID_FROM_REPORT /mnt/lab-data
+```
+
+This is an explicit mount action. It creates no volume, formats nothing and adds no fstab entry. If it fails, return the output for review before another action.
+
+### 4. Verify the same data
+
+```bash
+findmnt --mountpoint /mnt/lab-data --output TARGET,SOURCE,FSTYPE,UUID
+sudo sha256sum /mnt/lab-data/persistence-test.txt
+```
+
+Require the original filesystem UUID and original saved SHA256. The file is root-owned, so use `sudo` to read it. A matching checksum establishes this file's contents after the mount; it does not establish storage HA. After each later guest reboot, repeat the identity check and mount only if needed.
 
 ## 8. What this proves and the agreed sequence
 

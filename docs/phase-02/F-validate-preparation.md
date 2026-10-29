@@ -79,21 +79,24 @@ The report contains observations, not passwords or private keys. Keep the report
 
 ### Rebuilding later
 
-Keep Chapters A–E in order, then run this chapter. A fresh Chapter E creates a **different CA fingerprint**. After reviewing that new result, supply its exact 64-character lowercase SHA256 value with `--expected-ca`. The normal command is pinned to the CA already reviewed for this lab:
+A clean Phase 2 E generates a new CA. **Review the public SHA256 fingerprint printed by E before approving it.** On R2d2, enter that exact value once:
 
-```text
-278a4e6a84b761f954b9bbf1f8051c3560b63f0eb073efc9e95d8d1c69df3cbb
+```bash
+read -r -p "Reviewed CA SHA256 from Chapter E: " lab_ca_sha256
+/usr/bin/python3 scripts/phase2-validate.py --run --trust-r2d2 --expected-ca "$lab_ca_sha256"
 ```
 
-A different CA already installed under our trust filename requires a separate reviewed replacement; the script will not overwrite it. Do not copy an old fingerprint onto a new lab or regenerate certificates to make a check pass.
+After all preparation checks pass, the script saves that explicit approval in `private/phase2/reviewed-ca.json`. Installation, client access, networking, health checks, shutdown and recovery all use it automatically. Read-only checks do not create or change this file.
+
+For the existing lab, the normal command remains valid without this extra step: its original CA is already pinned. Retain that CA and its private keys. A conflicting saved approval or existing system-trust certificate is preserved and requires a separate reviewed replacement; nothing is overwritten automatically.
 
 ## 5. Browser preparation — Windows and Linux
 
-Joe confirmed **Chrome and Firefox on Windows and Linux**, accessed from outside R2d2. R2d2 itself is currently accessed using the **VMware console**.
+The reviewed browser choices are **Chrome on Windows 11** and **Firefox on Linux**, accessed from outside R2d2. R2d2 itself is currently accessed using the **VMware console**.
 
 Read [F — Browser certificate guide](F-browser-certificates.md). It covers both browsers without assuming a Linux distribution. The Windows 11 host reaches R2d2 at `192.168.162.131:22` through VMnet8; [the Windows transfer steps are now published](F-browser-certificates.md#windows-11-laptop--confirmed-route-ready-to-run-transfer). R2d2's checks passed. Joe reported the Windows verification marker and confirmed the Chrome import. Joe also confirmed completing [the separate Linux Firefox guide](F-linux-firefox.md). Its exact local file path and transfer route were not supplied and are not inferred.
 
-No Horizon connection test is expected yet: the VIP, HTTPS listener and dashboard will be deployed in Phase 3.
+This chapter prepares trust before deployment. [Phase 3 D](../phase-03/D-client-access.md) verifies live HTTPS/API access and explains the separate browser sign-in check.
 
 ## 6. Finish check and review
 
@@ -102,9 +105,9 @@ No Horizon connection test is expected yet: the VIP, HTTPS listener and dashboar
 - [x] Verify R2d2 CA trust.
 - [x] Public CA copied to Windows; Chrome import confirmed by Joe.
 - [x] Linux Firefox setup reported complete by Joe; import user-confirmed.
-- [ ] Agree on Phase 3 before running bootstrap or deployment.
+- [ ] For a rebuild, review this preparation report before Phase 3.
 
-**Development verification:** ten regression tests cover read-only probes, wrong-node rejection, ARP packet handling, certificate/configuration preservation, CA mismatch, private-file guards and trust destination protection. Real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5 inventory parsing, playbook syntax, ad-hoc argument parsing and OpenSSL certificate verification also passed in an isolated development folder. These development checks are separate from Joe's live results below. Windows Chrome and Linux Firefox imports are user-confirmed. Live Horizon HTTPS remains pending deployment.
+**Development verification:** regression tests cover read-only probes, wrong-node rejection, ARP packet handling, certificate/configuration preservation, CA mismatch, private-file guards and trust destination protection. Real Kolla-Ansible 23.0.0 / Ansible-core 2.21.5 inventory parsing, playbook syntax, ad-hoc argument parsing and OpenSSL certificate verification also passed in an isolated development folder. These development checks are separate from Joe's live results below. Windows Chrome and Linux Firefox imports are user-confirmed. Live HTTPS/API checks belong in Phase 3 D; browser sign-in is a separate confirmation.
 
 ## 7. Reviewed result
 
@@ -127,7 +130,7 @@ RESULT: R2D2_CA_TRUST_READY (offline certificate verification; browser trust is 
 | Planned VIP | No active conflict observed from any node during the bounded LAN probes. Silent/offline devices cannot be excluded. |
 | R2d2 trust | Public CA installed; the saved server certificate verified successfully against Ubuntu's system trust bundle. |
 
-No node configuration or storage contents were changed. The Windows host's TCP route to R2d2 is now confirmed. Joe subsequently reported the Windows certificate verification marker and confirmed the Chrome import. Joe then confirmed completing Linux Firefox setup. Both chosen browser imports are user-confirmed; live Horizon HTTPS remains pending deployment.
+No node configuration or storage contents were changed. The Windows host's TCP route to R2d2 is now confirmed. Joe subsequently reported the Windows certificate verification marker and confirmed the Chrome import. Joe then confirmed completing Linux Firefox setup. Both chosen browser imports were user-confirmed. Phase 3 D records later live HTTPS/API evidence; browser sign-in remains a separate confirmation.
 
 ## 8. Short lecture — after review
 

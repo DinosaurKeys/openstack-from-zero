@@ -17,12 +17,12 @@
 | node2 | `node2` | `192.168.0.201` | `192.168.0.0/24` |
 | node3 | `node3` | `192.168.0.202` | `192.168.0.0/24` |
 
-Use the actual LAN gateway and DNS from your router/network settings. The gateway and DNS are still unconfirmed in this rebuild. If you do not know them, establish them before finishing manual IPv4 configuration.
+For this lab, set **gateway `192.168.0.1`** and **DNS `192.168.0.1`**. These values were confirmed from the nodes. A different network requires a separately reviewed plan before using the course scripts.
 
 3. Leave the **USB NIC** without IPv4 or IPv6 configuration for now. In the installer, edit that adapter and disable both address methods. Its final provider-network setup comes after device review.
 4. Select the intended **NVMe OS disk** for Ubuntu. Identify it by the displayed model and capacity. Leave the separate SATA disk out of the installation.
 5. Review the disk summary before confirming the erase/install operation. Creating Ubuntu's own LVM layout on the NVMe is acceptable.
-6. Create your local account. The examples use `joe`; the script accepts another username.
+6. Create account **`joe`** on every node. The full course requires this account and its home directory; an alternative username is not supported throughout the course.
 7. Select **Install OpenSSH server**. If offered an SSH-key-only restriction, leave password login available for the initial access check.
 8. Finish installation, remove the installation media and reboot.
 
@@ -34,9 +34,9 @@ Each node boots, accepts a console login and shows its intended hostname. Chapte
 
 **OpenSSH server** accepts remote shell connections on a node. R2d2 uses the **OpenSSH client** to connect.
 
-The built-in NIC carries administration traffic. The USB NIC will carry external VM traffic. NIC names and MAC addresses will be read from these new installations.
+The built-in NIC carries administration traffic. The USB NIC will carry external VM traffic. The confirmed per-node NIC names and MAC addresses are in [Chapter H](H-nics-and-storage.md). Recheck them after a rebuild before applying the USB configuration.
 
-Ubuntu's LVM on the NVMe and the future Cinder LVM on node3's SATA disk serve different purposes. Cinder's separate volume group will be named `cinder-volumes`.
+Ubuntu's LVM on the NVMe and Cinder LVM on **each node's separate SATA disk** serve different purposes. Each node has its own `cinder-volumes` group; the three pools are independent, without replication.
 
 **Continue:** [Phase 1 progress and current chapter](README.md).
 

@@ -21,7 +21,7 @@ def source_guard():
    raise RuntimeError('Precheck source differs from reviewed files: '+name)
 
 def private_inputs(config,inventory):
- paths=[inventory,*config.rglob('*'),*(config.parent/'host_vars').glob('*.yml')]
+ paths=[inventory,config.parent/validation.CA_REVIEW_FILE,*config.rglob('*'),*(config.parent/'host_vars').glob('*.yml')]
  return {str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
 
 def precheck_command(inventory,config,options):
@@ -94,8 +94,8 @@ def execute(log,private_log,work,expected_ca):
  log('Return this report for review. OpenStack deployment and live Horizon HTTPS remain pending.')
 
 def main(argv=None):
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--run',action='store_true');p.add_argument('--expected-ca',default=validation.CA_FINGERPRINT);args=p.parse_args(argv)
- if not re.fullmatch('[0-9a-f]{64}',args.expected_ca):p.error('--expected-ca needs 64 lowercase hexadecimal characters')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--run',action='store_true');p.add_argument('--expected-ca',help='optional pin; normally use the saved Phase 2 CA approval');args=p.parse_args(argv)
+ if args.expected_ca is not None and not re.fullmatch('[0-9a-f]{64}',args.expected_ca):p.error('--expected-ca needs 64 lowercase hexadecimal characters')
  if not args.run:
   print('PLAN ONLY: verify the prepared hosts; run full Kolla prechecks with the approved lab-image source; collect one private report.')
   print('No nodes contacted or files changed. Read Phase 3 Chapter B before --run.');return 0

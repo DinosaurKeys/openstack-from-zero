@@ -125,7 +125,7 @@ Keep the full report and private files off GitHub. We publish the reviewed summa
 - [ ] Full precheck result from Joe's lab reviewed.
 - [ ] Joe authorized preparing and publishing Chapter C. Actual deployment remains Joe's execution step.
 
-**Limits:** a successful run does not prove image tags can be pulled, service startup, live HTTPS, usable guest acceleration or VM/volume operation. Those need later deployment and functional checks. For an intentional rebuild with a new CA, use the newly reviewed `--expected-ca` fingerprint as in Phase 2 Chapter F.
+**Limits:** a successful run does not prove image tags can be pulled, service startup, live HTTPS, usable guest acceleration or VM/volume operation. Those need later deployment and functional checks. For a new CA, first save its explicit approval in Phase 2 F. Prechecks and later tools use that saved fingerprint.
 
 ## 6. Short lecture — after review
 
