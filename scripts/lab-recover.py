@@ -116,7 +116,12 @@ def plan_lines(records):
       'Control-service decisions will be made from fresh checks after database recovery.']
     actions=planned(records)
     lines=['PASS  MariaDB: three Synced/Primary members; leave running.',
-      'Container                | node1              | node2              | node3']
+      'Scope: control-container restarts only; compute and network-agent heartbeats need separate review.']
+    if not actions:
+        return lines+['Control-container restart targets: 0. No restart is needed in this scope.',
+          'If --check still names failed services/agents, use the manual restart section in docs/reboot-and-recovery.md.',
+          'Repeating --apply will not restart compute services or network agents.']
+    lines.append('Container                | node1              | node2              | node3')
     for name in ORDER:
         if not any(service==name for _,service,_ in actions):continue
         cells=[]
@@ -127,6 +132,48 @@ def plan_lines(records):
         lines.append(name.ljust(24)+' | '+' | '.join(cell.ljust(18) for cell in cells).rstrip())
     lines += ['Recovery targets: '+str(len(actions))+'; healthy containers are skipped.',
       'Restart once per listed failed target. Starting targets are observed first; other approved repairs can proceed.']
+    return lines
+
+
+def service_followup(details):
+    """Name heartbeat/admin failures without proposing unreviewed mutations."""
+    statuses={row.get('check'):row.get('status') for row in details.get('cluster_summary',[])}
+    labels=('Nova services','Cinder services','hypervisors','Neutron agents','router HA (API state)')
+    if not any(statuses.get(label) not in (None,'PASS') for label in labels):return []
+    lines=['MANUAL SERVICE / AGENT REVIEW',
+      'A healthy container does not establish a working service heartbeat. No extra restart or enable action was sent.']
+    if any(statuses.get(label)=='UNKNOWN' for label in labels):
+        lines.append('  Unavailable API checks do not establish failed services; review the reported API read error first.')
+    disabled=False
+    for key,binaries in [('Nova services',('nova-scheduler','nova-conductor','nova-compute')),
+                         ('Cinder services',('cinder-scheduler','cinder-volume'))]:
+        values=details.get(key)
+        if statuses.get(key)=='PASS' or not isinstance(values,list):continue
+        for node in ALLOWED:
+            for binary in binaries:
+                entry=dashboard.reported(values,binary,node)
+                if not isinstance(entry,dict) or dashboard.service_cell(entry)=='UP/enabled':continue
+                disabled=disabled or entry.get('status')=='disabled'
+                lines.append('  '+node+'/'+binary+': '+dashboard.service_cell(entry)+
+                  ' -> inspect '+binary.replace('-','_')+(' and its disable reason' if entry.get('status')=='disabled' else ''))
+    agents=details.get('Neutron agents')
+    if statuses.get('Neutron agents')!='PASS' and isinstance(agents,list):
+        for node in ALLOWED:
+            for binary in ('neutron-openvswitch-agent','neutron-l3-agent','neutron-dhcp-agent','neutron-metadata-agent'):
+                entry=dashboard.reported(agents,binary,node)
+                if not isinstance(entry,dict) or (entry.get('alive') is True and entry.get('admin_state_up') is True):continue
+                alive='UP' if entry.get('alive') is True else 'DOWN' if entry.get('alive') is False else 'UNKNOWN'
+                admin='enabled' if entry.get('admin_state_up') is True else 'disabled' if entry.get('admin_state_up') is False else 'unknown'
+                lines.append('  '+node+'/'+binary+': '+alive+'/'+admin+' -> inspect '+binary.replace('-','_'))
+    if disabled:
+        lines+=['  Read the disable reason on R2d2: /usr/bin/python3 scripts/lab-view.py compute-services --table',
+          '  DOWN and disabled are different. Recover the heartbeat first; review scheduling enablement separately.']
+    if statuses.get('hypervisors') not in (None,'PASS'):
+        lines.append('  Hypervisor state: review the matching nova-compute and libvirt connection; a hypervisor is not a separate restart unit.')
+    if statuses.get('router HA (API state)') not in (None,'PASS'):
+        lines.append('  Router HA: require one active/two standby AND all three hosting L3 agents alive/enabled.')
+    lines+=['NEXT: Follow docs/reboot-and-recovery.md#manual-service-and-agent-restarts.',
+      'Do not repeat control recovery to repair these checks. Keep the named service logs if a selected restart does not recover its heartbeat.']
     return lines
 
 
@@ -311,10 +358,13 @@ def execute(mode,log,details,report):
         health.api_checks(rows,details,env,include_workload=False);details['cluster_summary']=rows;unchanged()
         details['summary']=[{'check':'Existing checkpoints/config preserved','status':'PASS'}]
         rendered=dashboard.render_compact(details);ready='RESULT: REBOOT_SERVICES_HEALTHY' in rendered
+        followup=service_followup(details) if not ready else []
         for line in rendered:
+            if line.startswith('NEXT:') and followup:continue
             if line.startswith('Read-only snapshot.'):line='Verification snapshot after the approved actions listed above.'
             if line.startswith('RESULT:') and not ready:line='RESULT: RECOVERY_NEEDS_REVIEW'
             log(line)
+        for line in followup:log(line)
         log('Cluster service checks only. VM and migration records remain paused and unchanged.')
         return 0 if ready else 1
     finally:
