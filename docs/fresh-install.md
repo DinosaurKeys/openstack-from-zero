@@ -65,11 +65,19 @@ Expected: `OPENSTACK_DEPLOYED for all`. [Phase 3 C](phase-03/C-deploy-openstack.
 Follow each chapter and review its report before the next:
 
 ```bash
+/usr/bin/python3 scripts/phase2-install-tools.py --client-only --apply
 /usr/bin/python3 scripts/phase3-access.py --run
+```
+
+Require `OPENSTACK_CLI_READY` and `OPENSTACK_API_ACCESS_PASSED`. [Phase 3 D](phase-03/D-client-access.md) explains activation, loading the generated credentials, a CLI VM list and Horizon sign-in.
+
+Then follow [Phase 4 A](phase-04/A-network-inspection.md) and [Phase 4 B](phase-04/B-create-networks.md):
+
+```bash
 /usr/bin/python3 scripts/phase4-network-check.py --run
 /usr/bin/python3 scripts/phase4-create-networks.py --apply
 ```
 
-The first command regenerates private client profiles from the retained credentials. Network creation requires an HA router on all three network nodes with **one active and two standby** replicas, plus two DHCP agents. The report supplies the new IDs, actual external address and elected active node.
+The access command regenerates private client profiles from the retained credentials. Network creation requires an HA router on all three network nodes with **one active and two standby** replicas, plus two DHCP agents. The report supplies the new IDs, actual external address and elected active node.
 
 Then follow [Phase 4 C](phase-04/C-prepare-vm.md) for the image/flavor/key/security group. Boot, DHCP/DNS, USB packet flow, volume and controlled failover tests remain separate checkpoints. Keep report contents and private files out of GitHub.
