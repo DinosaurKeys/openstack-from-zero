@@ -31,12 +31,13 @@ Checked on **2026-10-23** against official release records and the released Koll
 | Kolla-Ansible | **23.0.0** | Official final release, with a fixed source commit below |
 | Ansible Core | **2.21.5** | Fits Kolla's `>=2.20,<2.22` requirement and supports Python 3.12 |
 | Tool environment | **/home/joe/venvs/kolla** | Proposed separate folder on R2d2; Chapter A found this candidate absent |
+| OpenStack CLI | **10.3.1**, in **/home/joe/venvs/openstack-client** | Standard `openstack` commands; version listed in the official 2026.2 client constraints |
 
 The Kolla release record identifies source commit `4b493ef36ace2b90257ecf94feb00e2c6e8014c9` for **23.0.0**. The installation plan will use this released reference rather than a moving development branch.
 
 **Why this set:** it uses your existing Ubuntu/Python and a released OpenStack installer. The Ansible version satisfies that installer's declared range. This is a compatibility recommendation, not a claim that our three-node deployment has passed.
 
-The top-level versions are fixed in this proposal. Chapter C must also record the actual installed Python dependencies and Ansible collections in private records; these two version pins alone are not a complete dependency lock or container-image snapshot.
+The top-level versions are fixed in this proposal. Chapter C records the actual installed Python dependencies for both environments and the Ansible collections in private records; these pins alone are not a complete dependency lock or container-image snapshot. The [official 2026.2 constraints](https://github.com/openstack/requirements/blob/stable/2026.2/upper-constraints.txt) supply the CLI version.
 
 ### Storage design recheck
 
