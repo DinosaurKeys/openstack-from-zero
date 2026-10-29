@@ -12,7 +12,7 @@ Phase 4's VM networking and Cinder persistence reports passed. Reviewed live rep
 | [B — API VIP](B-api-vip.md) | Keep the cloud's front-door address working | Complete — reviewed API VIP takeover and restoration passed |
 | [C — MariaDB](C-mariadb.md) | Keep the database working with one member stopped | Complete — one-member stop, surviving cluster/API reads and three-member restoration passed |
 | [D — Virtual router](D-router.md) | Keep the VM's network path working after takeover | Complete — router takeover, link restoration and final checks passed |
-| [E — VM and storage migration](E-vm-migration.md) | List VMs/storage/containers, then choose live/cold compute moves and separate data-volume moves | Inventory and menu ready; selected VM/storage readiness and live results pending |
+| [E — VM and storage migration](E-vm-migration.md) | CLI service checks → VM/storage locations → preview → reviewed move → verify | Inventory and menu ready; selected VM/storage readiness and live results pending |
 
 For each exercise:
 
