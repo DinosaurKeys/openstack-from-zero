@@ -26,7 +26,7 @@ The files have mode `0600`, so only joe can read/write them. Repeating the comma
 
 The script also saves one private report. It checks that the existing deployment inputs stay unchanged. No software installation, node sudo prompt, service restart, certificate rotation or cloud-resource creation is part of this chapter. Authentication creates a normal short-lived token held in memory; its value is never printed in the report.
 
-No OpenStack CLI installation is needed for these checks: the script uses Python's HTTPS client with the prepared credentials and CA. The generated profiles can be used by OpenStack clients later.
+No OpenStack CLI installation is needed for these checks: the script uses Python's HTTPS client with the prepared credentials and CA. To use `openstack` commands yourself, follow the separate **[CLI setup on R2d2](../openstack-cli.md)**. It reuses these generated private credentials and CA.
 
 ## 3. What the script checks
 
