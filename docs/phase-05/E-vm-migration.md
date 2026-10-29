@@ -34,9 +34,11 @@ The VM table shows **Name, Status (Nova), Compute host and VM ID**. The volume t
 |---|---|
 | `ACTIVE` | Candidate for a live or cold preview; the menu still verifies the actual runtime. |
 | `SHUTOFF` | Candidate for a cold preview. |
-| `ERROR`, unknown host, or an operation in progress | Review that VM first. Do not request a migration or reset its state to hide the problem. |
+| `ERROR`, unknown host, or an operation in progress | Review that VM first. Use the [VM power/recovery checks](../command-glossary.md#vm-power-controls); do not request a migration or reset its state to hide the problem. |
 
 Use the UUID to distinguish duplicate VM names. These API lists are read-only. All-project views require admin policy access; the migration menu selects VMs in the authenticated course project only. Missing host/backend information is shown as unknown, not guessed.
+
+For normal VM start/shutdown, use [Horizon power controls](../command-glossary.md#vm-power-controls). A VM in ERROR needs its own recovery review before returning to the migration preview.
 
 To see **all Docker containers, including stopped ones**, on the three nodes:
 
