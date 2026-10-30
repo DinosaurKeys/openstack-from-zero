@@ -4,7 +4,7 @@
 
 ## Goal
 
-Build and understand a three-node OpenStack HA lab: API Keepalived/HAProxy, MariaDB/Galera and Neutron virtual-router HA. Then deploy an application and monitor it. Automation should make an understood procedure repeatable.
+Build and understand a three-node OpenStack HA lab: API Keepalived/HAProxy, MariaDB/Galera and Neutron virtual-router HA. Then provision two VMs with Terraform, configure their application/database with Ansible and add monitoring. Automation should make an understood procedure repeatable.
 
 ## The lab
 
@@ -28,8 +28,9 @@ A **controller** manages cloud requests. A **compute** runs VMs. **Cinder LVM** 
 | 3. Install OpenStack | API HA/database cluster/Neutron HA capability deployed; prechecks and cloud service/API checks pass |
 | [4. VM, networking and volumes](phase-04/README.md) | VM networking and Cinder persistence pass reviewed live reports |
 | [5. HA validation and VM migration](phase-05/README.md) | API VIP, database and router tests pass; planned VM migration is verified |
-| 6. Deploy an app | Application works and retains its database data |
-| 7. Monitoring | Dashboards show the lab and a test alert works |
+| [6. Terraform — draft](phase-06/README.md) | Terraform provisions the two approved VMs and their supporting resources; verification passes and a second plan shows no changes |
+| 7. Application with Ansible | One application VM and one PostgreSQL VM serve the shopping list and retain its database data |
+| 8. Monitoring | Dashboards show the lab and a test alert works |
 
 ## How we learn
 

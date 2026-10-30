@@ -50,8 +50,9 @@ Continue with [Phase 5 — HA validation and VM migration](docs/phase-05/README.
 | 3 — Install OpenStack | [Prechecks, HA deployment, OpenStack CLI, HTTPS and Horizon](docs/phase-03/README.md) |
 | 4 — Networking and first VM | [HA router, VM ingredients, guest traffic and volumes](docs/phase-04/README.md) |
 | 5 — HA validation and VM migration | [Readiness, three HA exercises and planned migration](docs/phase-05/README.md) |
-| 6 — Application | Planned after Phase 5 |
-| 7 — Monitoring | Planned after the application |
+| 6 — Terraform | [Draft: install Terraform and provision one application VM and one database VM](docs/phase-06/README.md) |
+| 7 — Application with Ansible | Planned: NGINX/shopping-list application and PostgreSQL |
+| 8 — Monitoring | Planned after the application |
 
 [Architecture and limits](docs/architecture.md) · [Command glossary and OpenStack CLI reference](docs/command-glossary.md#openstack-cli-commands) · [Reboot, health checks and recovery](docs/reboot-and-recovery.md) · [Goal and learning plan](docs/00-goal-and-plan.md)
 
