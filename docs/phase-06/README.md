@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [Course plan](../00-goal-and-plan.md) · [Resource check](../resource-and-heat-check.md)
 
-**Status: course structure, VM names and starting sizes approved.** [Chapter A — readiness](A-readiness.md) and [Chapter B — install Terraform](B-install-terraform.md) are available; live reports are pending. Chapter B installs only the management tool on R2d2. Readiness decisions must be settled before VM creation. Chapters C–G remain the approved outline; no Terraform installation or VM creation has been reported yet.
+**Now: [Chapter C — write the configuration](C-write-configuration.md).** Joe's reviewed 30 October reports verified Terraform 1.17.1 on R2d2 and passed the cluster/capacity/quota checks. The Ubuntu image requires 2 GiB RAM, and Joe approved that size for both new VMs. The old `lab-vm-01` was still ACTIVE on node2; its shutdown remains required before provisioning. Chapter C prepares files only. Chapters D–G remain the agreed outline; no new VMs have been created.
 
 ## What Terraform does
 
@@ -16,16 +16,16 @@ You describe the VMs, networks and disks in files. Terraform shows the proposed 
 
 Terraform uses the OpenStack provider to call the cloud APIs. Heat is not required.
 
-## Approved starting VMs
+## Approved VMs
 
-Both guests use Ubuntu 24.04. These are the approved starting sizes, subject to Chapter A's image minimums, allocation and quota checks. The existing image-creation code sets a 2 GiB RAM minimum; Chapter A reads Glance to confirm whether the 1 GiB starting proposal needs revision.
+Both guests use the verified Ubuntu 24.04 image and existing `lab.small` flavor. Chapter A reads the actual image minimums, current allocations and quotas before provisioning.
 
 | VM | Later role | vCPU | RAM | OS disk | New data disk |
 |---|---|---:|---:|---:|---:|
-| `lab1` | NGINX + shopping-list application | 1 | 1 GiB | 10 GiB | None |
-| `lab2` | PostgreSQL | 1 | 1 GiB | 10 GiB | 5 GiB Cinder volume |
+| `lab1` | NGINX + shopping-list application | 1 | 2 GiB | 10 GiB | None |
+| `lab2` | PostgreSQL | 1 | 2 GiB | 10 GiB | 5 GiB Cinder volume |
 
-The request adds **2 VMs, 2 vCPUs, 2 GiB guest RAM, 20 GiB local OS disks and one 5 GiB data volume**, plus their ports, security groups and one floating IP. Guest RAM is separate from the OpenStack services' host memory needs.
+The request adds **2 VMs, 2 vCPUs, 4 GiB guest RAM, 20 GiB local OS disks and one 5 GiB data volume**, plus their ports, security groups and one floating IP. Guest RAM is separate from the OpenStack services' host memory needs.
 
 Nova chooses the compute hosts; Cinder chooses the new volume's storage backend. We read and record the actual locations after creation. A separate local-LVM data volume is not replicated or storage HA.
 
@@ -36,7 +36,7 @@ Nova chooses the compute hosts; Cinder chooses the new volume's storage backend.
 | Existing `lab-private` network and router | Two VM ports and two security groups |
 | Existing `lab-external` floating-IP network | One new floating IP for `lab1` |
 | Verified Ubuntu image and guest SSH keypair | `lab1`, `lab2`, one data volume and its attachment |
-| A matching flavor, if one exists | A 1-vCPU/1-GiB/10-GiB flavor if needed and approved |
+| Existing matching `lab.small` flavor | No new flavor needed for the reviewed configuration |
 
 `lab-vm-01` is retained for the completed exercises. Check its current status and cleanly shut it down as already requested; keep its disks and floating IP. It is not imported into this Terraform configuration. Its shutdown result has not yet been returned. Include its retained resource allocations when checking quota.
 
@@ -52,23 +52,24 @@ Run management commands **on R2d2 as joe**. Each execution chapter will contain:
 |---|---|---|
 | [A — Check readiness](A-readiness.md) | Check cloud/project identity, cluster health, VM power state, image minimums, allocations, quotas, disk capacity and reusable resource IDs | Live report reviewed; any sizing/power-state decisions settled |
 | [B — Install Terraform](B-install-terraform.md) | Check R2d2's OS, architecture and any existing Terraform; install the pinned official release and verify it | The selected Terraform version runs on R2d2 |
-| C — Write the configuration | Declare the new resources, existing-resource references, variables, private state location and outputs | The files describe only the approved Phase 6 resources |
+| [C — Write the configuration](C-write-configuration.md) | Prepare the new-resource definitions, verified references, private settings/state location and outputs | The files describe only the approved Phase 6 resources |
 | D — Preview | Load the existing OpenStack connection settings; initialize, validate and save a plan | The plan shows the agreed additions, with zero changes/deletions to existing lab objects |
 | E — Create | Review the complete saved plan, then explicitly approve and apply it once | Two new VMs are ACTIVE and the new volume is attached to `lab2` |
 | F — Verify | Check sizes, compute/storage locations, IPs, SSH identity and access to both guests; run another plan | Expected resources are present and Terraform reports **No changes** |
 | G — Repeat independently | Follow the reinstall/rebuild case below using the same documented workflow | You can explain what each command does and reuse the procedure |
 
-The 30 October 2026 resource snapshot showed four CPU threads per node and **5.1 / 5.3 / 5.6 GiB available RAM**, with no swap in use. Heat containers/startup units and Heat-named queues were absent. This is the starting observation; Chapter A still needs OpenStack allocation/quota and VM-state evidence.
+The reviewed Chapter A snapshot on 30 October 2026 at 19:36 UTC showed four CPU threads per node, **4.9 / 5.27 / 5.6 GiB available RAM**, about 69–70 GiB free instance storage per node and sufficient quota for two 2-GiB VMs. This was a snapshot, not a reservation. The earlier Heat/RabbitMQ inspection found no Heat containers/startup units or Heat-named queues, so no retirement/queue cleanup was needed.
 
-## Files planned for Chapter C
+## Chapter C files
 
-Public configuration goes in the proposed `terraform/phase6/` directory:
+Public configuration is in [`terraform/phase6/`](../../terraform/phase6/):
 
 | File | Purpose |
 |---|---|
 | `versions.tf` | Pin Terraform and the OpenStack provider; declare the local state backend |
 | `provider.tf` | Connect using the existing environment credentials and trusted lab CA |
-| `variables.tf` | Define names, sizes and verified existing-resource IDs |
+| `variables.tf` | Define verified existing-resource references and home-LAN access |
+| `existing.tf` | Read and check existing-resource identities and the required flavor/image sizes |
 | `main.tf` | Describe the VMs, ports, rules, floating IP, volume and attachment |
 | `outputs.tf` | Display VM IDs, addresses and the new volume ID for verification/Ansible |
 | `lab.tfvars.example` | Show how to enter settings without real credentials |
@@ -76,7 +77,7 @@ Public configuration goes in the proposed `terraform/phase6/` directory:
 
 Keep real settings, saved plans and `terraform.tfstate` under `private/phase6/`. Keep passwords and SSH private keys out of Terraform configuration and Git. The existing private `public-openrc.sh` supplies the credentials and CA settings for each terminal.
 
-The checked official releases on 30 October 2026 are **Terraform 1.17.1** and **OpenStack provider 3.4.0**. These are proposed pins; installation verification and a real read-only cloud plan remain part of the execution chapters.
+The configuration pins **Terraform 1.17.1** and **OpenStack provider 3.4.0**. Joe's Chapter B report verified Terraform on R2d2. The dependency lock file records the provider package checksums; provider initialization/validation and the live cloud plan on R2d2 follow in Chapter D.
 
 ## Commands you will learn
 
@@ -108,4 +109,4 @@ Phase 6 finishes with the infrastructure verified. **Phase 7** installs the shop
 
 [Terraform release](https://github.com/hashicorp/terraform/releases/tag/v1.17.1) · [Terraform plan command](https://github.com/hashicorp/terraform/blob/v1.17.1/internal/command/plan.go) · [Terraform apply command](https://github.com/hashicorp/terraform/blob/v1.17.1/internal/command/apply.go) · [OpenStack provider release](https://github.com/terraform-provider-openstack/terraform-provider-openstack/releases/tag/v3.4.0) · [Provider authentication](https://github.com/terraform-provider-openstack/terraform-provider-openstack/blob/v3.4.0/docs/index.md) · [Cinder volume attachment](https://github.com/terraform-provider-openstack/terraform-provider-openstack/blob/v3.4.0/docs/resources/compute_volume_attach_v2.md)
 
-These sources were reviewed for this draft. No Terraform installation, provider initialization, cloud plan or VM creation has been tested by this documentation change.
+These sources were reviewed for the configuration. Chapter B has a reviewed live installation report. Local preparation tests and Terraform formatting checks are separate from a live cloud plan or VM creation; those checkpoints remain outstanding.

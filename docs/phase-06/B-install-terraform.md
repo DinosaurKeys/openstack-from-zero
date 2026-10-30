@@ -71,7 +71,7 @@ Return the installation report or the version output. **Tool installation is com
 
 This installer sends no SSH commands to the nodes and no requests to OpenStack. It creates no VMs, volumes, networks, Terraform configuration or state files. The OpenStack provider is downloaded later during Chapter D's `terraform init`.
 
-Installing the tool is independent of VM RAM sizing. Settle Chapter A's image minimum, quota and old-VM power-state checks before any VM provisioning. **Next: Chapter C — write the Terraform configuration.** Chapter C remains an outline until the readiness decisions are settled.
+Installing the tool is independent of VM RAM sizing. Settle Chapter A's image minimum, quota and old-VM power-state checks before VM provisioning. **Next: [Chapter C — write the Terraform configuration](C-write-configuration.md).** Writing the files does not create VMs or shut down the old VM.
 
 ## Reinstalling later
 
@@ -79,4 +79,4 @@ Repeat steps 2–4. The same verified version is retained. Keep the existing pri
 
 [Official release](https://github.com/hashicorp/terraform/releases/tag/v1.17.1) · [HashiCorp download/checksum example](https://github.com/hashicorp/web-unified-docs/blob/main/content/validated-designs/docs/docs/terraform/installation-guide/air-gapped-configuration.mdx) · [Terraform version output](https://github.com/hashicorp/terraform/blob/v1.17.1/internal/command/views/version.go)
 
-Installer logic is covered by offline tests. The actual HashiCorp download and installation still require Joe's R2d2 run; they have not been performed by the assistant.
+**Reviewed lab result — 30 October 2026:** Joe's `terraform-install-20261030T193021Z-l5jtkfkm.txt` reported the official archive checksum, architecture and installed version verified at `/usr/local/bin/terraform`. The subsequent `--check` and repeat `--apply` runs returned `TERRAFORM_READY` and retained Terraform 1.17.1. Chapter B passed in that run; future installations still require their own live result. The assistant did not install software on R2d2.

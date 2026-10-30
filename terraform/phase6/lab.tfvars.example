@@ -1,0 +1,16 @@
+# Example only. Chapter C generates the real file under private/phase6/.
+# Do not paste credentials or an SSH private key here.
+existing = {
+  project_id          = "REPLACE_WITH_VERIFIED_PROJECT_ID"
+  user_id             = "REPLACE_WITH_VERIFIED_USER_ID"
+  image_id            = "REPLACE_WITH_VERIFIED_IMAGE_UUID"
+  image_name          = "REPLACE_WITH_VERIFIED_IMAGE_NAME"
+  flavor_id           = "REPLACE_WITH_VERIFIED_FLAVOR_ID"
+  keypair_name        = "lab-vm-key"
+  private_network_id  = "REPLACE_WITH_VERIFIED_PRIVATE_NETWORK_UUID"
+  private_subnet_id   = "REPLACE_WITH_VERIFIED_PRIVATE_SUBNET_UUID"
+  external_network_id = "REPLACE_WITH_VERIFIED_EXTERNAL_NETWORK_UUID"
+  external_subnet_id  = "REPLACE_WITH_VERIFIED_EXTERNAL_SUBNET_UUID"
+  volume_type_name    = "REPLACE_WITH_VERIFIED_VOLUME_TYPE_NAME"
+}
+home_lan_cidr = "192.168.0.0/24"
