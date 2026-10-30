@@ -4,28 +4,28 @@
 
 **Goal:** use Hermes to help write Terraform, Ansible and documentation. **You review and run the infrastructure commands.** Terraform is paused at Phase 6 Chapter C; this guide does not create or change OpenStack resources.
 
-Hermes runs on Ubuntu. OpenRouter connects it to the model you select. The model runs remotely, so this setup does not require a local model or GPU.
+Hermes runs on **R2d2**, the existing Ubuntu 24.04 management machine, as the separate Linux user **`hermes-iac`**. OpenRouter connects it to the model you select. The model runs remotely, so this setup does not require a local model or GPU.
 
 ```mermaid
 flowchart TD
-    H["Hermes on Ubuntu"] <-->|"Prompts and replies"| O["OpenRouter model"]
+    H["Hermes on R2d2"] <-->|"Prompts and replies"| O["OpenRouter model"]
     H -->|"File edits"| W["Public IaC working copy"]
     W --> J{"Joe reviews"}
     J -->|"Run approved Terraform / Ansible"| L["OpenStack lab"]
     J -->|"Request changes"| H
 ```
 
-## A — Choose the host and account
+## A — Check R2d2 and understand the accounts
 
-Use **R2d2 or a separate Ubuntu 24.04 machine**. Confirm your choice before running the installation steps. This guide uses a new, unprivileged Linux account named `hermes-iac` on that selected machine. Do not install it on node1, node2 or node3.
+The confirmed setup is **R2d2 with the unprivileged Linux account `hermes-iac`**. Joe's existing management tools stay under `joe` on the same machine. No additional VM or OpenStack user is required. Do not install Hermes on node1, node2 or node3.
 
 | Location | Used for |
 |---|---|
-| Your normal administrator terminal | Install prerequisites and create the account |
+| Joe's normal R2d2 terminal | Install prerequisites and create the account |
 | `hermes-iac` terminal | Install Hermes, enter its OpenRouter key and use its public working copy |
 | Joe's normal R2d2 terminal | Keep cloud credentials/state, review changes and run Terraform/Ansible |
 
-First, in the selected machine's normal administrator terminal:
+First, in **Joe's normal R2d2 terminal** (`joe@r2d2`):
 
 ```bash
 hostname
@@ -37,7 +37,7 @@ Read **available** RAM and **Avail** disk space before adding the application. T
 
 ## B — Prepare Ubuntu
 
-Run these commands as the machine's normal administrator, such as `joe` on R2d2:
+Run these commands as **joe on R2d2**:
 
 ```bash
 sudo apt update
@@ -48,7 +48,7 @@ id hermes-iac
 
 The account must not belong to `sudo`, `docker` or `lxd`. Its password is disabled; you enter it through your existing administrator account. Do not copy SSH keys, OpenStack profiles, Terraform state or private reports into it.
 
-On **R2d2**, check that the new account cannot read Joe's management key or cloud profile:
+Still as **joe on R2d2**, check that the new account cannot read Joe's management key or cloud profile:
 
 ```bash
 if sudo test -f /home/joe/.ssh/openstack-from-zero && \
@@ -237,7 +237,7 @@ After you approve, require a file-change result from the file tool. Review the a
 
 ## H — Everyday use and review
 
-Start from your normal administrator terminal on the chosen host:
+Start from **Joe's normal R2d2 terminal**:
 
 ```bash
 sudo -iu hermes-iac
@@ -260,7 +260,7 @@ Updates are maintenance actions: `hermes update` may change the reviewed release
 
 ## Completion and sources
 
-Phase 8 is verified after the pinned installation, a real OpenRouter response, the runtime tool-list check and the reviewed file exercise pass on your host. The launcher passed **11 local fixture tests**. Its chat/model/tools/config commands were parsed with the pinned upstream CLI parsers, the installer options were checked against the pinned script, and the three built-in toolsets were checked against the source registry. No installation or paid model request was performed by the assistant; those live results remain pending.
+Phase 8 is verified after the pinned installation, a real OpenRouter response, the runtime tool-list check and the reviewed file exercise pass on R2d2. The launcher passed **11 local fixture tests**. Its chat/model/tools/config commands were parsed with the pinned upstream CLI parsers, the installer options were checked against the pinned script, and the three built-in toolsets were checked against the source registry. No installation or paid model request was performed by the assistant; those live results remain pending.
 
 This follows the [old repo's AI concept](https://github.com/DinosaurKeys/openstack-zero-to-hero/tree/main/AI), with current paths and no copied historical workload results.
 
