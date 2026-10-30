@@ -37,6 +37,8 @@ Continue with [Phase 5 — HA validation and VM migration](docs/phase-05/README.
 
 **Cluster checks:** [reboot service recovery](docs/reboot-and-recovery.md). Run `bash scripts/lab-recover.sh --check` for the service/agent dashboard. It shows up/down, enabled/disabled, container health, Galera, RabbitMQ, VIP and HTTPS API observations. VM/migration state is separate from cluster-service health. Use `bash scripts/lab-migrate.sh --observe` for current migration API state; guest/runtime verification remains separate. Existing records are preserved.
 
+**Before adding VMs:** [check CPU, available RAM and Heat/RabbitMQ inventory](docs/resource-and-heat-check.md) with `bash scripts/lab-resource-check.sh --check`. This reads the current state; it does not retire Heat or delete queues. Review any candidates before selecting maintenance.
+
 **Nova messaging configuration:** the reviewed 30 October report verifies the [queue-manager workaround](docs/phase-05/nova-messaging-repair.md) on all six scheduler/conductor services. The subsequent live move passed API/host checks. The package remains oslo.messaging 18.3.0 with `use_queue_manager=false`; no 18.3.1 image update has been applied. Keep the verified configuration; a completed repair is not a routine action to repeat.
 
 ## Course
