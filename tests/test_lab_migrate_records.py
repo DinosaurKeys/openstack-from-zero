@@ -31,6 +31,35 @@ def fixture(folder,manual=True,manual_kind='migration'):
 
 
 class MigrationRecordTests(unittest.TestCase):
+    def test_completed_messaging_repair_explains_only_two_config_inputs(self):
+        repair=m.load('record_repair_transition_test','lab-nova-messaging.py')
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);api,path,state=fixture(root,manual=False)
+            before={'protected':'old'}
+            paths={str(repair.REPO/'private/phase2/kolla/config/nova'/(s.replace('_','-')+'.conf')) for s in repair.SERVICES}
+            after=dict(before,**{p:'new' for p in paths})
+            state['inputs']=before;path.write_text(json.dumps(state));raw=path.read_bytes()
+            receipt={'scope':repair.SCOPE,'pending':False,'stage':repair.FINISHED,'before_inputs':before,'after_inputs':after,
+                     'overrides':{p:{'before':None,'after':'new'} for p in paths},
+                     'completed':[{'node':n,'service':s,'heartbeat':True} for n in repair.inv.NODES for s in repair.SERVICES]}
+            fix=root/repair.RECEIPT;fix.write_text(json.dumps(receipt));fix.chmod(0o600);fix_bytes=fix.read_bytes()
+            answers=iter(['1','ACKNOWLEDGE FAILED ATTEMPT']);logs=[]
+            self.assertEqual(r.run(m,api,PROJECT,root,logs.append,reconcile=True,current_inputs=after,read=lambda _:next(answers)),0)
+            closed=json.loads(path.read_text());archive=root/closed['failed_attempt_resolution']['original_record']
+            self.assertEqual(archive.read_bytes(),raw);self.assertEqual(fix.read_bytes(),fix_bytes)
+            self.assertTrue(any('Recognized completed Nova messaging repair' in line for line in logs))
+            self.assertFalse(api.actions)
+
+    def test_incomplete_messaging_repair_cannot_excuse_input_drift(self):
+        repair=m.load('record_repair_pending_test','lab-nova-messaging.py')
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);api,path,state=fixture(root,manual=False);state['inputs']={'protected':'old'}
+            path.write_text(json.dumps(state));raw=path.read_bytes()
+            fix=root/repair.RECEIPT;fix.write_text(json.dumps({'scope':repair.SCOPE,'pending':True}));fix.chmod(0o600)
+            with self.assertRaisesRegex(RuntimeError,'Deployment inputs differ'):
+                r.run(m,api,PROJECT,root,lambda _:None,reconcile=True,current_inputs={'protected':'new'},read=lambda _:'1')
+            self.assertEqual(path.read_bytes(),raw);self.assertFalse(api.actions)
+
     def test_observe_reports_horizon_placement_and_preserves_pending_bytes(self):
         with tempfile.TemporaryDirectory() as folder:
             api,path,state=fixture(Path(folder));raw=path.read_bytes();logs=[]

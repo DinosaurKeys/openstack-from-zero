@@ -160,6 +160,9 @@ def migration_history(api,server):
     return rows
 def volume_migration(value):return value.get('migration_status') or value.get('os-vol-mig-status-attr:migstat')
 def pending_guard(folder,server=None,vid=None):
+    repair=folder/'nova-messaging-fix.json'
+    if (repair.exists() or repair.is_symlink()) and health.read_private(repair).get('pending') is True:
+        raise RuntimeError('Nova messaging repair is incomplete; return its report before a migration. Repair and migration records are preserved.')
     paths=list(folder.glob(PREFIX+'*.json'))+[folder/'move-vm-state.json']
     for path in paths:
         if not path.exists() and not path.is_symlink():continue

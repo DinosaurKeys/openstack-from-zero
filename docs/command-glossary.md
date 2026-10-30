@@ -82,6 +82,8 @@ Add `node1`, `node2` or `node3` to view only that node. This is a read-only SSH/
 
 `PENDING` is a saved local task awaiting review. It is separate from Nova's current operation. `COLD VM move (migration)` and `LIVE VM move (live-migration)` are different operations; success of one does not verify the other. [Step-by-step migration guide](phase-05/E-vm-migration.md).
 
+For the diagnosed oslo.messaging 18.3.0 bug, [the Nova messaging repair](phase-05/nova-messaging-repair.md) explains `/usr/bin/python3 scripts/lab-nova-messaging.py --apply` (review and approve six service changes) and `--check` (read settings/health only). These do not request a migration or recover a VM.
+
 <a id="vm-power-controls"></a>
 
 <a id="start-or-shut-down-a-vm--use-horizon"></a>

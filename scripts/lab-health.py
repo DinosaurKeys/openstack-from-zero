@@ -240,7 +240,7 @@ def api_checks(rows,details,env,include_workload=True):
 
 
 def checkpoint_checks(rows,details):
-    files=('phase5/api-vip-state.json','phase5/mariadb-state.json','phase5/router-state.json','phase5/api-recovery-state.json',
+    files=('phase5/api-vip-state.json','phase5/mariadb-state.json','phase5/router-state.json','phase5/api-recovery-state.json','phase5/nova-messaging-fix.json',
       'phase5/move-vm-state.json','phase4/vm.json','phase4/volume.json')
     unresolved=[];errors=[]
     for name in files:

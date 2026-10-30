@@ -6,6 +6,8 @@
 
 The normal route is **open menu → select → checks → review → approve → verify**. The menu loads its own tools and connection settings. No CLI activation or routine Git update is needed for it.
 
+**Current lab repair:** the reviewed 30 October diagnostic strongly matches the oslo.messaging 18.3.0 reply-queue bug. Apply and review the [six-service Nova messaging workaround](nova-messaging-repair.md) before another live attempt. It changes service configuration; VM ERROR recovery and a new migration remain separate approvals. A healthy container or successful cold move does not test this faulty reply path.
+
 ## 1. Choose what moves
 
 | Menu choice | What moves | VM power | What stays |

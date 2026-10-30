@@ -146,7 +146,14 @@ def acknowledge(menu,api,project,folder,read,log,unchanged,current_inputs):
     def unchanged():
         external_unchanged()
         if other_records()!=others:raise RuntimeError('Another menu record changed; records preserved')
-    if state.get('inputs') is not None and state['inputs']!=current_inputs:raise RuntimeError('Deployment inputs differ from the saved attempt; record preserved')
+    if state.get('inputs') is not None and state['inputs']!=current_inputs:
+        # A separately completed, explicitly approved repair may change only
+        # these two Nova override files. Keep every other drift guard intact.
+        repair=menu.load('record_messaging_repair','lab-nova-messaging.py')
+        repair_path=folder/repair.RECEIPT
+        if not repair_path.exists() or not repair.input_transition(menu.health.read_private(repair_path),state['inputs'],current_inputs):
+            raise RuntimeError('Deployment inputs differ from the saved attempt; record preserved')
+        log('Recognized completed Nova messaging repair: only its two approved Kolla overrides differ. Original migration evidence is retained.')
     observed=evidence(menu,api,state,project)
     log('Local record: '+path.name)
     log('VM: '+menu.clean(state['plan'].get('vm_name') or state['server_id'])+' | '+state['server_id'])

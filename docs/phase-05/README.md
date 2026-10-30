@@ -14,6 +14,8 @@ Phase 4's VM networking and Cinder persistence reports passed. Reviewed live rep
 | [D — Virtual router](D-router.md) | Keep the VM's network path working after takeover | Complete — router takeover, link restoration and final checks passed |
 | [E — VM and storage migration](E-vm-migration.md) | Select → check → review → approve → verify | Cold move confirmed in reviewed API history; live/menu execution and storage migration need live validation |
 
+Before another live attempt in the current lab, apply and review the [Nova messaging workaround](nova-messaging-repair.md) for the bug identified in the 30 October report. Its service repair, any VM ERROR recovery, and a new migration are separate actions.
+
 For each exercise:
 
 1. Check the current healthy state.

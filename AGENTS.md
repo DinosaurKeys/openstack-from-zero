@@ -72,6 +72,8 @@ The explicit `phase5-reconcile-migration.py --apply --migration-id UUID` action 
 
 ## Working and publishing
 
+The approved response to the reviewed 30 October reply-queue bug is the explicit `lab-nova-messaging.py --apply` configuration workaround: persist only Nova scheduler/conductor overrides with `use_queue_manager=false`, update only that Boolean in the reviewed hyphenated Kolla config directories, and restart the six underscore-named systemd/container services one at a time. Require COPY_ALWAYS, unchanged identity/source/config mapping, the exact reviewed 18.3.0 library source, positive transient-queue expiry, new startup, effective setting OFF and fresh enabled/up heartbeat. Preserve VM ERROR state, queues, timeouts, other service configurations and every existing migration record. This is not an 18.3.1 package installation or live-migration validation. A completed repair receipt may explain only the two exact override-file input differences during later explicitly approved menu reconciliation; all other drift guards remain enforced.
+
 Read relevant current scripts/docs, validate technical commands against pinned source or primary documentation, and run appropriate regression checks. Local fixtures/simulations are not live lab evidence. Do not send SSH, power, service or cloud mutations to Joe's lab from this environment.
 
 Keep `private/`, `reports/`, `build/`, credentials, keys and private profiles out of GitHub. Publish only selected, reviewed changes through the GitHub connector; never push the unrelated staged/untracked working tree. Verify the expected main head before publication and read back the published result.
