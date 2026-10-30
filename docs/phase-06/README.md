@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [Course plan](../00-goal-and-plan.md) · [Resource check](../resource-and-heat-check.md)
 
-**Status: course structure, VM names and starting sizes approved.** Start with [Chapter A — readiness](A-readiness.md). Its checker is ready; a live report is pending. Terraform installation, configuration files and VM creation have not been performed. The remaining chapters below are the approved outline.
+**Status: course structure, VM names and starting sizes approved.** [Chapter A — readiness](A-readiness.md) and [Chapter B — install Terraform](B-install-terraform.md) are available; live reports are pending. Chapter B installs only the management tool on R2d2. Readiness decisions must be settled before VM creation. Chapters C–G remain the approved outline; no Terraform installation or VM creation has been reported yet.
 
 ## What Terraform does
 
@@ -51,7 +51,7 @@ Run management commands **on R2d2 as joe**. Each execution chapter will contain:
 | Chapter | Step | Finished when |
 |---|---|---|
 | [A — Check readiness](A-readiness.md) | Check cloud/project identity, cluster health, VM power state, image minimums, allocations, quotas, disk capacity and reusable resource IDs | Live report reviewed; any sizing/power-state decisions settled |
-| B — Install Terraform | Check R2d2's OS, architecture and any existing Terraform; install the pinned official release and verify it | The selected Terraform version runs on R2d2 |
+| [B — Install Terraform](B-install-terraform.md) | Check R2d2's OS, architecture and any existing Terraform; install the pinned official release and verify it | The selected Terraform version runs on R2d2 |
 | C — Write the configuration | Declare the new resources, existing-resource references, variables, private state location and outputs | The files describe only the approved Phase 6 resources |
 | D — Preview | Load the existing OpenStack connection settings; initialize, validate and save a plan | The plan shows the agreed additions, with zero changes/deletions to existing lab objects |
 | E — Create | Review the complete saved plan, then explicitly approve and apply it once | Two new VMs are ACTIVE and the new volume is attached to `lab2` |

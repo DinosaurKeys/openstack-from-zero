@@ -57,6 +57,6 @@ RESULT: PHASE6_READINESS_NEEDS_REVIEW
 
 `NEEDS_REVIEW` can simply mean the image requires more RAM or the old VM is still running. Review the named rows before moving on. No Terraform install, image edit, VM creation/shutdown, formatting or checkpoint update is performed by this command.
 
-**Next:** settle any sizing/power-state items from the report, then Chapter B installs the selected Terraform release on R2d2.
+**Next:** [Chapter B — install Terraform](B-install-terraform.md) prepares the management tool on R2d2. Settle any sizing/power-state items from this report before proceeding to VM provisioning.
 
 [Glance image RAM minimum](https://github.com/openstack/glance/blob/stable/2026.2/api-ref/source/v2/images-parameters.yaml) · [Nova quota details](https://github.com/openstack/nova/blob/stable/2026.2/api-ref/source/os-quota-sets.inc) · [Neutron quota details](https://github.com/openstack/neutron-lib/blob/master/api-ref/source/v2/quota_details.inc)

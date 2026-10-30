@@ -31,7 +31,7 @@ The reviewed resource snapshot showed four CPU cores and about 15 GiB usable RAM
 
 ## Current learning step
 
-**Now: [Phase 6 A — Terraform readiness](docs/phase-06/A-readiness.md).** The plan is one application VM (`lab1`) and one PostgreSQL VM (`lab2`). Run the read-only chapter check before installation; it verifies image minimums, quotas, current capacity and the old VM's power state. A live report is pending. The original image code sets a 2 GiB minimum, so the 1 GiB starting proposal must be checked before provisioning.
+**Now: [Phase 6 A — Terraform readiness](docs/phase-06/A-readiness.md).** The plan is one application VM (`lab1`) and one PostgreSQL VM (`lab2`). Run the read-only chapter check before provisioning; it verifies image minimums, quotas, current capacity and the old VM's power state. A live report is pending. The original image code sets a 2 GiB minimum, so the 1 GiB starting proposal must be checked before provisioning. [Chapter B — install Terraform](docs/phase-06/B-install-terraform.md) is available for the management tool on R2d2.
 
 Phase 4 is complete: reviewed live reports passed VM networking and Cinder data persistence across detach/reattach. The local OS disk and Cinder data volume are separate, unreplicated storage; their current compute/storage locations must be read from the lab. Browser sign-in is a separate user-confirmed check.
 
@@ -52,7 +52,7 @@ Reviewed [Phase 5 — HA validation and VM migration](docs/phase-05/README.md) r
 | 3 — Install OpenStack | [Prechecks, HA deployment, OpenStack CLI, HTTPS and Horizon](docs/phase-03/README.md) |
 | 4 — Networking and first VM | [HA router, VM ingredients, guest traffic and volumes](docs/phase-04/README.md) |
 | 5 — HA validation and VM migration | [Readiness, three HA exercises and planned migration](docs/phase-05/README.md) |
-| 6 — Terraform | [Chapter A ready: check before installing Terraform and provisioning the two VMs](docs/phase-06/README.md) |
+| 6 — Terraform | [Chapters A and B ready: readiness checks and Terraform installation on R2d2](docs/phase-06/README.md) |
 | 7 — Application with Ansible | Planned: NGINX/shopping-list application and PostgreSQL |
 | 8 — Monitoring | Planned after the application |
 

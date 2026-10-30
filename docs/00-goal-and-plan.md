@@ -23,12 +23,12 @@ A **controller** manages cloud requests. A **compute** runs VMs. **Cinder LVM** 
 
 | Phase | Finished when |
 |---|---|
-| 1. Prerequisites | Ubuntu and SSH access work; actual network/disk details are reviewed and the remaining host preparation is verified |
+| [1. Prerequisites](phase-01/README.md) | Ubuntu and SSH access work; actual network/disk details are reviewed and the remaining host preparation is verified |
 | [2. Management environment](phase-02/README.md) | R2d2 has the selected installer tools and reviewed configuration |
-| 3. Install OpenStack | API HA/database cluster/Neutron HA capability deployed; prechecks and cloud service/API checks pass |
+| [3. Install OpenStack](phase-03/README.md) | API HA/database cluster/Neutron HA capability deployed; prechecks and cloud service/API checks pass |
 | [4. VM, networking and volumes](phase-04/README.md) | VM networking and Cinder persistence pass reviewed live reports |
 | [5. HA validation and VM migration](phase-05/README.md) | API VIP, database and router tests pass; planned VM migration is verified |
-| [6. Terraform — Chapter A ready](phase-06/README.md) | Terraform provisions the two approved VMs and their supporting resources; verification passes and a second plan shows no changes |
+| [6. Terraform — Chapters A and B ready](phase-06/README.md) | Terraform provisions the two approved VMs and their supporting resources; verification passes and a second plan shows no changes |
 | 7. Application with Ansible | One application VM and one PostgreSQL VM serve the shopping list and retain its database data |
 | 8. Monitoring | Dashboards show the lab and a test alert works |
 
