@@ -2,18 +2,130 @@
 
 [Home](../README.md) · [Phase 4](phase-04/README.md) · [Reboot and recovery](reboot-and-recovery.md) · [Restart a failed service/agent](reboot-and-recovery.md#3-restart-one-failed-service-or-agent)
 
-The viewing sections inspect the lab without creating/deleting resources or restarting services. The manual API VIP exercise in section 6 explicitly includes service stop/start commands and requires an approved test. The viewing helpers authenticate with the existing private profile and CA, then send GET requests. Standard CLI setup is part of [Phase 3 D](phase-03/D-client-access.md).
+Use this page as a command reference. Run OpenStack commands **on R2d2 as joe**. VM power commands and the manual API VIP exercise change state; choose only the action you intend. The other viewing commands inspect existing resources. Standard CLI setup is part of [Phase 3 D](phase-03/D-client-access.md).
 
-## CLI service checks — run on R2d2
+## OpenStack CLI commands
 
-For the routine reboot check, run **`bash scripts/lab-recover.sh --check`**. It automatically displays all three service tables. The commands below are optional independent views.
+[Load CLI](#load-the-cli-once-per-terminal) · [View VMs](#view-vms-and-their-locations) · [VM power](#cli-vm-power) · [CPU/RAM/resources](#cpu-ram-and-resource-capacity) · [Disks](#volumes-and-storage-locations) · [Networking](#networks-ips-and-firewall-rules) · [Services/agents](#cli-service-checks--run-on-r2d2) · [Guest data check](#cinder-data-volume-checks)
 
-After [installing/connecting the CLI](phase-03/D-client-access.md), load it in the current terminal:
+Examples use `lab-vm-01`, `lab-data-01`, `lab.small` and `node2`. Replace these with the names shown by your list commands. Use the full UUID when names are duplicated or the object belongs to another project. Cross-project views, host fields and infrastructure checks require admin policy access.
+
+### Load the CLI once per terminal
+
+After [installing/connecting the CLI](openstack-cli.md), run:
 
 ```bash
 source "$HOME/venvs/openstack-client/bin/activate"
 source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
 ```
+
+Repeat those two lines in each new terminal. They load the installed client and existing credentials/CA settings. No routine Git pull or reinstallation is needed. Keep openrc files and tokens private.
+
+To check the connection without printing a token:
+
+```bash
+openstack token issue -f value -c expires
+```
+
+Expected: an expiry date/time. A command error needs review; it is not evidence of a successful login.
+
+### View VMs and their locations
+
+| What to see | Command | What to read |
+|---|---|---|
+| VMs in the current project | `openstack server list` | Name, ID, status, network addresses and image/flavor |
+| All projects, including compute host | `openstack server list --all-projects --long -c Name -c Status -c Host -c ID` | `Host` is the VM's compute node |
+| VMs assigned to node2 | `openstack server list --all-projects --host node2 --long -c Name -c Status -c Host -c ID` | Current Nova assignment, not a physical runtime check |
+| One VM's power and current task | `openstack server show lab-vm-01 -c name -c status -c OS-EXT-SRV-ATTR:host -c OS-EXT-STS:task_state -c OS-EXT-STS:power_state` | `task_state=None` means Nova reports no current task |
+| VM addresses and configured size | `openstack server show lab-vm-01 -c name -c addresses -c flavor` | Floating/private addresses and flavor |
+| Attached Cinder disks | `openstack server volume list lab-vm-01` | Volume UUID and guest device attachment; use `volume show` below for storage location |
+| Recent VM actions | `openstack server event list lab-vm-01 --long --max-items 5` | Action, time, request ID and result |
+| Recent console boot text | `openstack console log show --lines 40 lab-vm-01` | Guest boot messages; keep private logs out of public issues |
+
+`ACTIVE` is Nova's reported state. SSH/console access and guest data are separate checks. `SHUTOFF` means powered off; `ERROR` needs investigation before a new power or migration action.
+
+<a id="cli-vm-power"></a>
+
+### Start, shut down and restart VMs
+
+**These commands change VM power. Choose one action for one VM, then check the result.**
+
+| Action | Command | Starting state / expected result |
+|---|---|---|
+| Start | `openstack server start lab-vm-01` | From `SHUTOFF`; wait for `ACTIVE` |
+| Shut down | `openstack server stop lab-vm-01` | From `ACTIVE`; wait for `SHUTOFF`. Retains the VM and its disks |
+| Request a normal guest restart | `openstack server reboot --soft lab-vm-01` | From `ACTIVE`; allow the guest to restart, then check console/SSH |
+
+Stopping asks the guest to shut down; Nova can power it off after the configured shutdown timeout. Finish application writes before choosing it. A soft reboot requests a guest restart; an `ACTIVE` status alone does not prove the guest finished booting.
+
+A successful power request may return **no text**. Recheck with:
+
+```bash
+openstack server show lab-vm-01 -c name -c status -c OS-EXT-STS:task_state
+```
+
+For `ERROR`, use the [actual-runtime/recovery check](#vm-power-controls) first. This reference does not prescribe a state reset, hard reboot or migration retry. After a guest restart, check the course data disk's [existing mount and file](#cinder-data-volume-checks).
+
+### CPU, RAM and resource capacity
+
+| Question | Command | Meaning |
+|---|---|---|
+| What hardware size is assigned to my VM? | `openstack server show lab-vm-01 -c flavor` | Find its flavor name/ID |
+| What sizes can I choose? | `openstack flavor list` | vCPUs, RAM in MiB and root-disk size in GiB |
+| How many vCPUs, RAM and root-disk GiB does this flavor assign? | `openstack flavor show lab.small -c name -c vcpus -c ram -c disk` | Configured VM resources, not live consumption |
+| What is my project's quota and current allocation? | `openstack quota show --usage` | `Limit`, `In Use` and `Reserved`; for example, vCPU cores, RAM in MiB and volume GiB |
+| Which compute hosts are registered/up? | `openstack hypervisor list` | Host identity and reported state |
+| What does Nova report for one hypervisor? | `openstack hypervisor show node2` | Host/service details; available fields depend on API version |
+| How much capacity do the Cinder pools report? | `openstack volume backend pool list --long` | Storage backend names and reported capacity |
+
+**Flavor = configured VM hardware. Quota = project allowance/allocation. Host usage = what Ubuntu is actually using.** Quota headroom is not free physical RAM. A pool's capacity report is not a storage-HA test.
+
+For actual host CPU/RAM/filesystem usage, [SSH to the selected node](#2-host-components--connect-from-r2d2) and use `lscpu`, `free -h`, `top` and `df -h`. Inside a guest, the same commands show that VM's view. Press `q` to leave `top`.
+
+Some Nova API versions omit old hypervisor CPU/RAM/disk counters because those counters could be misleading. Use the host tools for actual usage. For the lab's migration readiness checks, use [the preview menu](phase-05/E-vm-migration.md), which separately reads host resources and Placement.
+
+### Volumes and storage locations
+
+| What to see | Command | What to read |
+|---|---|---|
+| Cinder disks in the current project | `openstack volume list` | Name, size, status and attachments |
+| Cinder disks across projects | `openstack volume list --all-projects -c Name -c Status -c Size -c ID` | Admin view; use UUIDs for cross-project inspection |
+| One disk's identity, size and location | `openstack volume show lab-data-01 -c id -c name -c status -c size -c os-vol-host-attr:host` | Actual Cinder storage backend |
+| Which VM uses that disk? | `openstack volume show lab-data-01 -c id -c attachments` | Attached VM UUID and device; an attachment's host is the compute host |
+| Full disk details, including migration fields | `openstack volume show lab-data-01` | Read current backend, attachment and migration state together |
+| All available storage pools | `openstack volume backend pool list --long` | For example, `node2@lvm-1#lvm-1`; inspect before selecting a storage destination |
+
+Read a backend such as **`node2@lvm-1#lvm-1`** as **storage on node2, backend/pool lvm-1**. `in-use` means attached; it does not prove that a VM is powered on or that its filesystem is mounted. `available` means detached and available for attachment.
+
+The course VM's local Ubuntu OS disk is on its compute node; it does not appear as a Cinder volume. To see both disks inside the guest, use [the disk/mount/file check below](#cinder-data-volume-checks). Disk viewing requires no format, detach or mount command.
+
+### Networks, IPs and firewall rules
+
+| What to see | Command | What to read |
+|---|---|---|
+| Networks | `openstack network list` | Private and external network IDs/names |
+| Subnets | `openstack subnet list` | Network IDs and CIDRs |
+| Private subnet settings | `openstack subnet show lab-private-subnet` | Gateway, DHCP, allocation pool and DNS servers |
+| Floating-IP mappings | `openstack floating ip list` | External address, mapped fixed address and port |
+| The VM's ports | `openstack port list --server lab-vm-01` | IP, MAC, port ID and status |
+| Routers | `openstack router list` | Router names, IDs and status |
+| Router configuration | `openstack router show lab-router` | HA setting and external gateway; `ACTIVE` alone does not show its forwarding host |
+| Router active/standby hosts | `openstack network agent list --router lab-router -c Host -c "HA State" -c Alive -c State` | Read all router replicas; a healthy lab has one active and two standby, with agents alive/enabled |
+| Security groups | `openstack security group list` | Guest firewall groups |
+| Rules in the course VM's group | `openstack security group rule list lab-vm-access` | Direction, protocol, port range and allowed source |
+
+The router's HA role differs from the API VIP owner. These commands read API state; use guest checks to test actual traffic. The existing `/usr/bin/python3 scripts/lab-view.py router` helper also shows router ports and replicas when run from `~/openstack-from-zero`.
+
+### Images and SSH key registrations
+
+| What to see | Command | Meaning |
+|---|---|---|
+| Boot images | `openstack image list -c ID -c Name -c Status` | An `active` image is ready for use, not proof that a VM booted |
+| Registered guest public keys | `openstack keypair list` | Keypair names/fingerprints; the private key remains on R2d2 |
+
+### CLI service checks — run on R2d2
+
+For the routine reboot check, run **`bash scripts/lab-recover.sh --check`** from `~/openstack-from-zero`. It displays all three service tables using its existing API snapshot. The CLI commands below are optional independent views after loading the CLI:
 
 ```bash
 openstack compute service list -c Host -c Binary -c Status -c State
@@ -21,7 +133,19 @@ openstack network agent list -c Host -c "Agent Type" -c Alive -c State
 openstack volume service list -c Host -c Binary -c Status -c State
 ```
 
-These inspect registered services/agents; they do not restart them. Nova/Cinder should report `up/enabled`; Neutron should show `Alive=:-)` and administrative `State=UP`. Its `Alive=XXX` indicates a missing heartbeat. Use the [check → selected restart → check again guide](reboot-and-recovery.md#cli-service-checks) for recovery, or [Chapter E](phase-05/E-vm-migration.md) to review VM and storage locations before migration.
+These inspect registrations; they do not restart anything. For **Nova/Cinder**, `State=up` is the heartbeat and `Status=enabled` is administrative permission to accept work. For **Neutron**, `Alive=:-)` is the heartbeat and `State=UP` is administrative enablement; `Alive=XXX` indicates a missing heartbeat. Use the [check → selected restart → check again guide](reboot-and-recovery.md#cli-service-checks) for recovery, or [Chapter E](phase-05/E-vm-migration.md) to review VM and storage locations before migration.
+
+### Find help for a command
+
+```bash
+openstack help server list
+openstack help server start
+openstack help volume show
+```
+
+`help` shows syntax without sending the corresponding cloud action. `-c` selects output columns. `--all-projects` changes the scope of supported list commands; it does not give a name lookup cross-project scope. Use the object's UUID when needed.
+
+[Compute commands](https://docs.openstack.org/python-openstackclient/2026.2/cli/command-objects/compute/v2/index.html) · [Volume commands](https://docs.openstack.org/python-openstackclient/2026.2/cli/command-objects/volume/v3/index.html) · [Network commands](https://docs.openstack.org/python-openstackclient/2026.2/cli/command-objects/network/v2/index.html) · [Quota commands](https://docs.openstack.org/python-openstackclient/2026.2/cli/command-objects/common/index.html#quota-show) · [Nova API history, section 2.88](https://docs.openstack.org/nova/2026.2/reference/api-microversion-history.html)
 
 ## Router versus API VIP
 
@@ -90,19 +214,7 @@ For the diagnosed oslo.messaging 18.3.0 bug, [the Nova messaging repair](phase-0
 
 ### Start or shut down a VM — CLI or Horizon
 
-For CLI controls, use **R2d2** after loading the client/credentials above. Replace the course example `lab-vm-01` with the selected VM's name or UUID. Choose one action after reading its current state:
-
-| Current state | CLI command | Expected result |
-|---|---|---|
-| `SHUTOFF` | `openstack server start lab-vm-01` | Wait for `ACTIVE`, then check console/SSH |
-| `ACTIVE` | `openstack server stop lab-vm-01` | Wait for `SHUTOFF`; the VM and its disks are retained |
-| `ERROR` | Inspect the VM before choosing recovery | A normal start requires SHUTOFF; establish its actual runtime first |
-
-Recheck on R2d2:
-
-```bash
-openstack server list --all-projects --long -c Name -c Status -c Host -c ID
-```
+For CLI controls, use [the VM power commands above](#cli-vm-power): start from `SHUTOFF`, stop from `ACTIVE`, or request a soft guest restart. Read the selected VM's current state and recheck after one action. VM power control differs from restarting an OpenStack service container.
 
 For Horizon, sign in at **https://192.168.0.151/**, choose the project, then open **Project → Compute → Instances**. Find the VM by name/ID and choose **Start Instance** or **Shut Off Instance** for the corresponding state above.
 
@@ -138,6 +250,8 @@ Use `.201` for node2 or `.202` for node3. Enter any SSH-key passphrase locally. 
 | Network namespaces | `sudo ip netns list` | Isolated network contexts used by Neutron |
 | OVS bridges and ports | `sudo docker exec openvswitch_vswitchd ovs-vsctl show` | `br-ex`, `br-int`, `br-tun`, their ports and tunnel options |
 | Host memory | `free -h` | RAM and available memory |
+| Host CPU layout | `lscpu` | Logical CPUs, cores/threads and CPU model |
+| Current CPU/process usage | `top` | Live host usage; press `q` to exit |
 | Host filesystem space | `df -h / /var/lib/docker` | Space on the relevant filesystems |
 | Cinder volume groups | `sudo vgs -o vg_name,vg_size,vg_free,pv_count,lv_count` | Cinder pool capacity; do not use remove/format commands to inspect it |
 
@@ -210,13 +324,17 @@ This requires Chapter D's tracked VM/port/floating IP. It creates no cloud resou
 
 ## Cinder data-volume checks
 
-[Chapter E](phase-04/E-cinder-volume.md) explains disk identification, initialization and persistence. On R2d2, after the exercise completes:
+[Chapter E](phase-04/E-cinder-volume.md) explains disk identification, initialization and persistence. [CLI volume commands above](#volumes-and-storage-locations) show the current Cinder backend and attachment.
+
+For the original Phase 4 exercise, before any storage-backend move, this verifies its saved checkpoint on R2d2:
 
 ```bash
 /usr/bin/python3 scripts/phase4-volume.py --verify
 ```
 
-Inside the guest, inspect the data disk and mount:
+That verifier checks the original saved backend. After an approved Phase 5 storage move, use the fresh CLI location/attachment view and the guest check below. Preserve the original checkpoint; do not edit it to match a new backend.
+
+**Inside the Ubuntu guest**, these commands show its disks, mount and file:
 
 ```bash
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,SERIAL
@@ -226,6 +344,45 @@ sudo sha256sum /mnt/lab-data/persistence-test.txt
 ```
 
 This is a separate data volume, not the VM's local root disk. A mount or persistent file does not prove storage HA. No format command is needed to view a disk. If the original filesystem is unmounted after a guest reboot, follow [the existing-filesystem mount procedure](phase-04/E-cinder-volume.md#after-a-guest-reboot-or-cold-move).
+
+### Course VM: automatic file comparison from R2d2
+
+Use this for the tracked `lab-vm-01` and its original test file, before and after a migration. First confirm the VM's current floating IP with `openstack server show lab-vm-01 -c addresses`. The command below uses its reviewed `192.168.0.194` address and pinned SSH host identity.
+
+**Run on R2d2**; SSH runs the enclosed checks inside the guest. It mounts nothing and changes no disks:
+
+```bash
+ssh -T -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile="$HOME/openstack-from-zero/private/phase4/lab-vm-01-known-hosts" \
+  -i "$HOME/.ssh/openstack-from-zero-vm" \
+  ubuntu@192.168.0.194 'sudo -n bash -s' <<'GUEST'
+set -eu
+echo "VM: $(hostname)"
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+if ! findmnt --mountpoint /mnt/lab-data --output TARGET,SOURCE,FSTYPE,UUID; then
+  echo "FAIL: data filesystem is not mounted"
+  exit 1
+fi
+if [ "$(findmnt -n --mountpoint /mnt/lab-data -o UUID)" != f1568275-f734-4bbc-867e-26a822d2cb0d ]; then
+  echo "FAIL: mounted filesystem UUID differs from the saved course volume"
+  exit 1
+fi
+echo "PASS: original data filesystem is mounted"
+printf '%s  %s\n' \
+  '5e0db26dd46d13816be7b9afbd038b101b062b88b08031692a12c8d8c9e060c4' \
+  '/mnt/lab-data/persistence-test.txt' | sha256sum --check
+GUEST
+```
+
+Expected results:
+
+```text
+PASS: original data filesystem is mounted
+/mnt/lab-data/persistence-test.txt: OK
+```
+
+`OK` means this file matches the original saved checksum. A reported mismatch or missing mount needs review before another move. These checks do not prove storage HA or uninterrupted application traffic. Another VM needs its own verified SSH identity, filesystem UUID and saved checksum; do not reuse this course baseline for an unrelated disk.
 
 ## 6. Manual API VIP failover and restoration
 

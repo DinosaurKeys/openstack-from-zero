@@ -4,6 +4,8 @@
 
 **Goal:** use `openstack` to list VMs and control their power. Run these steps **on R2d2 as joe**. CLI installation is part of [Phase 2 C](phase-02/C-install-tools.md), and connection checks are part of [Phase 3 D](phase-03/D-client-access.md).
 
+**Already installed?** Go to [OpenStack CLI commands in the glossary](command-glossary.md#openstack-cli-commands) for VM power, CPU/RAM, quotas, disks, storage locations, networking, services and agents. This page covers setup and the first power commands.
+
 ## 1. Install or verify the CLI — once
 
 For an existing R2d2, install just the client:

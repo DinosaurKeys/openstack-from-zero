@@ -8,7 +8,9 @@ The normal route is **open menu → select → checks → review → approve →
 
 **Verified lab result — 30 October 2026:** the live menu completed `lab-vm-01` from **node3 to node2**, copying its local OS disk. Nova reported `ACTIVE` on node2; actual-host/runtime, unchanged VM/IP/storage identity and final cluster checks passed. The attached data volume remained on `node3@lvm-1#lvm-1`.
 
-Evidence: Joe's reviewed `menu-migration-20261030T114255Z-x2kfm4sw.txt` output, result `MIGRATION_API_AND_HOST_CHECKS_PASSED`, request `req-5acc6c9b-b533-47c4-b3be-7a47dce2e404`. Guest/network/file checks **after this move** remain pending. This result establishes one completed live move; it does not establish uninterrupted traffic or storage migration.
+Evidence: Joe's reviewed `menu-migration-20261030T114255Z-x2kfm4sw.txt` output, result `MIGRATION_API_AND_HOST_CHECKS_PASSED`, request `req-5acc6c9b-b533-47c4-b3be-7a47dce2e404`. Guest SSH, the original data-filesystem UUID and saved test-file checksum were subsequently verified before the storage move. Uninterrupted application/network traffic is not established.
+
+**Storage result — 30 October 2026:** reviewed report `menu-migration-20261030T141944Z-kqymqg_1.txt`, request `req-81fd338a-ab62-439a-8d62-7a2411b63fbc`, passed `MIGRATION_API_AND_HOST_CHECKS_PASSED` for attached data volume `lab-data-01`: storage **node3 → node2**, with the VM staying on node2. Those checks require the original volume UUID/size, destination backend, retained attachment, unchanged VM placement/runtime and final healthy cluster. **The guest mount/file check after this storage move remains pending.** Use [CLI volume views and the guest comparison](../command-glossary.md#volumes-and-storage-locations) to finish; do not repeat the completed move.
 
 The [six-service Nova messaging workaround](nova-messaging-repair.md) was verified before this successful move. The current lab keeps `use_queue_manager=false` in scheduler/conductor, with oslo.messaging 18.3.0 still installed. A completed repair is not a prerequisite to repeat for every move. For an installation showing the same confirmed bug, review that repair separately before another live request.
 
@@ -115,7 +117,7 @@ The review must show **storage node3 → node2**, while the VM compute host **st
 
 Follow this sequence for that attached-volume example:
 
-1. **Check the existing data first.** Run the guest check below from R2d2. Require the original filesystem UUID and `persistence-test.txt: OK`. This completes the outstanding file check after the VM's live move.
+1. **Check the existing data first.** Run the guest check below from R2d2. Require the original filesystem UUID and `persistence-test.txt: OK`. This establishes the saved-file baseline immediately before the storage move.
 2. **Preview the storage move.** On R2d2, run `bash scripts/lab-migrate.sh --plan` and use the selections in the table above. Require `MIGRATION_PLAN_ONLY`, source storage node3, destination storage node2 and VM compute host node2. The preview sends no move.
 3. **Approve that exact move when ready.** Run `bash scripts/lab-migrate.sh`, repeat the selections, review the fresh checks and type `MIGRATE` only when the displayed plan matches. Cinder requests the data copy; Nova/libvirt handles the attached-disk transfer. The menu does not request a VM reboot or move its OS disk.
 4. **Check the result and data.** Require `MIGRATION_API_AND_HOST_CHECKS_PASSED`, then use `--observe` to confirm the same volume UUID is still attached and its backend is `node2@lvm-1#lvm-1`. Repeat the guest check below and check the VM's application/network access. A completed API result alone does not verify the file.
@@ -146,7 +148,7 @@ GUEST
 
 Expected: VM `lab-vm-01`, the saved filesystem UUID at `/mnt/lab-data`, and `/mnt/lab-data/persistence-test.txt: OK`. A guest SSH-key passphrase may be requested. If the filesystem is unmounted, follow the [existing-filesystem procedure](../phase-04/E-cinder-volume.md#after-a-guest-reboot-or-cold-move) after checking its identity. Return any mismatch before another move.
 
-This command's UUID, checksum, login and IP are for the tracked course VM. For another VM, use its verified SSH identity and its own saved data baseline. The attached-volume workflow is documented by Cinder; **this lab's storage migration remains untested until these steps pass**. It adds no storage replication.
+This command's UUID, checksum, login and IP are for the tracked course VM. For another VM, use its verified SSH identity and its own saved data baseline. The attached-volume workflow is documented by Cinder. A reported API/host success still needs its guest/file comparison; it adds no storage replication.
 
 Choice **4** lists already detached volumes and goes straight to the volume/backend selections. Shutting down a VM does not detach its data volume.
 

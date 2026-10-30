@@ -4,7 +4,7 @@
 
 **Goal:** check that another service takes over when one stops, then move a running VM for planned maintenance.
 
-Phase 4's VM networking and Cinder persistence reports passed. Reviewed live reports passed B (API VIP), C (MariaDB) and D (virtual-router HA), including restoration. Reboot service recovery also passed. **E covers live/cold VM moves and separate data-volume moves through one numbered menu.** Reviewed evidence records a confirmed cold move on 29 October and a completed live VM/OS-disk move from node3 to node2 on 30 October 2026, including actual-host/runtime and final cluster checks. Post-live-move guest/network/file checks and storage migration remain pending. Read current state and review each exact move before execution. Repeating a completed fault test requires fresh preparation and review.
+Phase 4's VM networking and Cinder persistence reports passed. Reviewed live reports passed B (API VIP), C (MariaDB) and D (virtual-router HA), including restoration. Reboot service recovery also passed. **E covers live/cold VM moves and separate data-volume moves through one numbered menu.** Reviewed evidence records a confirmed cold move on 29 October and a completed live VM/OS-disk move from node3 to node2 on 30 October 2026. Guest SSH, the original filesystem UUID and saved test-file checksum were then verified. A subsequent attached-volume move from storage node3 to node2 passed API/host and final cluster checks, with the VM remaining on node2. The guest/file check after that storage move remains pending; uninterrupted application/network traffic is not established. Read current state and review each exact move before execution. Repeating a completed fault test requires fresh preparation and review.
 
 | Chapter | Simple purpose | Status |
 |---|---|---|
@@ -12,7 +12,7 @@ Phase 4's VM networking and Cinder persistence reports passed. Reviewed live rep
 | [B — API VIP](B-api-vip.md) | Keep the cloud's front-door address working | Complete — reviewed API VIP takeover and restoration passed |
 | [C — MariaDB](C-mariadb.md) | Keep the database working with one member stopped | Complete — one-member stop, surviving cluster/API reads and three-member restoration passed |
 | [D — Virtual router](D-router.md) | Keep the VM's network path working after takeover | Complete — router takeover, link restoration and final checks passed |
-| [E — VM and storage migration](E-vm-migration.md) | Select → check → review → approve → verify | Cold move confirmed; live node3 → node2 API/host checks passed. Post-move guest/data checks and storage migration pending |
+| [E — VM and storage migration](E-vm-migration.md) | Select → check → review → approve → verify | Cold move confirmed; live compute and attached-volume node3 → node2 API/host checks passed. Guest/file check after the storage move pending |
 
 The reviewed 30 October report verifies the [Nova messaging workaround](nova-messaging-repair.md) on all six scheduler/conductor services. The subsequent live move passed. Keep this verified configuration; any later repair or migration requires its own checks and approval.
 
