@@ -176,6 +176,29 @@ class MenuTests(unittest.TestCase):
                 self.assertEqual(code,0);self.assertFalse(api.actions)
                 self.assertIn('RESULT: MIGRATION_PLAN_ONLY — no migration requested',logs)
 
+    def test_attached_volume_preview_separates_vm_node2_from_storage_node3(self):
+        api=API();api.server=server('node2');api.volume=disk('node3@lvm-1#lvm-1')
+        # VM node2 is menu number 3; number 2 and storage node3 are empty filters.
+        answers=iter(['3','2','4','3','1','1','2']);logs=[];saves=[]
+        with tempfile.TemporaryDirectory() as folder,patch.object(m.getpass,'getpass',return_value='hidden'),patch.object(m.inspection,'Nodes',return_value=Nodes(api)),patch.object(m,'storage_preflight',wraps=m.storage_preflight) as preflight:
+            result=m.run_menu(api,PROJECT,{},Path(folder),logs.append,saves.append,
+              lambda _:next(answers),True,lambda *_:{'boots':'unchanged'})
+        self.assertEqual(result,0);self.assertFalse(api.actions);self.assertFalse(saves)
+        self.assertIn("\nChoose the VM's current compute node",logs)
+        self.assertIn('  3) node2 — 1 VM(s)',logs)
+        self.assertIn('  4) node3 — 0 VM(s)',logs)
+        self.assertTrue(any('No VM currently lives on node1' in line for line in logs))
+        self.assertTrue(any('No VM currently lives on node3' in line and 'volume storage source is read separately' in line for line in logs))
+        self.assertIn('VM compute host: node2',logs)
+        self.assertIn('Data-volume source backend: node3@lvm-1#lvm-1',logs)
+        self.assertIn('Source storage backend: node3@lvm-1#lvm-1',logs)
+        self.assertIn('Destination storage backend: node2@lvm-1#lvm-1',logs)
+        self.assertIn('VM compute host: node2 (stays here)',logs)
+        self.assertIn('VM: custom VM name',logs)
+        self.assertEqual(preflight.call_args.args[1]['os-vol-host-attr:host'],'node3@lvm-1#lvm-1')
+        self.assertEqual(preflight.call_args.args[3]['name'],'node2@lvm-1#lvm-1')
+        self.assertEqual(preflight.call_args.args[5]['OS-EXT-SRV-ATTR:host'],'node2')
+
     def test_unavailable_host_reports_sudo_reason_before_api_or_container_claims(self):
         hosts={n:{'observed':True} for n in m.NODES};hosts['node1']={'observed':False,'error':'Sudo authentication failed'}
         with patch.object(m.health,'host_observe',side_effect=lambda n,*_:hosts[n]),patch.object(m.health,'api_checks',side_effect=AssertionError('No API checks needed')):

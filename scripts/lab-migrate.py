@@ -289,6 +289,7 @@ def storage_preflight(api,value,project,pool,mode,server=None):
         if vid not in volume_ids(server) or sorted(a.get('server_id') for a in value.get('attachments',[]))!=[server['id']]:raise RuntimeError('Data volume must be attached only to the selected VM')
     elif value.get('attachments'):raise RuntimeError('Offline data-volume migration requires an already detached volume')
     return {'mode':mode,'volume_id':vid,'volume_name':value.get('name'),'server_id':server.get('id') if server else None,
+      'vm_name':server.get('name') if server else None,
       'project_id':project,'source':source,'destination':dest,'before_volume':copy.deepcopy(value),
       'before_server':binding(server,attachments(api,server,project)) if server else None,'pool':copy.deepcopy(pool)}
 
@@ -297,12 +298,16 @@ def plan_lines(plan):
     lines=['\nREVIEW THIS MOVE','Operation: '+MODE_LABELS[plan['mode']]]
     if plan.get('server_id'):lines+=['VM: '+clean(plan.get('vm_name') or plan['server_id']),'VM ID: '+plan['server_id']]
     if plan.get('volume_id'):lines+=['Data volume: '+clean(plan.get('volume_name'))+' ('+plan['volume_id']+')']
-    lines+=['Source: '+clean(plan['source']),'Destination: '+clean(plan['destination'])]
     if plan['mode'] in ('live','cold'):
-        lines+=['OS disk: copied by Nova to the destination compute node.',
+        lines+=['Source: '+clean(plan['source']),'Destination: '+clean(plan['destination']),
+          'OS disk: copied by Nova to the destination compute node.',
           'Attached Cinder volumes: remain on their current storage backends.',
           'VM power: '+('keep running; a brief pause is possible.' if plan['mode']=='live' else 'planned shutdown/cold migration; downtime is expected.')]
-    else:lines+=['Compute/OS disk: stay where they are.','Data volume: move backend; retain the same volume UUID.']
+    else:
+        lines+=['Source storage backend: '+clean(plan['source']),
+          'Destination storage backend: '+clean(plan['destination'])]
+        if plan.get('before_server'):lines+=['VM compute host: '+clean(plan['before_server']['source'])+' (stays here)']
+        lines+=['Compute/OS disk: stay where they are.','Data volume: move backend; retain the same volume UUID.']
     lines+=['No rename, formatting, force detach, state reset or automatic retry.']
     return lines
 
@@ -448,6 +453,8 @@ def run_menu(api,project,env,folder,log,save,read=input,plan_only=False,health_c
     if choice is None:return 0
     server=None
     if choice!='volume-offline':
+        if choice=='volume-live':
+            log('First select the VM using the volume. This filter lists VM compute locations; the volume storage source is read separately.')
         servers=api.list('compute','servers/detail?limit=100','servers')
         servers=[v for v in servers if v.get('tenant_id')==project and str(v.get('OS-EXT-SRV-ATTR:host','')).split('.')[0] in NODES]
         if not servers:log('No VMs in the current project on node1/node2/node3. No migration requested.');return 0
@@ -455,15 +462,18 @@ def run_menu(api,project,env,folder,log,save,read=input,plan_only=False,health_c
             def source_label(n):
                 count=len(servers) if n=='All nodes' else sum(node_name(v['OS-EXT-SRV-ATTR:host'])==n for v in servers)
                 return n+' — '+str(count)+' VM(s)'
-            source_filter=choose('Choose the source node',['All nodes',*NODES],source_label,read,log)
+            title="Choose the VM's current compute node" if choice=='volume-live' else 'Choose the source node'
+            source_filter=choose(title,['All nodes',*NODES],source_label,read,log)
             if source_filter is None:return 0
             filtered=[v for v in servers if source_filter=='All nodes' or node_name(v['OS-EXT-SRV-ATTR:host'])==source_filter]
             if filtered:break
-            log('No VM currently lives on '+source_filter+'. Choose its current node; destination is selected later.')
+            log('No VM currently lives on '+source_filter+'. Choose its current compute node; '+
+              ('the volume storage source is read separately.' if choice=='volume-live' else 'destination is selected later.'))
         selected=choose('Choose the existing VM',filtered,
           lambda v:clean(v.get('name'))+' | '+str(v.get('status'))+' | '+node_name(v['OS-EXT-SRV-ATTR:host'])+' | '+v['id'],read,log)
         if selected is None:return 0
-        server=server_value(api,selected['id'],project);log('Detected VM source: '+node_name(server['OS-EXT-SRV-ATTR:host']))
+        server=server_value(api,selected['id'],project)
+        log(('VM compute host: ' if choice=='volume-live' else 'Detected VM source: ')+node_name(server['OS-EXT-SRV-ATTR:host']))
         log('VM state: '+str(server.get('status')))
         for vid,value in attachments(api,server,project).items():
             log('Data disk: '+clean(value.get('name'))+' | '+str(value.get('status'))+' | '+value['os-vol-host-attr:host']+' | '+vid)
@@ -479,6 +489,7 @@ def run_menu(api,project,env,folder,log,save,read=input,plan_only=False,health_c
             selected=choose('Choose the data volume',candidates,lambda v:clean(v.get('name'))+' | '+str(v.get('size'))+' GiB | '+str(v.get('os-vol-host-attr:host'))+' | '+v['id'],read,log)
             if selected is None:return 0
             value=volume_value(api,selected['id'],project);pending_guard(folder,server=server['id'] if server else None,vid=value['id'])
+            log('Data-volume source backend: '+clean(value['os-vol-host-attr:host']))
             pools=api.get('block-storage','scheduler-stats/get_pools?detail=True').get('pools',[])
             choices=[p for p in pools if str(p.get('name','')).split('@')[0] in NODES and p['name']!=value['os-vol-host-attr:host']]
             pool=choose('Choose the destination storage backend',choices,lambda p:p['name']+' | free '+str(p.get('capabilities',{}).get('free_capacity_gb','not reported'))+' GiB',read,log)

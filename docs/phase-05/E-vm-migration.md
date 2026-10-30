@@ -85,7 +85,7 @@ cd ~/openstack-from-zero
 bash scripts/lab-migrate.sh
 ```
 
-Opening the menu does not request a migration. Choose the operation, source filter, VM and destination. Enter `0` to cancel. You can enter node names instead of their menu numbers.
+Opening the menu does not request a migration. Choose the operation, source filter, VM and destination. Enter `0` to cancel. The VM-node menus accept node names; select volumes and storage backends by their displayed numbers.
 
 For a **live VM move from node3 to node2**, the selections are:
 
@@ -98,7 +98,57 @@ For a **live VM move from node3 to node2**, the selections are:
 
 This is an example; use the VM's freshly displayed source. The source filter lists VMs already on that node. It does not move or rename them. An empty filter returns to the source menu. Source and destination must differ.
 
-For choices **3 or 4**, select the data volume and destination storage backend instead of a compute destination. Choice 4 lists already detached volumes; shutting down a VM does not detach its data volume.
+For choice **3**, the first node menu filters **VM compute locations**. Select where the VM currently runs, then select its attached data volume. The script reads the volume's **source storage backend** from Cinder separately. A VM count of zero on a node says nothing about the volumes stored there.
+
+For an attached data-volume move **node3 → node2**, with the VM already on node2:
+
+| Prompt | Select / verify |
+|---|---|
+| Operation | `3` — Move an attached data volume |
+| VM's current compute node | Enter `node2`; in the four-entry node menu, its number is `3` |
+| Existing VM | The number beside `lab-vm-01` |
+| Data volume | The number beside `lab-data-01` |
+| Source storage backend | Read automatically: `node3@lvm-1#lvm-1` |
+| Destination storage backend | The number beside `node2@lvm-1#lvm-1` |
+
+The review must show **storage node3 → node2**, while the VM compute host **stays on node2**. Read the menu labels: **number `2` selects node1**; it does not mean node2. An empty VM filter returns to the same menu.
+
+Follow this sequence for that attached-volume example:
+
+1. **Check the existing data first.** Run the guest check below from R2d2. Require the original filesystem UUID and `persistence-test.txt: OK`. This completes the outstanding file check after the VM's live move.
+2. **Preview the storage move.** On R2d2, run `bash scripts/lab-migrate.sh --plan` and use the selections in the table above. Require `MIGRATION_PLAN_ONLY`, source storage node3, destination storage node2 and VM compute host node2. The preview sends no move.
+3. **Approve that exact move when ready.** Run `bash scripts/lab-migrate.sh`, repeat the selections, review the fresh checks and type `MIGRATE` only when the displayed plan matches. Cinder requests the data copy; Nova/libvirt handles the attached-disk transfer. The menu does not request a VM reboot or move its OS disk.
+4. **Check the result and data.** Require `MIGRATION_API_AND_HOST_CHECKS_PASSED`, then use `--observe` to confirm the same volume UUID is still attached and its backend is `node2@lvm-1#lvm-1`. Repeat the guest check below and check the VM's application/network access. A completed API result alone does not verify the file.
+
+**Guest data check — run on R2d2, before and after the storage move.** This connects to the course VM's last verified floating IP, `192.168.0.194`, using its pinned SSH identity. Confirm that IP still belongs to the selected VM. It checks the existing mount and original saved file; it does not mount or format anything.
+
+```bash
+ssh -T -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile="$HOME/openstack-from-zero/private/phase4/lab-vm-01-known-hosts" \
+  -i "$HOME/.ssh/openstack-from-zero-vm" \
+  ubuntu@192.168.0.194 'sudo -n bash -s' <<'GUEST'
+set -eu
+echo "VM: $(hostname)"
+if ! findmnt --mountpoint /mnt/lab-data --output TARGET,SOURCE,FSTYPE,UUID; then
+  echo "STOP: data filesystem is not mounted; review its identity before mounting"
+  exit 1
+fi
+if [ "$(findmnt -n --mountpoint /mnt/lab-data -o UUID)" != f1568275-f734-4bbc-867e-26a822d2cb0d ]; then
+  echo "STOP: mounted filesystem UUID differs from the saved course volume"
+  exit 1
+fi
+printf '%s  %s\n' \
+  '5e0db26dd46d13816be7b9afbd038b101b062b88b08031692a12c8d8c9e060c4' \
+  '/mnt/lab-data/persistence-test.txt' | sha256sum --check
+GUEST
+```
+
+Expected: VM `lab-vm-01`, the saved filesystem UUID at `/mnt/lab-data`, and `/mnt/lab-data/persistence-test.txt: OK`. A guest SSH-key passphrase may be requested. If the filesystem is unmounted, follow the [existing-filesystem procedure](../phase-04/E-cinder-volume.md#after-a-guest-reboot-or-cold-move) after checking its identity. Return any mismatch before another move.
+
+This command's UUID, checksum, login and IP are for the tracked course VM. For another VM, use its verified SSH identity and its own saved data baseline. The attached-volume workflow is documented by Cinder; **this lab's storage migration remains untested until these steps pass**. It adds no storage replication.
+
+Choice **4** lists already detached volumes and goes straight to the volume/backend selections. Shutting down a VM does not detach its data volume.
 
 Enter joe's sudo passwords when requested. The checks read host/container identity, runtime, CPU compatibility, physical RAM/disk headroom and Placement capacity. Storage choices also check attachment state, destination capacity and backend compatibility. A failed or unavailable check stops before submission.
 
@@ -195,7 +245,7 @@ The live POST uses Nova API `2.30`, matching the [Horizon 2026.2 live-migrate fe
 
 An authenticated libvirt read, healthy container or service heartbeat does not test the full migration data path or RPC response path. Nova still performs scheduling and transfer checks. A `MessagingTimeout` means the caller did not receive its expected RPC response within the wait period; the message alone does not identify the broken component.
 
-The [oslo.messaging 18.3.1 release notes](https://docs.openstack.org/releasenotes/oslo.messaging/2026.2.html#id1) describe a reply-queue collision fix that can cause RPC timeouts. Its applicability requires the installed source/configuration and matching runtime evidence; it is not a confirmed lab diagnosis. Do not select a library/image change or timeout increase from that exception name alone.
+The [oslo.messaging 18.3.1 release notes](https://docs.openstack.org/releasenotes/oslo.messaging/2026.2.html#id1) describe a reply-queue collision fix. The reviewed lab evidence and applied workaround are recorded in the [separate repair page](nova-messaging-repair.md). For another installation, the exception name alone does not establish that cause; review its installed source/configuration and matching runtime evidence before choosing a repair.
 
 [Cinder's API migration conditions](https://docs.openstack.org/api-ref/block-storage/v3/#migrate-a-volume) · [OpenStack CLI migration reference](https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/compute/v2/index.html#server-migrate) · [Cinder volume command](https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/volume/v3/index.html#volume-migrate)
 
