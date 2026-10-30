@@ -116,11 +116,11 @@ run "reject_wrong_image" {
   expect_failures = [data.openstack_images_image_v2.ubuntu]
 }
 
-run "reject_insufficient_ram" {
+run "reject_wrong_flavor" {
   command = plan
   override_data {
     target = data.openstack_compute_flavor_v2.small
-    values = { vcpus = 1, ram = 1024, disk = 10 }
+    values = { id = "99999999-1111-4111-8111-999999999999" }
   }
   expect_failures = [data.openstack_compute_flavor_v2.small]
 }
@@ -148,16 +148,16 @@ run "reject_wrong_login" {
   expect_failures = [data.openstack_identity_auth_scope_v3.current]
 }
 
-run "reject_wrong_private_network" {
+run "reject_wrong_private_subnet" {
   command = plan
   override_data {
     target = data.openstack_networking_network_v2.private
     values = {
       id        = "33333333-1111-4111-8111-333333333333"
-      name      = "unrelated-network"
+      name      = "lab-private"
       tenant_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       external  = false
-      subnets   = ["44444444-1111-4111-8111-444444444444"]
+      subnets   = ["99999999-1111-4111-8111-999999999999"]
     }
   }
   expect_failures = [data.openstack_networking_network_v2.private]

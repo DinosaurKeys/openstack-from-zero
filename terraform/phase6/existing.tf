@@ -12,9 +12,10 @@ data "openstack_identity_auth_scope_v3" "current" {
 }
 
 data "openstack_images_image_v2" "ubuntu" {
-  name       = var.existing.image_name
-  owner      = var.existing.project_id
-  visibility = "private"
+  name        = var.existing.image_name
+  owner       = var.existing.project_id
+  visibility  = "private"
+  disk_format = "qcow2"
 
   lifecycle {
     postcondition {
@@ -27,10 +28,13 @@ data "openstack_images_image_v2" "ubuntu" {
 
 data "openstack_compute_flavor_v2" "small" {
   flavor_id = var.existing.flavor_id
+  vcpus     = 1
+  ram       = 2048
+  disk      = 10
 
   lifecycle {
     postcondition {
-      condition     = self.vcpus == 1 && self.ram == 2048 && self.disk == 10
+      condition     = self.id == var.existing.flavor_id && self.vcpus == 1 && self.ram == 2048 && self.disk == 10
       error_message = "Both VMs require the reviewed 1-vCPU, 2048-MiB, 10-GiB flavor."
     }
   }
@@ -43,10 +47,13 @@ data "openstack_compute_keypair_v2" "guest" {
 
 data "openstack_networking_network_v2" "private" {
   network_id = var.existing.private_network_id
+  name       = "lab-private"
+  tenant_id  = var.existing.project_id
+  external   = false
 
   lifecycle {
     postcondition {
-      condition = (self.name == "lab-private" && self.tenant_id == var.existing.project_id &&
+      condition = (self.id == var.existing.private_network_id && self.name == "lab-private" && self.tenant_id == var.existing.project_id &&
       !self.external && contains(self.subnets, var.existing.private_subnet_id))
       error_message = "The private network identity or subnet differs from Chapter A."
     }
@@ -54,8 +61,11 @@ data "openstack_networking_network_v2" "private" {
 }
 
 data "openstack_networking_subnet_v2" "private" {
-  subnet_id  = var.existing.private_subnet_id
-  network_id = data.openstack_networking_network_v2.private.id
+  subnet_id    = var.existing.private_subnet_id
+  network_id   = data.openstack_networking_network_v2.private.id
+  cidr         = "10.10.10.0/24"
+  gateway_ip   = "10.10.10.1"
+  dhcp_enabled = true
 
   lifecycle {
     postcondition {
@@ -67,10 +77,12 @@ data "openstack_networking_subnet_v2" "private" {
 
 data "openstack_networking_network_v2" "external" {
   network_id = var.existing.external_network_id
+  name       = "lab-external"
+  external   = true
 
   lifecycle {
     postcondition {
-      condition     = self.name == "lab-external" && self.external && contains(self.subnets, var.existing.external_subnet_id)
+      condition     = self.id == var.existing.external_network_id && self.name == "lab-external" && self.external && contains(self.subnets, var.existing.external_subnet_id)
       error_message = "The floating-IP network or subnet differs from Chapter A."
     }
   }
