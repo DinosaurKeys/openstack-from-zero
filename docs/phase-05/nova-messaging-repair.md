@@ -6,6 +6,8 @@
 
 **Repair used here:** turn off the faulty queue-name manager for **Nova scheduler and conductor on all three nodes**. This selects the library's supported random queue names. It is a configuration workaround; it does **not** install the upstream code fix in 18.3.1. Random names create more temporary queues; the script requires a positive existing queue expiry.
 
+**Reviewed lab result — 30 October 2026:** `NOVA_MESSAGING_WORKAROUND_VERIFIED` confirmed the setting OFF, healthy containers and fresh heartbeats in all six services. A later live VM/OS-disk move from node3 to node2 passed Nova, actual-host/runtime and final cluster checks. Post-move guest/network/file checks remain separate. Keep the completed repair's configuration and receipt; these installation steps are not a routine action to repeat before migration.
+
 ## 1. Get the repair — on R2d2 as joe
 
 This Git update installs the new script. It is a one-time maintenance step.

@@ -6,7 +6,11 @@
 
 The normal route is **open menu → select → checks → review → approve → verify**. The menu loads its own tools and connection settings. No CLI activation or routine Git update is needed for it.
 
-**Current lab repair:** the reviewed 30 October diagnostic strongly matches the oslo.messaging 18.3.0 reply-queue bug. Apply and review the [six-service Nova messaging workaround](nova-messaging-repair.md) before another live attempt. It changes service configuration; VM ERROR recovery and a new migration remain separate approvals. A healthy container or successful cold move does not test this faulty reply path.
+**Verified lab result — 30 October 2026:** the live menu completed `lab-vm-01` from **node3 to node2**, copying its local OS disk. Nova reported `ACTIVE` on node2; actual-host/runtime, unchanged VM/IP/storage identity and final cluster checks passed. The attached data volume remained on `node3@lvm-1#lvm-1`.
+
+Evidence: Joe's reviewed `menu-migration-20261030T114255Z-x2kfm4sw.txt` output, result `MIGRATION_API_AND_HOST_CHECKS_PASSED`, request `req-5acc6c9b-b533-47c4-b3be-7a47dce2e404`. Guest/network/file checks **after this move** remain pending. This result establishes one completed live move; it does not establish uninterrupted traffic or storage migration.
+
+The [six-service Nova messaging workaround](nova-messaging-repair.md) was verified before this successful move. The current lab keeps `use_queue_manager=false` in scheduler/conductor, with oslo.messaging 18.3.0 still installed. A completed repair is not a prerequisite to repeat for every move. For an installation showing the same confirmed bug, review that repair separately before another live request.
 
 ## 1. Choose what moves
 
