@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [Course plan](../00-goal-and-plan.md) · [Resource check](../resource-and-heat-check.md)
 
-**Status: draft for review.** This page defines the lesson. Terraform installation, configuration files and VM creation have not been performed. Approve the proposed names and sizes before we prepare the execution chapters.
+**Status: course structure, VM names and starting sizes approved.** Start with [Chapter A — readiness](A-readiness.md). Its checker is ready; a live report is pending. Terraform installation, configuration files and VM creation have not been performed. The remaining chapters below are the approved outline.
 
 ## What Terraform does
 
@@ -16,9 +16,9 @@ You describe the VMs, networks and disks in files. Terraform shows the proposed 
 
 Terraform uses the OpenStack provider to call the cloud APIs. Heat is not required.
 
-## Proposed VMs
+## Approved starting VMs
 
-Both guests use Ubuntu 24.04. Names and starting sizes below are proposals, subject to Chapter A's allocation/quota checks.
+Both guests use Ubuntu 24.04. These are the approved starting sizes, subject to Chapter A's image minimums, allocation and quota checks. The existing image-creation code sets a 2 GiB RAM minimum; Chapter A reads Glance to confirm whether the 1 GiB starting proposal needs revision.
 
 | VM | Later role | vCPU | RAM | OS disk | New data disk |
 |---|---|---:|---:|---:|---:|
@@ -50,7 +50,7 @@ Run management commands **on R2d2 as joe**. Each execution chapter will contain:
 
 | Chapter | Step | Finished when |
 |---|---|---|
-| A — Check readiness | Check cloud/project identity, cluster health, VM power state, allocations, quotas, disk capacity, name conflicts and reusable image/network/key/flavor IDs | The two proposed VMs and supporting resources fit the verified limits |
+| [A — Check readiness](A-readiness.md) | Check cloud/project identity, cluster health, VM power state, image minimums, allocations, quotas, disk capacity and reusable resource IDs | Live report reviewed; any sizing/power-state decisions settled |
 | B — Install Terraform | Check R2d2's OS, architecture and any existing Terraform; install the pinned official release and verify it | The selected Terraform version runs on R2d2 |
 | C — Write the configuration | Declare the new resources, existing-resource references, variables, private state location and outputs | The files describe only the approved Phase 6 resources |
 | D — Preview | Load the existing OpenStack connection settings; initialize, validate and save a plan | The plan shows the agreed additions, with zero changes/deletions to existing lab objects |
@@ -60,7 +60,7 @@ Run management commands **on R2d2 as joe**. Each execution chapter will contain:
 
 The 30 October 2026 resource snapshot showed four CPU threads per node and **5.1 / 5.3 / 5.6 GiB available RAM**, with no swap in use. Heat containers/startup units and Heat-named queues were absent. This is the starting observation; Chapter A still needs OpenStack allocation/quota and VM-state evidence.
 
-## Files we will prepare after approval
+## Files planned for Chapter C
 
 Public configuration goes in the proposed `terraform/phase6/` directory:
 

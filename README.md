@@ -31,9 +31,11 @@ The reviewed resource snapshot showed four CPU cores and about 15 GiB usable RAM
 
 ## Current learning step
 
+**Now: [Phase 6 A — Terraform readiness](docs/phase-06/A-readiness.md).** The plan is one application VM (`lab1`) and one PostgreSQL VM (`lab2`). Run the read-only chapter check before installation; it verifies image minimums, quotas, current capacity and the old VM's power state. A live report is pending. The original image code sets a 2 GiB minimum, so the 1 GiB starting proposal must be checked before provisioning.
+
 Phase 4 is complete: reviewed live reports passed VM networking and Cinder data persistence across detach/reattach. The local OS disk and Cinder data volume are separate, unreplicated storage; their current compute/storage locations must be read from the lab. Browser sign-in is a separate user-confirmed check.
 
-Continue with [Phase 5 — HA validation and VM migration](docs/phase-05/README.md). The API VIP, one-member MariaDB and virtual-router HA tests passed, including restoration. Network interruption was observed during router takeover; uninterrupted service is not claimed. **Chapter E: reviewed reports record a confirmed cold move from node1 to node3 on 29 October and a completed live VM/OS-disk move from node3 to node2 on 30 October 2026.** Guest SSH, the original data-filesystem UUID and saved file checksum were then verified. A subsequent attached-volume move from storage node3 to node2 passed the menu's API/host and final cluster checks, leaving the VM on node2. The file check after that storage move remains pending; uninterrupted application/network traffic is not claimed. Use [CLI disk-location and guest file checks](docs/command-glossary.md#volumes-and-storage-locations) to finish verification. Ceph and automatic VM recovery are deferred.
+Reviewed [Phase 5 — HA validation and VM migration](docs/phase-05/README.md) reports passed the API VIP, one-member MariaDB and virtual-router HA tests, including restoration. Network interruption was observed during router takeover; uninterrupted service is not claimed. **Chapter E: reviewed reports record a confirmed cold move from node1 to node3 on 29 October and a completed live VM/OS-disk move from node3 to node2 on 30 October 2026.** Guest SSH, the original data-filesystem UUID and saved file checksum were then verified. A subsequent attached-volume move from storage node3 to node2 passed the menu's API/host and final cluster checks, leaving the VM on node2. The file check after that storage move remains pending; uninterrupted application/network traffic is not claimed. Use [CLI disk-location and guest file checks](docs/command-glossary.md#volumes-and-storage-locations) to finish verification. Ceph and automatic VM recovery are deferred.
 
 **Cluster checks:** [reboot service recovery](docs/reboot-and-recovery.md). Run `bash scripts/lab-recover.sh --check` for the service/agent dashboard. It shows up/down, enabled/disabled, container health, Galera, RabbitMQ, VIP and HTTPS API observations. VM/migration state is separate from cluster-service health. Use `bash scripts/lab-migrate.sh --observe` for current migration API state; guest/runtime verification remains separate. Existing records are preserved.
 
@@ -50,7 +52,7 @@ Continue with [Phase 5 — HA validation and VM migration](docs/phase-05/README.
 | 3 — Install OpenStack | [Prechecks, HA deployment, OpenStack CLI, HTTPS and Horizon](docs/phase-03/README.md) |
 | 4 — Networking and first VM | [HA router, VM ingredients, guest traffic and volumes](docs/phase-04/README.md) |
 | 5 — HA validation and VM migration | [Readiness, three HA exercises and planned migration](docs/phase-05/README.md) |
-| 6 — Terraform | [Draft: install Terraform and provision one application VM and one database VM](docs/phase-06/README.md) |
+| 6 — Terraform | [Chapter A ready: check before installing Terraform and provisioning the two VMs](docs/phase-06/README.md) |
 | 7 — Application with Ansible | Planned: NGINX/shopping-list application and PostgreSQL |
 | 8 — Monitoring | Planned after the application |
 
