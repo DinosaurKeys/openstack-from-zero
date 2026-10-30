@@ -32,7 +32,7 @@ prep = health.prep
 deploy = health.deploy
 inv = health.inv
 ENV = health.ENV
-TARGET = {'names': ['lab1', 'lab2'], 'vcpus_each': 1, 'ram_mb_each': 1024,
+TARGET = {'names': ['lab1', 'lab2'], 'vcpus_each': 1, 'ram_mb_each': 2048,
           'root_gib_each': 10, 'volume_name': 'lab2-data', 'volume_gib': 5}
 
 
@@ -330,7 +330,7 @@ def collect_cloud(api, project, user, hosts, check, details):
 
 
 def render(rows, details):
-    lines = ['\nPHASE 6 A — READINESS', 'Target: lab1 + lab2; 1 vCPU each; approved RAM 1 GiB each.']
+    lines = ['\nPHASE 6 A — READINESS', 'Target: lab1 + lab2; 1 vCPU each; approved RAM ' + str(TARGET['ram_mb_each'] // 1024) + ' GiB each.']
     assessed = details.get('assessed_ram_mb_each')
     if assessed and assessed != TARGET['ram_mb_each']:
         lines.append('RAM assessment against image: ' + str(assessed // 1024) + ' GiB each — needs your review; approved size was not changed.')
@@ -362,6 +362,7 @@ def render(rows, details):
 
 
 def execute(log, details):
+    details['approved_target'] = dict(TARGET)
     deploy.source_guard()
     env = deploy.tools.tool_environment()
     inventory, config = deploy.validation.local_checks(lambda _: None, env)

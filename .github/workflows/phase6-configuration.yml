@@ -1,0 +1,44 @@
+name: Phase 6 configuration checks
+
+on:
+  push:
+    paths:
+      - 'terraform/phase6/**'
+      - 'scripts/phase6-*.py'
+      - 'tests/test_phase6*.py'
+      - '.github/workflows/phase6-configuration.yml'
+  pull_request:
+    paths:
+      - 'terraform/phase6/**'
+      - 'scripts/phase6-*.py'
+      - 'tests/test_phase6*.py'
+      - '.github/workflows/phase6-configuration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CHECKPOINT_DISABLE: '1'
+      TF_IN_AUTOMATION: 'true'
+    steps:
+      - name: Check out this commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install the course Terraform version
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+      - name: Test local preparation and readiness with fixtures
+        run: python3 -m unittest discover -s tests -p 'test_phase6*.py'
+      - name: Check Terraform formatting
+        run: terraform -chdir=terraform/phase6 fmt -check -recursive
+      - name: Download the pinned provider without a state backend
+        run: terraform -chdir=terraform/phase6 init -backend=false -input=false -lockfile=readonly -no-color
+      - name: Validate against the actual provider schema
+        run: terraform -chdir=terraform/phase6 validate -no-color
+      - name: Test the plan with a mocked OpenStack provider
+        run: terraform -chdir=terraform/phase6 test -no-color

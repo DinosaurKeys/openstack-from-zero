@@ -176,7 +176,7 @@ class ReadinessTests(unittest.TestCase):
         api = FakeAPI()
         rows, details = self.collect(api)
         self.assertTrue(all(r['status'] == 'PASS' for r in rows), rows)
-        self.assertEqual(details['assessed_ram_mb_each'], 1024)
+        self.assertEqual(details['assessed_ram_mb_each'], 2048)
         self.assertTrue(all(c[0] == 'GET' for c in api.calls))
         self.assertNotIn(api.token, json.dumps(details))
         text, passed = m.render(rows, details)
@@ -185,15 +185,33 @@ class ReadinessTests(unittest.TestCase):
 
     def test_real_course_image_floor_blocks_1g_plan_but_assesses_2g(self):
         api = FakeAPI(min_ram=2048)
-        rows, details = self.collect(api)
-        self.assertEqual(next(r['status'] for r in rows if r['check'] == 'Approved size meets image minimum'), 'REVIEW')
-        self.assertEqual(details['assessed_ram_mb_each'], 2048)
+        # Preserve coverage of the original proposal; approval now selects 2 GiB.
+        with patch.dict(m.TARGET, ram_mb_each=1024):
+            rows, details = self.collect(api)
+            self.assertEqual(next(r['status'] for r in rows if r['check'] == 'Approved size meets image minimum'), 'REVIEW')
+            self.assertEqual(details['assessed_ram_mb_each'], 2048)
+            ram = next(r for r in details['Compute and network quotas']['rows'] if r['item'] == 'RAM MiB')
+            self.assertEqual(ram['needed'], 4096)
+            text, passed = m.render(rows, details)
+            self.assertFalse(passed)
+            self.assertTrue(any('needs your review; approved size was not changed' in line for line in text))
+            self.assertIn('Reusable matching flavor: lab.small', details['Flavor options at assessed RAM']['message'])
+
+    def test_approved_2g_plan_matches_real_course_image_and_budget(self):
+        rows, details = self.collect(FakeAPI(min_ram=2048))
+        self.assertTrue(all(r['status'] == 'PASS' for r in rows), rows)
+        self.assertEqual(m.TARGET['ram_mb_each'], 2048)
         ram = next(r for r in details['Compute and network quotas']['rows'] if r['item'] == 'RAM MiB')
         self.assertEqual(ram['needed'], 4096)
         text, passed = m.render(rows, details)
-        self.assertFalse(passed)
-        self.assertTrue(any('needs your review; approved size was not changed' in line for line in text))
-        self.assertIn('Reusable matching flavor: lab.small', details['Flavor options at assessed RAM']['message'])
+        self.assertTrue(passed)
+        self.assertIn('approved RAM 2 GiB each', '\n'.join(text))
+
+    def test_a_higher_image_floor_still_requires_new_approval(self):
+        rows, details = self.collect(FakeAPI(min_ram=4096))
+        self.assertEqual(next(r['status'] for r in rows if r['check'] == 'Approved size meets image minimum'), 'REVIEW')
+        self.assertEqual(details['assessed_ram_mb_each'], 4096)
+        self.assertEqual(m.TARGET['ram_mb_each'], 2048)
 
     def test_old_active_vm_does_not_trigger_a_stop(self):
         api = FakeAPI(old_state='ACTIVE')
@@ -260,7 +278,7 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(details['summary'][-1]['status'], 'PASS')
         self.assertTrue(all(call[0] == 'GET' for call in api.calls))
 
-    def test_full_pipeline_reports_image_floor_and_running_old_vm_without_changes(self):
+    def test_full_pipeline_reports_running_old_vm_without_changes(self):
         api = FakeAPI(min_ram=2048, old_state='ACTIVE')
         h = hosts()
         h['node2']['active_domain_uuids'] = [SERVER]
@@ -268,6 +286,7 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn('RESULT: PHASE6_READINESS_NEEDS_REVIEW', '\n'.join(output))
         self.assertEqual(details['assessed_ram_mb_each'], 2048)
+        self.assertEqual(next(r['status'] for r in details['summary'] if r['check'] == 'Approved size meets image minimum'), 'PASS')
         self.assertTrue(all(call[0] == 'GET' for call in api.calls))
 
 
