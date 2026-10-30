@@ -15,7 +15,7 @@ VM=t.VM;MIG=t.MIG;PROJECT=t.PROJECT
 LATER='b32ad679-ec64-4ed7-b532-0a3cd8b91a48'
 
 
-def fixture(folder,manual=True):
+def fixture(folder,manual=True,manual_kind='migration'):
     api=t.API();api.read_only=True
     plan=t.compute_plan(api,dest='node3')
     state={'pending':True,'server_id':VM,'volume_id':None,'plan':plan,'attempts':['move'],'stage':'move outcome pending'}
@@ -26,7 +26,7 @@ def fixture(folder,manual=True):
     if manual:
         api.server['OS-EXT-SRV-ATTR:host']='node3'
         api.history.append({'uuid':LATER,'instance_uuid':VM,'source_compute':'node1','dest_compute':'node3',
-          'status':'completed','migration_type':'live-migration','created_at':'2026-10-29T21:30:00.000000'})
+          'status':'confirmed' if manual_kind=='migration' else 'completed','migration_type':manual_kind,'created_at':'2026-10-29T21:30:00.000000'})
     return api,path,state
 
 
@@ -38,8 +38,22 @@ class MigrationRecordTests(unittest.TestCase):
                 self.assertEqual(r.run(m,api,PROJECT,Path(folder),logs.append,read=lambda _:'1'),0)
             self.assertEqual(path.read_bytes(),raw);self.assertFalse(api.actions)
             self.assertIn('VM: custom VM name | Nova ACTIVE | host node3',logs)
-            self.assertTrue(any(LATER in line and 'completed' in line for line in logs))
+            self.assertTrue(any(LATER in line and 'confirmed' in line for line in logs))
+            self.assertIn('Latest completed move in Nova: COLD VM move (migration) | node1 -> node3',logs)
+            self.assertIn('A completed cold move does not establish live-migration success.',logs)
+            self.assertIn('Current operation: NONE — Nova reports no operation',logs)
             self.assertTrue(any('PENDING' in line for line in logs))
+            self.assertTrue(any('PENDING is a saved local task' in line for line in logs))
+
+    def test_observation_separates_live_completion_and_unknown_current_operation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            api,path,state=fixture(Path(folder),manual_kind='live-migration');raw=path.read_bytes();logs=[]
+            del api.server['OS-EXT-STS:task_state']
+            r.run(m,api,PROJECT,Path(folder),logs.append,read=lambda _:'1')
+            self.assertIn('Latest completed move in Nova: LIVE VM move (live-migration) | node1 -> node3',logs)
+            self.assertIn('Current operation: UNKNOWN — Nova task field unavailable',logs)
+            self.assertFalse(any('Current operation: NONE' in line for line in logs))
+            self.assertEqual(path.read_bytes(),raw);self.assertFalse(api.actions)
 
     def test_explicit_acknowledgement_archives_original_and_keeps_manual_success_separate(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -65,6 +79,28 @@ class MigrationRecordTests(unittest.TestCase):
             api,path,state=fixture(Path(folder),manual=False)
             value=r.evidence(m,api,state,PROJECT)
             self.assertEqual(value['host'],'node1');self.assertIsNone(value['later_completed_migration_id'])
+
+    def test_reported_failed_live_and_confirmed_cold_remain_distinct_after_acknowledgement(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);api,path,state=fixture(root)
+            api.history[0].update(uuid='ee67f5e8-9a2f-4e2c-bd77-2970ab583681',created_at='2026-10-29T20:55:20.000000')
+            api.history[1].update(uuid='6a38faad-d861-49e1-9a6d-10e5e5589026',created_at='2026-10-29T21:56:32.000000')
+            raw=path.read_bytes();answers=iter(['1','ACKNOWLEDGE FAILED ATTEMPT'])
+            r.run(m,api,PROJECT,root,lambda _:None,reconcile=True,read=lambda _:next(answers))
+            saved=json.loads(path.read_text());evidence=saved['failed_attempt_resolution']['observed_api']
+            self.assertEqual(evidence['failed_migration_id'],api.history[0]['uuid'])
+            self.assertEqual(evidence['later_completed_migration_id'],api.history[1]['uuid'])
+            self.assertEqual(api.history[0]['status'],'error');self.assertEqual(api.history[1]['migration_type'],'migration')
+            self.assertEqual((root/saved['failed_attempt_resolution']['original_record']).read_bytes(),raw)
+            self.assertFalse(api.actions)
+
+    def test_missing_nova_task_field_cannot_close_a_failed_record(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);api,path,state=fixture(root);raw=path.read_bytes()
+            del api.server['OS-EXT-STS:task_state']
+            with self.assertRaisesRegex(RuntimeError,'idle'):
+                r.run(m,api,PROJECT,root,lambda _:None,reconcile=True,read=lambda _:'1')
+            self.assertEqual(path.read_bytes(),raw);self.assertFalse(api.actions)
 
     def test_definite_http_rejection_without_a_migration_can_be_acknowledged(self):
         with tempfile.TemporaryDirectory() as folder:

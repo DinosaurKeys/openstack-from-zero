@@ -9,6 +9,12 @@ import json
 import os
 
 STAGE='failed menu attempt acknowledged; fresh plan required'
+KINDS={'migration':'COLD VM move','live-migration':'LIVE VM move','resize':'RESIZE','evacuation':'EVACUATION'}
+
+
+def move_name(menu,row):
+    kind=row.get('migration_type')
+    return KINDS.get(kind,'UNKNOWN move')+' ('+menu.clean(kind)+')'
 
 
 def records(menu,folder,server=None,pending=False):
@@ -32,27 +38,36 @@ def select_vm(menu,api,project,read,log):
 
 
 def observe(menu,api,project,folder,read,log):
+    log('CHECK ONLY — read VM/migration state; no move or tracking change.')
     server_id=select_vm(menu,api,project,read,log)
     if server_id is None:return 0
     server=menu.server_value(api,server_id,project)
     volumes=menu.attachments(api,server,project)
     history=menu.migration_history(api,server_id)
     log('VM: '+menu.clean(server.get('name'))+' | Nova '+str(server.get('status'))+' | host '+menu.node_name(server['OS-EXT-SRV-ATTR:host']))
-    log('Current task: '+menu.clean(server.get('OS-EXT-STS:task_state')))
+    task=server.get('OS-EXT-STS:task_state')
+    log('Current operation: '+('UNKNOWN — Nova task field unavailable' if 'OS-EXT-STS:task_state' not in server else 'NONE — Nova reports no operation' if task is None else menu.clean(task)))
     for vid,value in volumes.items():log('Data volume: '+menu.clean(value.get('name'))+' | '+str(value.get('status'))+' | '+value['os-vol-host-attr:host']+' | '+vid)
-    log('Recent migrations — UTC | Type | Status | Source | Destination | ID')
     ordered=sorted(history,key=lambda r:(r.get('created_at') or '',r['uuid']),reverse=True)
+    completed=[row for row in ordered if row.get('status') in ('completed','confirmed')]
+    if completed:
+        last=completed[0]
+        log('Latest completed move in Nova: '+move_name(menu,last)+' | '+menu.clean(last.get('source_compute'))+' -> '+menu.clean(last.get('dest_compute')))
+        if last.get('migration_type')=='migration':log('A completed cold move does not establish live-migration success.')
+    log('Recent migrations — UTC | Type | Status | Source | Destination | ID')
     for row in ordered[:5]:
-        log(' | '.join(menu.clean(row.get(k)) for k in ('created_at','migration_type','status','source_compute','dest_compute','uuid')))
+        log(' | '.join([menu.clean(row.get('created_at')),move_name(menu,row)]+[menu.clean(row.get(k)) for k in ('status','source_compute','dest_compute','uuid')]))
     if not history:log('No Nova migration records observed.')
     fault=server.get('fault') or {}
     if fault:log('Current Nova fault: '+str(fault.get('code','-'))+' '+str(menu.move.safe_message(fault.get('message'))))
-    for path,state in records(menu,folder,server_id):
+    saved=records(menu,folder,server_id)
+    for path,state in saved:
         log('Local record: '+path.name+' | '+('PENDING' if state.get('pending') else 'closed')+' | '+menu.clean(state.get('stage')))
         request=state.get('request_ids',{}).get('move')
         if request:log('Recorded request ID: '+menu.clean(request))
+    if any(state.get('pending') for _,state in saved):log('PENDING is a saved local task awaiting review; current Nova operations are shown separately. Review an old failed task with --reconcile; it does not move the VM.')
     log('RESULT: MIGRATION_STATE_OBSERVED')
-    log('GET-only API snapshot. VM power/runtime, guest traffic/data and saved records are unchanged and not verified by this observation.')
+    log('Read-only API snapshot. Actual guest runtime, networking and file checks remain separate.')
     return 0
 
 
@@ -77,7 +92,7 @@ def validate(menu,state,project):
 def evidence(menu,api,state,project):
     plan=validate(menu,state,project)
     server=menu.server_value(api,state['server_id'],project)
-    if server.get('status')!=plan['before']['status'] or server.get('OS-EXT-STS:task_state') is not None or server.get('locked') is True:
+    if server.get('status')!=plan['before']['status'] or 'OS-EXT-STS:task_state' not in server or server['OS-EXT-STS:task_state'] is not None or server.get('locked') is True:
         raise RuntimeError('VM must be idle in its original power state; record preserved')
     current=menu.binding(server,menu.attachments(api,server,project))
     if any(current.get(k)!=plan['before'].get(k) for k in ('server_id','image_id','flavor','addresses','volumes')):
@@ -110,6 +125,7 @@ def evidence(menu,api,state,project):
 
 
 def acknowledge(menu,api,project,folder,read,log,unchanged,current_inputs):
+    log('REVIEW OLD FAILED TASK — acknowledge one saved failure; no VM move, power or disk change.')
     pending=records(menu,folder,pending=True)
     choices=[(p,s) for p,s in pending if isinstance(s.get('plan'),dict) and s['plan'].get('mode') in ('live','cold')]
     if not choices:

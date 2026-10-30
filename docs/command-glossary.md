@@ -71,6 +71,17 @@ bash scripts/lab-containers.sh
 
 Add `node1`, `node2` or `node3` to view only that node. This is a read-only SSH/Docker view, including stopped containers. VMs are guests; Docker containers are the OpenStack services. The individual host commands below remain available.
 
+### Migration menu — on R2d2
+
+| Command | Meaning |
+|---|---|
+| `bash scripts/lab-migrate.sh` | Select a move, check it and display its plan; requests it only after `MIGRATE` approval |
+| `bash scripts/lab-migrate.sh --plan` | Preview selections and readiness without requesting a move |
+| `bash scripts/lab-migrate.sh --observe` | Read current VM/storage locations and migration history; change no tracking records |
+| `bash scripts/lab-migrate.sh --reconcile` | Review and acknowledge one old failed local task; no VM power, migration or disk change |
+
+`PENDING` is a saved local task awaiting review. It is separate from Nova's current operation. `COLD VM move (migration)` and `LIVE VM move (live-migration)` are different operations; success of one does not verify the other. [Step-by-step migration guide](phase-05/E-vm-migration.md).
+
 <a id="vm-power-controls"></a>
 
 <a id="start-or-shut-down-a-vm--use-horizon"></a>

@@ -4,7 +4,7 @@
 
 **Goal:** check that another service takes over when one stops, then move a running VM for planned maintenance.
 
-Phase 4's VM networking and Cinder persistence reports passed. Reviewed live reports passed B (API VIP), C (MariaDB) and D (virtual-router HA), including restoration. Reboot service recovery also passed. **E now plans live/cold compute and storage migration with a numbered menu.** Fresh VM/storage readiness, any pending record and each exact move require review before execution. Repeating a completed fault test requires fresh preparation and review.
+Phase 4's VM networking and Cinder persistence reports passed. Reviewed live reports passed B (API VIP), C (MariaDB) and D (virtual-router HA), including restoration. Reboot service recovery also passed. **E covers live/cold VM moves and separate data-volume moves through one numbered menu.** The reviewed 29 October API history records a confirmed cold move; live and storage-migration results remain unverified. Read current state and review each exact move before execution. Repeating a completed fault test requires fresh preparation and review.
 
 | Chapter | Simple purpose | Status |
 |---|---|---|
@@ -12,7 +12,7 @@ Phase 4's VM networking and Cinder persistence reports passed. Reviewed live rep
 | [B — API VIP](B-api-vip.md) | Keep the cloud's front-door address working | Complete — reviewed API VIP takeover and restoration passed |
 | [C — MariaDB](C-mariadb.md) | Keep the database working with one member stopped | Complete — one-member stop, surviving cluster/API reads and three-member restoration passed |
 | [D — Virtual router](D-router.md) | Keep the VM's network path working after takeover | Complete — router takeover, link restoration and final checks passed |
-| [E — VM and storage migration](E-vm-migration.md) | CLI service checks → VM/storage locations → preview → reviewed move → verify | Inventory and menu ready; selected VM/storage readiness and live results pending |
+| [E — VM and storage migration](E-vm-migration.md) | Select → check → review → approve → verify | Cold move confirmed in reviewed API history; live/menu execution and storage migration need live validation |
 
 For each exercise:
 

@@ -30,6 +30,8 @@ move=load('menu_move','phase5-move-vm.py');health=load('menu_health','lab-health
 inspection=move.inspection;volume=move.volume;prep=move.prep;deploy=move.deploy;inv=move.inv;ENV=move.ENV
 NODES=tuple(inv.NODES);PREFIX='menu-migration-'
 MODES=('live','cold','volume-live','volume-offline')
+MODE_LABELS={'live':'LIVE VM + local OS disk','cold':'COLD VM + local OS disk',
+  'volume-live':'ATTACHED data volume','volume-offline':'DETACHED data volume'}
 TERMINAL={'completed','confirmed','error','failed','cancelled','canceled','done','reverted'}
 LIVE_MICROVERSION='2.30'  # Horizon 2026.2 live_migrate feature; synchronous prechecks.
 
@@ -204,7 +206,8 @@ def binding(server,volumes):
 def vm_eligible(server,mode):
     allowed=('ACTIVE',) if mode in ('live','volume-live') else ('ACTIVE','SHUTOFF')
     if server.get('status') not in allowed:raise RuntimeError('VM is '+str(server.get('status'))+'; this mode requires '+('/'.join(allowed))+'. No start/reset or recovery is performed.')
-    if server.get('OS-EXT-STS:task_state') is not None or server.get('locked') is True:raise RuntimeError('VM has an operation in progress or is locked')
+    if 'OS-EXT-STS:task_state' not in server:raise RuntimeError('Nova task state is unavailable; an idle VM is not verified')
+    if server['OS-EXT-STS:task_state'] is not None or server.get('locked') is True:raise RuntimeError('VM has an operation in progress or is locked')
 
 
 def compute_preflight(api,server,project,dest,mode,nodes,log):
@@ -288,7 +291,7 @@ def storage_preflight(api,value,project,pool,mode,server=None):
 
 
 def plan_lines(plan):
-    lines=['\nREVIEW THIS MOVE','Operation: '+plan['mode']]
+    lines=['\nREVIEW THIS MOVE','Operation: '+MODE_LABELS[plan['mode']]]
     if plan.get('server_id'):lines+=['VM: '+clean(plan.get('vm_name') or plan['server_id']),'VM ID: '+plan['server_id']]
     if plan.get('volume_id'):lines+=['Data volume: '+clean(plan.get('volume_name'))+' ('+plan['volume_id']+')']
     lines+=['Source: '+clean(plan['source']),'Destination: '+clean(plan['destination'])]
@@ -346,6 +349,7 @@ def wait_move(api,plan,log,seconds=1200):
                 if log_id:log('Migration ID: '+log_id)
                 if fault:log('Nova fault: '+str(fault.get('code','-'))+' '+str(move.safe_message(fault.get('message'))))
                 raise RuntimeError('Nova reports migration/VM error; no retry or automatic recovery. Use --observe for the current state and request details.')
+            if 'OS-EXT-STS:task_state' not in server:raise RuntimeError('Nova task state is unavailable; migration completion is not verified. Use --observe.')
             at_dest=node_name(server['OS-EXT-SRV-ATTR:host'])==plan['destination'];idle=server.get('OS-EXT-STS:task_state') is None
             placed=(item and item.get('migration_type')==('live-migration' if plan['mode']=='live' else 'migration')
               and item.get('source_compute') and node_name(item['source_compute'])==plan['source']
@@ -367,6 +371,7 @@ def wait_move(api,plan,log,seconds=1200):
 def verify_move(api,plan,nodes,awaiting=False):
     if plan['mode'] in ('live','cold'):
         server=server_value(api,plan['server_id'],plan['project_id']);current=binding(server,attachments(api,server,plan['project_id']))
+        if 'OS-EXT-STS:task_state' not in server or server['OS-EXT-STS:task_state'] is not None:raise RuntimeError('An idle VM is not verified after the move')
         if current['source']!=plan['destination'] or any(current[k]!=plan['before'][k] for k in ('addresses','volumes','image_id','flavor')):
             raise RuntimeError('Destination, IPs or attached Cinder backend/identity changed unexpectedly')
         expected=[plan['destination']] if plan['before']['status']=='ACTIVE' else []
@@ -506,7 +511,8 @@ def main(argv=None):
     if Path(sys.prefix)!=ENV:os.execve(str(ENV/'bin/python'),[str(ENV/'bin/python'),str(Path(__file__).resolve())]+list(argv if argv is not None else sys.argv[1:]),deploy.tools.tool_environment())
     os.umask(0o077);env=deploy.tools.tool_environment();deploy.source_guard()
     inventory,config=deploy.validation.local_checks(lambda _:None,env)
-    inputs=move.access.input_hashes(config,inventory);inv.ensure_agent(env,print)
+    inputs=move.access.input_hashes(config,inventory)
+    if not(args.observe or args.reconcile):inv.ensure_agent(env,print)
     original,project,_=prep.authenticate(config);api=API(original,read_only=args.plan or args.observe or args.reconcile)
     folder=REPO/'private/phase5';reports=REPO/'reports';inv.private_dir(folder);inv.private_dir(reports)
     handles=[]

@@ -2,224 +2,195 @@
 
 [Phase 5](README.md) · [Previous: virtual router](D-router.md) · [Reboot and recovery](../reboot-and-recovery.md)
 
-**Goal:** see where the VM and its disks are, choose a destination, then move one thing at a time. Use the CLI for clear inventory tables and the numbered menu to preview and request a reviewed move.
+**Goal:** select an existing VM or data volume, choose where it should go, review the plan, then request one move. Run the commands **on R2d2 as joe**.
 
-**Order:** services healthy → read VM/storage locations → preview → approve → verify. After a reboot, finish [service recovery](../reboot-and-recovery.md) first. A healthy cluster does not establish a VM's runtime or data state.
+The normal route is **open menu → select → checks → review → approve → verify**. The menu loads its own tools and connection settings. No CLI activation or routine Git update is needed for it.
 
-## What moves?
+## 1. Choose what moves
 
-| Choice | What moves | What stays in place |
+| Menu choice | What moves | VM power | What stays |
+|---|---|---|---|
+| **1 — Live VM + OS disk** | VM memory and a copy of its local OS disk | Keeps running; a brief pause is possible | Attached Cinder data volumes keep their storage backends |
+| **2 — Cold VM + OS disk** | VM placement and a copy of its local OS disk | Nova shuts down a running VM; expect downtime. An already shut-off VM stays off | Attached Cinder data volumes keep their storage backends |
+| **3 — Attached data volume** | One Cinder data volume to another backend | VM must be running | VM compute host and local OS disk |
+| **4 — Detached data volume** | One already detached, available data volume | No VM power action | The menu does not unmount or detach a disk |
+
+For example, a VM on node3 can use a Cinder volume stored on node1. **Compute host and storage backend are different locations.** Moving either one does not replicate it or add storage HA.
+
+Nova supports local-disk block live migration and cold migration. Cinder documents attached LVM volume migration through Nova's libvirt driver and detached volume copies. These supported workflows still need checks in this lab; support is not a successful live test. [Nova live migration](https://docs.openstack.org/nova/2026.2/admin/configuring-migrations.html) · [Nova cold migration](https://docs.openstack.org/nova/2026.2/admin/migration.html) · [Cinder migration](https://docs.openstack.org/cinder/2026.2/admin/volume-migration.html)
+
+## 2. Understand the commands
+
+| Command | Purpose | What it changes |
 |---|---|---|
-| Live VM + OS disk | Running VM and a copy of its local OS disk; a brief pause is possible | Attached Cinder data volumes keep their storage backends |
-| Cold VM + OS disk | Nova shuts down a running VM and copies its local OS disk; expect downtime | Attached data volumes keep their storage backends; an already shut-off VM remains off |
-| Attached data volume | Cinder requests a move to another storage backend while the VM is running | VM compute location and local OS disk |
-| Detached data volume | Cinder moves an already detached, available volume | The menu does not unmount or detach a guest disk |
+| `bash scripts/lab-migrate.sh` | Select, check and review a move; asks for `MIGRATE` before sending it | The exact approved move |
+| `bash scripts/lab-migrate.sh --plan` | Practice the selections and run readiness checks | No move or tracking update |
+| `bash scripts/lab-migrate.sh --observe` | Read current VM, data-volume and migration records | No move or tracking update |
+| `bash scripts/lab-migrate.sh --reconcile` | Review and acknowledge one old failed menu task | Only that local tracking record, after a separate confirmation |
 
-To move **compute and all disks**, move the VM/OS disk, verify it, then move the data volume and verify it. Moving a volume does not replicate it or add storage HA.
+**`--reconcile` does not fix or retry a migration.** It checks the old result, retains the original tracking file, and closes its pending flag only when the evidence is sufficient. Use it only if an old failed task blocks a new move; the procedure is below.
 
 <a id="1-see-what-exists--run-on-r2d2"></a>
 
-## 1. Read the services and inventory — on R2d2
+## 3. Check readiness and inventory
 
-Check services with the same command used after a reboot:
+The menu reads current VM names, UUIDs, power state, compute host and attached-volume backends. It also checks cluster services and destination resources before asking for approval. After a reboot, resolve service failures with [the reboot guide](../reboot-and-recovery.md) first. Its normal check is `bash scripts/lab-recover.sh --check`.
 
-```bash
-cd ~/openstack-from-zero
-bash scripts/lab-recover.sh --check
-```
+Before moving a running VM, check its console/SSH access, application/network operation and any data-file checksum you intend to compare afterward. The menu checks API and hypervisor state; **it does not check guest applications or files**. For the course data disk, use [the existing filesystem and checksum procedure](../phase-04/E-cinder-volume.md#after-a-guest-reboot-or-cold-move). Do not initialize or format it again.
 
-It includes the **compute-service, network-agent and volume-service tables** automatically. If you already have a current healthy check, continue below. Otherwise, resolve its named failures using [the reboot guide](../reboot-and-recovery.md) before planning a move.
+<details>
+<summary>CLI inventory: show VMs, disks and their locations</summary>
 
-For VM/storage inventory, activate the CLI and load the existing connection settings once in this terminal:
+Load the installed CLI and private connection settings once in this terminal:
 
 ```bash
 source "$HOME/venvs/openstack-client/bin/activate"
 source "$HOME/openstack-from-zero/private/phase2/kolla/public-openrc.sh"
 ```
 
-[Phase 3 D](../phase-03/D-client-access.md) covers CLI installation. Keep credentials private. The migration preview still checks actual VM runtime and destination capacity.
-
-**List VMs and their compute hosts:**
+Then list VMs and volumes:
 
 ```bash
 openstack server list --all-projects --long -c Name -c Status -c Host -c ID
-```
-
-**List Cinder volumes:**
-
-```bash
 openstack volume list --all-projects -c Name -c Status -c Size -c ID
+openstack volume show lab-data-01   -c id -c name -c status -c size   -c os-vol-host-attr:host -c attachments
 ```
 
-For the course data volume, read its storage backend and attachment:
-
-```bash
-openstack volume show lab-data-01 \
-  -c id -c name -c status -c size \
-  -c os-vol-host-attr:host -c attachments
-```
-
-`lab-data-01` is the course example; for another volume use its name or UUID from the list. UUIDs distinguish duplicate names. Host/backend visibility and all-project lists require admin policy access. The menu selects VMs in the authenticated course project.
+Replace `lab-data-01` with the selected volume's name or UUID. Use UUIDs when names are duplicated. The all-project and host fields require admin policy access. The menu operates within the authenticated course project.
 
 | Field | Meaning |
 |---|---|
-| VM `Host` | Compute node assigned in Nova; the preview also checks actual runtime |
+| VM `Host` | Nova's assigned compute node; the menu also checks actual runtime |
 | Volume `os-vol-host-attr:host` | Storage backend, such as `node3@lvm-1#lvm-1` |
-| Volume `attachments` | VM UUID and guest device attached to that volume; an attachment's host is the compute host |
+| Volume `attachments` | Attached VM; an attachment's host is the compute host |
 
-A VM on node1 can use a data volume stored on node3. The VM's **local OS disk is not a Cinder volume** and does not appear in `volume list`.
+The VM's local OS disk does not appear in `volume list`. If a backend or host is unavailable, stop for review rather than infer its location.
 
-If a host or backend field is missing, return the output for review; do not infer the storage host from an attachment's compute host.
-
-| VM status | Next step |
-|---|---|
-| `ACTIVE` | Candidate for a live or cold preview; actual runtime must agree |
-| `SHUTOFF` | Candidate for a cold preview |
-| `ERROR`, unknown host, locked, or an operation in progress | Review the VM before migration; do not reset its status to bypass the problem |
-
-Normal start/shutdown commands are in the [CLI VM reference](../openstack-cli.md#4-start-or-shut-down-a-vm); [Horizon controls and read-only recovery checks](../command-glossary.md#vm-power-controls) are also available.
-
-<details>
-<summary>Other inventory views: short tables and service containers</summary>
-
-These existing helpers also show VM/volume locations, using the private API profile:
-
-```bash
-/usr/bin/python3 scripts/lab-view.py servers --table --all-projects
-/usr/bin/python3 scripts/lab-view.py volumes --table --all-projects
-bash scripts/lab-containers.sh
-```
-
-The last command reads Docker containers on all three nodes over SSH; enter joe's sudo passwords. Add `node2` to select only node2. It includes stopped containers and sends no restart commands. VMs are the guests being migrated; these containers run OpenStack services. Horizon also shows VM hosts under **Admin → Compute → Instances**.
-
-</details>
-
-### If an earlier failed attempt blocks the preview
-
-For a numbered-menu record named `menu-migration-....json`, first read the current state:
-
-```bash
-bash scripts/lab-migrate.sh --observe
-```
-
-Select the VM. The output shows its current Nova host, attached volume backend, recent migrations and local pending records. An older failed request remains a separate record even if a later Horizon migration succeeded. This command makes API reads only and leaves the records unchanged.
-
-After reviewing a terminal failed attempt and the VM's current placement, use:
-
-```bash
-bash scripts/lab-migrate.sh --reconcile
-```
-
-Select the pending menu record. The helper checks its VM/storage identity and Nova history twice. It accepts one unambiguous failed attempt with an idle VM, or a definite recorded HTTP rejection with no new migration. A changed compute host requires a later completed Nova migration matching that placement. Type `ACKNOWLEDGE FAILED ATTEMPT` only after reviewing the displayed evidence.
-
-This changes only that local pending flag. The original file is retained byte for byte under `private/phase5/migration-history/`; the failed Nova record remains failed. Active, uncertain, completed-but-unverified and storage-migration outcomes require separate review. A new move still needs a fresh preview and approval. API observations do not verify guest traffic or data.
-
-<details>
-<summary>Older fixed-route record: move-vm-state.json</summary>
-
-A recovered VM can be ACTIVE while `move-vm-state.json` still records an unresolved earlier attempt. The menu preserves it and requests no move.
-
-1. Review `/usr/bin/python3 scripts/phase5-move-vm.py --observe`. Require that the **specific migration UUID** has status `error`, and Nova reports the VM ACTIVE on its original source with no current task. This is API evidence; runtime, guest data and the timeout's root cause remain separate checks.
-2. After that review, run the explicit local reconciliation on R2d2. Replace `FAILED_MIGRATION_UUID` with that exact migration UUID:
-
-   ```bash
-   /usr/bin/python3 scripts/phase5-reconcile-migration.py --apply \
-     --migration-id FAILED_MIGRATION_UUID
-   ```
-
-3. Require `RESULT: FAILED_MIGRATION_RECONCILED`, then continue with the preview below.
-
-The helper authenticates normally, uses only GET requests after authentication, checks the API evidence twice and refuses active, completed, ambiguous or different attempts. It retains the **original local record byte for byte** under `private/phase5/migration-history/`, then closes only that failed attempt's local pending flag. Its existing identity, attempted status and history are retained. It sends no migration, VM power, service, volume or configuration change. Repeating the same completed reconciliation validates its saved original and makes no new record change.
-
-This closes an old tracking item; it does not mark the migration successful or fix its original cause. A fresh preview, guest/data checks and approval of the selected destination are still required. Other unresolved records remain blocked; never delete a checkpoint to bypass a check.
+[CLI installation and VM power controls](../openstack-cli.md) · [Short inventory tables and container view](../command-glossary.md)
 
 </details>
 
 <a id="1-open-the-preview-menu-on-r2d2"></a>
 
-## 2. Open the preview menu on R2d2
+## 4. Open the menu and select one move
 
 ```bash
-bash scripts/lab-migrate.sh --plan
-```
-
-This is read-only: it lets you select an operation and checks readiness without requesting a move. Enter `0` to cancel.
-
-```text
-1) Live VM + local OS disk
-2) Cold VM + local OS disk
-3) Move an attached data volume
-4) Move an already detached data volume
-0) Cancel
-```
-
-## 3. Select the VM and locations
-
-1. Choose the operation.
-2. Choose a source-node filter, or all nodes.
-3. Select the VM by its displayed name, state and UUID.
-4. Choose a destination compute node. For a volume move, choose the volume and destination storage backend instead.
-5. Read the plan and return its short report for review.
-
-The actual source comes from OpenStack and is checked. Selecting a source filter does not change a VM's location or rename it. For an attached-volume move the VM must be ACTIVE and that volume attached only to it. For a detached-volume move the volume must already be `available`; shutting down a VM does not detach its disk.
-
-Node menus show how many VMs each source contains. An empty source selection returns to that menu. Enter the displayed number or the node name, such as `node3`; the destination is selected later.
-
-## 4. Review readiness
-
-The preview checks VM identity/actual runtime, healthy cluster services, CPU compatibility, physical RAM/disk space, Placement capacity, volume attachments and destination backend capacity/compatibility as applicable.
-
-**`up/enabled` alone does not prove migration readiness.** Nova/Cinder still perform their own scheduling and transfer checks. A saved unfinished migration or a VM in ERROR blocks another move; review its recovery separately and preserve the record.
-
-The menu covers image-based VMs with local OS disks on these three compute nodes, and unencrypted, single-attachment iSCSI data volumes without snapshots or group membership. Other root-disk/storage/device types require a separately checked plan.
-
-## 5. Run the reviewed move
-
-After approval of the exact previewed operation, VM/volume and destination:
-
-```bash
+cd ~/openstack-from-zero
 bash scripts/lab-migrate.sh
 ```
 
-Select the operation and locations again. The menu checks fresh values, shows the move and expected downtime, then asks you to type **`MIGRATE`**. It sends one migration request and displays progress. It does not automatically retry or force-complete a failed/uncertain request.
+Opening the menu does not request a migration. Choose the operation, source filter, VM and destination. Enter `0` to cancel. You can enter node names instead of their menu numbers.
 
-Live mode follows Horizon's live-migration workflow: Nova checks the selected destination before accepting the request. The menu keeps scheduler validation enabled, copies the local OS disk, and saves the returned request ID. Acceptance is followed by separate transfer and placement checks.
+For a **live VM move from node3 to node2**, the selections are:
 
-<details>
-<summary>Live request compatibility reference</summary>
-
-The live POST uses Nova API `2.30`, matching the [Horizon 2026.2 live-migrate feature](https://github.com/openstack/horizon/blob/504dbe4ada8abda8526ba46fffc03001b50ac583/openstack_dashboard/api/microversions.py). It sends the selected host and `block_migration: true`, without a forced destination. Nova API `2.34` introduced asynchronous prechecks; API reads and cold migration retain `2.79`. See the [Nova API reference](https://docs.openstack.org/api-ref/compute/#live-migrate-server-os-migratelive-action). These are client request choices, not node configuration changes or proof that a backend timeout is resolved.
-
-</details>
-
-A cold move normally reaches `VERIFY_RESIZE`: after checking the destination, the menu asks separately to confirm the new placement. Declining leaves it awaiting confirmation. If Nova has already auto-confirmed, the menu observes that result without confirming again.
-
-## 6. Read the result
-
-| Result | Meaning |
+| Prompt | Select |
 |---|---|
-| `MIGRATION_PLAN_ONLY` | Preview completed; no move requested |
-| `MIGRATION_PLAN_BLOCKED` | A prerequisite needs review; the preview requested no move |
-| `MIGRATION_API_AND_HOST_CHECKS_PASSED` | API completion, destination, runtime/attachments and final cluster checks passed |
-| `MIGRATION_NEEDS_REVIEW` | Keep the report/progress record; an operation may still run, so do not repeat it |
-| `MIGRATION_STATE_OBSERVED` | Current API state read; all saved records unchanged |
-| `FAILED_MENU_ATTEMPT_ACKNOWLEDGED` | One reviewed failed menu record closed locally; original evidence retained |
+| Operation | `1` — Live VM + local OS disk |
+| Source filter | Enter `node3` |
+| Existing VM | Select its name and UUID |
+| Destination compute | Enter `node2` |
 
-If a run stops before submitting an action, it prints `NO MIGRATION REQUEST SENT BY THIS RUN`. If Nova reports a failure after submission, the report includes its current state, fault message and captured request ID when available. Use `--observe` before choosing a recovery or another move.
+This is an example; use the VM's freshly displayed source. The source filter lists VMs already on that node. It does not move or rename them. An empty filter returns to the source menu. Source and destination must differ.
 
-After a successful move, repeat the VM list and the selected volume's `show` command from step 1:
+For choices **3 or 4**, select the data volume and destination storage backend instead of a compute destination. Choice 4 lists already detached volumes; shutting down a VM does not detach its data volume.
 
-| Move | What to confirm |
+Enter joe's sudo passwords when requested. The checks read host/container identity, runtime, CPU compatibility, physical RAM/disk headroom and Placement capacity. Storage choices also check attachment state, destination capacity and backend compatibility. A failed or unavailable check stops before submission.
+
+## 5. Review the plan and approve
+
+Read the displayed **operation, VM/volume UUID, source, destination and power impact**. A live VM move also states that Cinder data backends stay in place. A storage move states that compute and the OS disk stay in place.
+
+If those details are correct, type:
+
+```text
+MIGRATE
+```
+
+The script checks fresh state again, saves a pending tracking record, then sends **one migration request**. It prints the returned request ID when available and observes progress. A pending flag means the outcome needs verification; it is not proof that Nova is still migrating.
+
+For a **cold move**, Nova normally reaches `VERIFY_RESIZE`. After destination checks, the menu separately asks whether to confirm the new placement. Confirming completes the move and allows Nova to release the old copy. Declining leaves it awaiting confirmation. If Nova already auto-confirmed, the menu sends no extra confirmation.
+
+## 6. Read the result and verify
+
+| Result | Meaning / next action |
 |---|---|
-| VM/OS disk | Same VM UUID, expected compute `Host`; data-volume backend unchanged |
-| Data volume | Same volume UUID and size, expected storage backend; compute host unchanged |
+| `MIGRATION_API_AND_HOST_CHECKS_PASSED` | API completion, expected placement/runtime, attachment and final cluster checks passed; verify the guest next |
+| `MIGRATION_PLAN_ONLY` | Preview finished; no move requested |
+| `MIGRATION_PLAN_BLOCKED` | Preview found a blocker; no move requested |
+| `MIGRATION_NEEDS_REVIEW` | Keep the report; read current state before selecting recovery or another request |
+| `MIGRATION_STATE_OBSERVED` | State read only; tracking records remain unchanged |
+| `FAILED_MENU_ATTEMPT_ACKNOWLEDGED` | One old failed local task reviewed and closed; no cloud operation performed |
 
-Also check **inside the guest**: console/SSH access, networking, the data disk's mount and the same saved file/checksum from before the move. After a guest reboot or cold move, the course data filesystem may need an explicit mount: use [the existing-filesystem mount and checksum steps](../phase-04/E-cinder-volume.md#after-a-guest-reboot-or-cold-move). API/host success does not establish guest data integrity or zero downtime.
+The script prints `NO MIGRATION REQUEST SENT BY THIS RUN` if it stopped before sending an action. If its observation window ends, the operation may still continue; that message does not cancel it. Do not repeat an accepted or uncertain request.
+
+Read the current API state with:
+
+```bash
+bash scripts/lab-migrate.sh --observe
+```
+
+| What you see | Meaning |
+|---|---|
+| `COLD VM move (migration)` with `confirmed` | Nova records a completed cold move |
+| `LIVE VM move (live-migration)` with `completed` | Nova records a completed live move |
+| Current operation `NONE` | Nova reports no current task |
+| Local record `PENDING` | Saved task still needs review; it is separate from Nova's current operation |
+
+**A successful cold move does not prove live migration works.** Check the operation type as well as the host. This API view does not establish actual guest runtime, data integrity or zero downtime.
+
+After success, confirm the same VM/volume UUID and the expected locations, then check guest console/SSH, networking, applications, data-disk mount and saved checksum. After a cold move or guest reboot, the course disk may need an explicit mount of its **existing filesystem**; use the linked procedure in step 3.
 
 <a id="run-order-for-this-lesson"></a>
 
-Finish and verify each exercise before the next: **live VM/OS disk → attached data volume → separate cold-migration exercise**. Guest checks belong between moves. Storage HA, automatic VM recovery and host-failure tests remain separate.
+Finish guest/data checks between moves. To move compute and all disks, move the VM/OS disk first, verify it, then separately move the data volume and verify it. Ceph, storage HA, automatic recovery and host-failure tests remain deferred.
 
-The menu preserves existing Phase 4/5 records and deployment inputs. Records that pin old locations require separate reconciliation after a reviewed migration. The earlier fixed-route `phase5-move-vm.py` has its own scope/record; this menu does not replay or clear it.
+## Only if an old failed task blocks the menu
 
-[Menu script](../../scripts/lab-migrate.py) · [Command glossary](../command-glossary.md) · [Nova migration](https://docs.openstack.org/nova/2026.2/admin/configuring-migrations.html) · [Nova cold migration](https://docs.openstack.org/nova/latest/contributor/resize-and-cold-migrate.html) · [Cinder volume migration](https://docs.openstack.org/cinder/2026.2/admin/volume-migration.html)
+A failed menu run can leave a local `menu-migration-....json` record marked PENDING. A later manual move does not automatically close it. Preserve the record; read it with `--observe` first.
+
+**Purpose of `--reconcile`: acknowledge the old failed task, without changing the VM or its disks.** After reviewing the current state:
+
+```bash
+bash scripts/lab-migrate.sh --reconcile
+```
+
+1. Select the specific failed menu record.
+2. Check the displayed VM UUID, failed migration and current placement. If the host changed, the helper requires a later completed Nova move matching it.
+3. Type `ACKNOWLEDGE FAILED ATTEMPT` only for that reviewed record.
+4. Require `RESULT: FAILED_MENU_ATTEMPT_ACKNOWLEDGED` before preparing a new move.
+
+The helper checks identity/history twice and retains the original file byte for byte under `private/phase5/migration-history/`. It changes only pending/stage/resolution metadata. It accepts one unambiguous failed VM move with an idle VM, or a definite recorded HTTP rejection with no new migration. Other records are preserved. It cannot close active, uncertain, successful-but-unverified or storage-migration outcomes, and it does not repair live migration.
+
+<details>
+<summary>Older fixed-route script: move-vm-state.json</summary>
+
+The earlier `phase5-move-vm.py` uses a separate record. Review its read-only state with:
+
+```bash
+/usr/bin/python3 scripts/phase5-move-vm.py --observe
+```
+
+Its explicit acknowledgement helper accepts only the original failed migration when that same VM is ACTIVE/idle on its original source. After reviewing that exact migration UUID, replace `FAILED_MIGRATION_UUID` below:
+
+```bash
+/usr/bin/python3 scripts/phase5-reconcile-migration.py --apply   --migration-id FAILED_MIGRATION_UUID
+```
+
+Require `RESULT: FAILED_MIGRATION_RECONCILED`. The original record is archived; no cloud request is sent. Different or changed-host outcomes need separate review. Do not delete the record to bypass it.
+
+</details>
+
+<details>
+<summary>Technical scope and checked sources</summary>
+
+The menu covers image-based VMs with local OS disks and ordinary unencrypted, single-attachment iSCSI data volumes without snapshots or group membership. Read-only/config-drive media block the live-disk-copy path. Volume-backed roots and other device/storage types need a separately checked plan.
+
+The live POST uses Nova API `2.30`, matching the [Horizon 2026.2 live-migrate feature](https://github.com/openstack/horizon/blob/504dbe4ada8abda8526ba46fffc03001b50ac583/openstack_dashboard/api/microversions.py), with `block_migration: true` and scheduler validation of the selected host. Reads and cold requests use `2.79`. API `2.34` introduced asynchronous live prechecks. This client compatibility choice does **not** establish the cause or resolution of an RPC timeout. See the [Nova API reference](https://docs.openstack.org/api-ref/compute/#live-migrate-server-os-migratelive-action).
+
+An authenticated libvirt read, healthy container or service heartbeat does not test the full migration data path or RPC response path. Nova still performs scheduling and transfer checks. A `MessagingTimeout` means the caller did not receive its expected RPC response within the wait period; the message alone does not identify the broken component.
+
+The [oslo.messaging 18.3.1 release notes](https://docs.openstack.org/releasenotes/oslo.messaging/2026.2.html#id1) describe a reply-queue collision fix that can cause RPC timeouts. Its applicability requires the installed source/configuration and matching runtime evidence; it is not a confirmed lab diagnosis. Do not select a library/image change or timeout increase from that exception name alone.
+
+[Cinder's API migration conditions](https://docs.openstack.org/api-ref/block-storage/v3/#migrate-a-volume) · [OpenStack CLI migration reference](https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/compute/v2/index.html#server-migrate) · [Cinder volume command](https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/volume/v3/index.html#volume-migrate)
+
+</details>

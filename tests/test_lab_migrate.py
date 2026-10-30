@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 import urllib.error
 import tempfile
 from types import SimpleNamespace
@@ -180,6 +181,40 @@ class MenuTests(unittest.TestCase):
         with patch.object(m.health,'host_observe',side_effect=lambda n,*_:hosts[n]),patch.object(m.health,'api_checks',side_effect=AssertionError('No API checks needed')):
             with self.assertRaisesRegex(RuntimeError,'node1: Sudo authentication failed'):m.cluster({},dict.fromkeys(m.NODES,'hidden'),lambda _:None)
 
+    def test_node3_to_node2_live_menu_uses_one_wire_action_and_retains_data_backend(self):
+        backing=API();backing.server=server('node3');actions=[];states=[];logs=[]
+        def location(url):
+            service='compute' if '/v2.1/' in url else 'block-storage'
+            return service,url.split('/v2.1/' if service=='compute' else '/v3/',1)[1]
+        def opened(request,timeout):
+            service,path=location(request.full_url)
+            if request.method=='POST':
+                body=json.loads(request.data);actions.append((request,body))
+                backing.arm_plan=compute_plan(backing,dest=body['os-migrateLive']['host']);backing.mutate('move')
+                return contextlib.nullcontext(SimpleNamespace(status=202,headers={'X-Openstack-Request-Id':'req-865d0c31-bebe-4b1b-a8bd-a46dae90485d'},read=lambda _:b''))
+            value=backing.get(service,path)
+            return contextlib.nullcontext(SimpleNamespace(status=200,headers={},read=lambda _:json.dumps(value).encode()))
+        def listed(url,token):
+            service,path=location(url)
+            key='servers' if path.startswith('servers/detail') else 'services'
+            return {key:backing.list(service,path,key)},None
+        original=SimpleNamespace(client=SimpleNamespace(opener=SimpleNamespace(open=opened),request=listed),
+          urls={'compute':'https://192.168.0.151:8774/v2.1','block-storage':'https://192.168.0.151:8776/v3'},token='hidden')
+        client=m.API(original);answers=iter(['1','node3','1','node2','MIGRATE'])
+        with tempfile.TemporaryDirectory() as folder,patch.object(m,'REPO',Path(folder)),\
+             patch.object(m.getpass,'getpass',return_value='hidden'),patch.object(m.inspection,'Nodes',return_value=Nodes(backing)),\
+             patch.object(m.inspection,'capacity',return_value={}),patch.object(m.move,'placement_room'):
+            result=m.run_menu(client,PROJECT,{},Path(folder),logs.append,lambda s:states.append(copy.deepcopy(s)),
+              lambda _:next(answers),health_check=lambda *_:{'boots':'stable'})
+        self.assertEqual(result,0);self.assertEqual(len(actions),1);request,body=actions[0]
+        self.assertEqual(body,{'os-migrateLive':{'host':'node2','block_migration':True}})
+        self.assertEqual({k.lower():v for k,v in request.header_items()}['openstack-api-version'],'compute 2.30')
+        self.assertEqual(backing.server['OS-EXT-SRV-ATTR:host'],'node2')
+        self.assertEqual(backing.volume['os-vol-host-attr:host'],'node3@lvm-1#lvm-1')
+        self.assertEqual(states[0]['plan']['source'],'node3');self.assertTrue(states[0]['pending']);self.assertFalse(states[-1]['pending'])
+        self.assertIn('Operation: LIVE VM + local OS disk',logs)
+        self.assertIn('RESULT: MIGRATION_API_AND_HOST_CHECKS_PASSED',logs)
+
     def test_plan_client_cannot_authorize_mutation(self):
         api=m.API(SimpleNamespace(client=None,urls={},token='hidden'),read_only=True)
         with self.assertRaisesRegex(RuntimeError,'Plan-only'):api.arm(compute_plan(API()))
@@ -223,6 +258,40 @@ class MenuTests(unittest.TestCase):
     def test_paused_actual_runtime_cannot_be_treated_as_powered_off(self):
         api=API();nodes=Nodes(api);nodes.paused=True
         with self.assertRaisesRegex(RuntimeError,'paused'):m.runtime(nodes,VM)
+
+    def test_unavailable_nova_task_is_not_idle_or_verified_completion(self):
+        api=API();plan=compute_plan(api);del api.server['OS-EXT-STS:task_state']
+        for mode in ('live','cold'):
+            with self.subTest(mode=mode),self.assertRaisesRegex(RuntimeError,'task state is unavailable'):
+                m.vm_eligible(api.server,mode)
+        api.server['OS-EXT-SRV-ATTR:host']=plan['destination']
+        api.history=[{'uuid':MIG,'instance_uuid':VM,'source_compute':plan['source'],'dest_compute':plan['destination'],
+          'status':'completed','migration_type':'live-migration'}]
+        with self.assertRaisesRegex(RuntimeError,'completion is not verified'):m.wait_move(api,plan,lambda _:None)
+        with self.assertRaisesRegex(RuntimeError,'idle VM is not verified'):m.verify_move(api,plan,Nodes(api))
+        self.assertFalse(api.actions)
+
+    def test_api_only_modes_do_not_initialize_node_ssh_or_request_sudo(self):
+        for mode in ('--observe','--reconcile'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);(root/'private/phase4').mkdir(parents=True)
+                reviewed=[]
+                def run_records(menu,api,*args,**kwargs):
+                    reviewed.append((api.read_only,kwargs['reconcile']));return 0
+                original=SimpleNamespace(client=None,urls={},token='hidden')
+                with patch.object(m,'REPO',root),patch.object(m,'ENV',Path(sys.prefix)),\
+                     patch.object(m.sys.stdin,'isatty',return_value=True),\
+                     patch.object(m.deploy.validation.config_step,'load_step',return_value=SimpleNamespace(require_r2d2=lambda:None)),\
+                     patch.object(m.deploy.tools,'check_paths'),patch.object(m.deploy,'source_guard'),\
+                     patch.object(m.deploy.tools,'tool_environment',return_value={}),\
+                     patch.object(m.deploy.validation,'local_checks',return_value=(root/'inventory',root/'config')),\
+                     patch.object(m.move.access,'input_hashes',return_value={}),\
+                     patch.object(m.inv,'ensure_agent',side_effect=AssertionError('API-only review must not initialize node SSH')),\
+                     patch.object(m.getpass,'getpass',side_effect=AssertionError('API-only review must not ask for sudo')),\
+                     patch.object(m.prep,'authenticate',return_value=(original,PROJECT,None)),\
+                     patch.object(m,'load',return_value=SimpleNamespace(run=run_records)),contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(m.main([mode]),0)
+                self.assertEqual(reviewed,[(True,mode=='--reconcile')])
 
     def test_preflight_dynamic_flavor_capacity_and_cpu(self):
         api=API();nodes=Nodes(api)
@@ -276,6 +345,17 @@ class MenuTests(unittest.TestCase):
         api=API();result,saves,_=self.run_move(api,compute_plan(api,'cold'))
         self.assertTrue(result);self.assertEqual(api.actions,['move','confirm']);self.assertFalse(saves[-1]['pending'])
 
+    def test_cold_move_of_a_shutoff_vm_does_not_request_a_power_action(self):
+        api=API();api.server=server('node3','SHUTOFF');plan=compute_plan(api,'cold','node2');states=[]
+        class StoppedNodes(Nodes):
+            def call(self,node,action,payload):
+                if action=='running':return {'node':node,'observed':True,'VM_running':False,'domain_state':'not active'}
+                return super().call(node,action,payload)
+        result=m.perform(api,plan,StoppedNodes(api),lambda s:states.append(copy.deepcopy(s)),lambda _:None,lambda _:True,lambda:None,lambda:None,lambda:None)
+        self.assertTrue(result);self.assertEqual(api.actions,['move','confirm'])
+        self.assertEqual(api.server['status'],'SHUTOFF');self.assertEqual(api.server['OS-EXT-SRV-ATTR:host'],'node2')
+        self.assertFalse(states[-1]['pending']);self.assertEqual(api.volume['os-vol-host-attr:host'],'node3@lvm-1#lvm-1')
+
     def test_cold_move_declined_confirmation_is_preserved_not_reverted(self):
         api=API();result,saves,_=self.run_move(api,compute_plan(api,'cold'),[True,False])
         self.assertFalse(result);self.assertEqual(api.actions,['move']);self.assertEqual(api.server['status'],'VERIFY_RESIZE');self.assertTrue(saves[-1]['pending'])
@@ -289,6 +369,14 @@ class MenuTests(unittest.TestCase):
     def test_no_approval_no_write_or_receipt(self):
         api=API();result,saves,_=self.run_move(api,compute_plan(api),[False])
         self.assertFalse(result);self.assertFalse(api.actions);self.assertFalse(saves)
+
+    def test_detached_data_volume_move_preserves_compute_and_available_state(self):
+        api=API();api.server=server('node3');api.volume=disk(status='available');states=[]
+        plan=m.storage_preflight(api,api.volume,PROJECT,api.pools[1],'volume-offline')
+        result=m.perform(api,plan,Nodes(api),lambda s:states.append(copy.deepcopy(s)),lambda _:None,lambda _:True,lambda:None,lambda:None,lambda:None)
+        self.assertTrue(result);self.assertEqual(api.actions,['move']);self.assertFalse(states[-1]['pending'])
+        self.assertEqual(api.volume['status'],'available');self.assertEqual(api.volume['attachments'],[])
+        self.assertEqual(api.server['OS-EXT-SRV-ATTR:host'],'node3');self.assertEqual(api.volume['os-vol-host-attr:host'],plan['destination'])
 
     def test_lost_response_or_interrupt_keeps_pending_and_never_retries(self):
         for error in (RuntimeError('outcome unavailable'),KeyboardInterrupt()):
