@@ -10,6 +10,7 @@ Repository: DinosaurKeys/openstack-from-zero. R2d2 is Joe's management VM. The a
 - Keep one shutdown/reboot/recovery guide: `docs/reboot-and-recovery.md`. The obsolete `docs/reboot-recovery-reference.md` is removed.
 - Git updates are a setup/maintenance task, not a routine reboot or recovery prerequisite. The normal checker selects its own tools/profile; no CLI activation is required for it.
 - Keep useful reference commands, diagrams and existing section anchors where possible. Backups remain a deferred lesson; do not introduce a backup requirement.
+- Phase 8 is Hermes/OpenRouter; monitoring is Phase 9. The AI setup follows `AI/HERMES-IAC-RULES.md`: Hermes prepares files in a separate public working copy as `hermes-iac`; Joe keeps cloud execution and credentials in the management environment. The file-tool write root and toolset selection are application controls, not claims of OS-level network isolation. Preserve the pinned-source check and the file/skills/clarify launcher allowlist unless Joe approves a new scope.
 
 ## Confirmed design
 

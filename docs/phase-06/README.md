@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [Course plan](../00-goal-and-plan.md) · [Resource check](../resource-and-heat-check.md)
 
-**Now: [Chapter C — write the configuration](C-write-configuration.md).** Joe's reviewed 30 October reports verified Terraform 1.17.1 on R2d2 and passed the cluster/capacity/quota checks. The Ubuntu image requires 2 GiB RAM, and Joe approved that size for both new VMs. The old `lab-vm-01` was still ACTIVE on node2; its shutdown remains required before provisioning. Chapter C prepares files only. Chapters D–G remain the agreed outline; no new VMs have been created.
+**Paused at [Chapter C — write the configuration](C-write-configuration.md) while Joe reviews [Phase 8 — Hermes](../phase-08/README.md).** Chapter C's preparation result has not yet been returned. Joe's reviewed 30 October reports verified Terraform 1.17.1 on R2d2 and passed the cluster/capacity/quota checks. The Ubuntu image requires 2 GiB RAM, and Joe approved that size for both new VMs. The old `lab-vm-01` was still ACTIVE on node2; its shutdown remains required before provisioning. Chapter C prepares files only. Chapters D–G remain the agreed outline; no new VMs have been created.
 
 ## What Terraform does
 
@@ -103,7 +103,7 @@ After creation, another plan should report **No changes**. Routine checks use `p
 
 The state file is Terraform's record of ownership. Do not discard it merely to reinstall the tool. Git stores the infrastructure description; it does not store this private record or restore PostgreSQL data.
 
-Phase 6 finishes with the infrastructure verified. **Phase 7** installs the shopping-list application and PostgreSQL with Ansible. **Phase 8** adds monitoring.
+Phase 6 finishes with the infrastructure verified. **Phase 7** installs the shopping-list application and PostgreSQL with Ansible. **[Phase 8](../phase-08/README.md)** sets up Hermes with OpenRouter for preparing reviewed IaC files. **Phase 9** adds monitoring. Terraform is currently paused while Joe reviews the Hermes setup.
 
 ## Source checks
 

@@ -4,7 +4,7 @@
 
 ## Goal
 
-Build and understand a three-node OpenStack HA lab: API Keepalived/HAProxy, MariaDB/Galera and Neutron virtual-router HA. Then provision two VMs with Terraform, configure their application/database with Ansible and add monitoring. Automation should make an understood procedure repeatable.
+Build and understand a three-node OpenStack HA lab: API Keepalived/HAProxy, MariaDB/Galera and Neutron virtual-router HA. Provision two VMs with Terraform, configure their application/database with Ansible, use Hermes to help prepare reviewed IaC files, and add monitoring. Automation should make an understood procedure repeatable.
 
 ## The lab
 
@@ -30,7 +30,8 @@ A **controller** manages cloud requests. A **compute** runs VMs. **Cinder LVM** 
 | [5. HA validation and VM migration](phase-05/README.md) | API VIP, database and router tests pass; planned VM migration is verified |
 | [6. Terraform — Chapter C ready](phase-06/README.md) | Terraform provisions the two approved VMs and their supporting resources; verification passes and a second plan shows no changes |
 | 7. Application with Ansible | One application VM and one PostgreSQL VM serve the shopping list and retain its database data |
-| 8. Monitoring | Dashboards show the lab and a test alert works |
+| [8. Hermes with OpenRouter](phase-08/README.md) | The selected host runs Hermes with OpenRouter, the reviewed tools and a public working copy; Joe reviews and executes IaC |
+| 9. Monitoring | Dashboards show the lab and a test alert works |
 
 ## How we learn
 

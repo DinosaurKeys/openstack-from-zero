@@ -31,7 +31,9 @@ The reviewed resource snapshot showed four CPU cores and about 15 GiB usable RAM
 
 ## Current learning step
 
-**Now: [Phase 6 C — write the Terraform configuration](docs/phase-06/C-write-configuration.md).** The approved plan is `lab1` for the application and `lab2` for PostgreSQL: **1 vCPU, 2 GiB RAM and a 10 GiB OS disk each**, plus a new 5 GiB data volume for `lab2`. Joe's 30 October reports verified Terraform 1.17.1 on R2d2 and passed the cluster, resource and quota checks. The old `lab-vm-01` was still ACTIVE on node2; its clean shutdown is required before provisioning. Chapter C writes local files only; no new VMs have been created. Provider initialization and a reviewed live plan follow in Chapter D.
+**Now: [Phase 8 — Hermes with OpenRouter](docs/phase-08/README.md).** The setup guide is ready: a separate Ubuntu account, a pinned Hermes CLI, OpenRouter and a public IaC working copy. Hermes prepares files; Joe reviews and executes infrastructure changes. Installation, authentication and runtime tool restrictions still need Joe's live verification.
+
+**Paused: [Phase 6 C — write the Terraform configuration](docs/phase-06/C-write-configuration.md).** The approved plan remains `lab1` for the application and `lab2` for PostgreSQL: **1 vCPU, 2 GiB RAM and a 10 GiB OS disk each**, plus a new 5 GiB data volume for `lab2`. Joe's 30 October reports verified Terraform 1.17.1 on R2d2 and passed the cluster, resource and quota checks. Chapter C's files are published; its local preparation result has not been returned. The old `lab-vm-01` was still ACTIVE on node2; its clean shutdown is required before provisioning. No new VMs have been created. Provider initialization and a reviewed live plan follow in Chapter D.
 
 Phase 4 is complete: reviewed live reports passed VM networking and Cinder data persistence across detach/reattach. The local OS disk and Cinder data volume are separate, unreplicated storage; their current compute/storage locations must be read from the lab. Browser sign-in is a separate user-confirmed check.
 
@@ -52,9 +54,10 @@ Reviewed [Phase 5 — HA validation and VM migration](docs/phase-05/README.md) r
 | 3 — Install OpenStack | [Prechecks, HA deployment, OpenStack CLI, HTTPS and Horizon](docs/phase-03/README.md) |
 | 4 — Networking and first VM | [HA router, VM ingredients, guest traffic and volumes](docs/phase-04/README.md) |
 | 5 — HA validation and VM migration | [Readiness, three HA exercises and planned migration](docs/phase-05/README.md) |
-| 6 — Terraform | [Chapter C ready: configuration and private settings for the two approved VMs](docs/phase-06/README.md) |
+| 6 — Terraform | [Paused at Chapter C: configuration and private settings for the two approved VMs](docs/phase-06/README.md) |
 | 7 — Application with Ansible | Planned: NGINX/shopping-list application and PostgreSQL |
-| 8 — Monitoring | Planned after the application |
+| 8 — Hermes with OpenRouter | [Setup and file-only IaC workflow; live verification pending](docs/phase-08/README.md) |
+| 9 — Monitoring | Planned after the application |
 
 [Architecture and limits](docs/architecture.md) · [Command glossary and OpenStack CLI reference](docs/command-glossary.md#openstack-cli-commands) · [Reboot, health checks and recovery](docs/reboot-and-recovery.md) · [Goal and learning plan](docs/00-goal-and-plan.md)
 
