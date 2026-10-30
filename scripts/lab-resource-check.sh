@@ -27,8 +27,12 @@ sudo -v
 printf '\nHeat containers:\n'
 lab_heat=$(sudo -n docker ps -a --filter 'name=^/heat_' --format '{{.Names}} | {{.Status}}')
 if [ -n "$lab_heat" ]; then printf '%s\n' "$lab_heat"; else echo 'NONE found'; fi
-printf '\nHeat startup units (empty means none found):\n'
-systemctl list-unit-files 'kolla-heat_*-container.service' --no-legend --no-pager
+printf '\nHeat startup units:\n'
+# A systemctl pattern with no matches exits nonzero. Read the service list
+# successfully first, then filter optional Heat units without hiding errors.
+lab_units=$(systemctl list-unit-files --type=service --no-legend --no-pager)
+lab_heat_units=$(printf '%s\n' "$lab_units" | awk '$1 ~ /^kolla-heat_.*-container[.]service$/ { print }')
+if [ -n "$lab_heat_units" ]; then printf '%s\n' "$lab_heat_units"; else echo 'NONE found'; fi
 printf '\nRabbitMQ container resource usage:\n'
 sudo -n docker stats --no-stream --format 'CPU={{.CPUPerc}} RAM={{.MemUsage}}' rabbitmq
 if [ "$(hostname -s)" = node1 ]; then

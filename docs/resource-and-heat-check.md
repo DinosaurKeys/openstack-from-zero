@@ -19,7 +19,7 @@ Enter each node's sudo password when asked. The check reads all three nodes. It 
 | CPU load averages | Work running or waiting over 1, 5 and 15 minutes; not CPU percentage |
 | Memory `available` | RAM the host can use now; use this instead of `free` for an initial sizing check |
 | Heat containers | Whether Heat containers exist and are running or stopped |
-| Heat startup units | Whether installed Heat units are enabled at boot |
+| Heat startup units | Whether installed Heat units are enabled at boot; `NONE found` is a normal result when Heat is absent |
 | RabbitMQ resource usage | A current container CPU and memory sample |
 | Total queues | Cluster-wide queue count in vhost `/`, read once through node1 |
 | Empty Heat quorum queues with no consumers | Exact Heat-style UUID names to investigate; not automatic deletion approval |
